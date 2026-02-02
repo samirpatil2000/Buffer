@@ -6,15 +6,15 @@ struct ClipboardListView: View {
     let items: [ClipboardItem]
     @Binding var selectedIndex: Int
     let store: ClipboardStore
-    let onSelect: (ClipboardItem) -> Void  // Single click - copy to clipboard
-    let onPaste: (ClipboardItem) -> Void   // Enter key - paste
+    let onSelect: (ClipboardItem) -> Void
+    let onPaste: (ClipboardItem) -> Void
     let onDelete: (ClipboardItem) -> Void
     let onDismiss: () -> Void
     
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 1) {
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         ClipboardItemRow(
                             item: item,
@@ -23,46 +23,26 @@ struct ClipboardListView: View {
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
-                        // Single gesture - no delay
-                        .gesture(
-                            TapGesture()
-                                .onEnded {
-                                    selectedIndex = index
-                                    onSelect(item)
-                                }
-                        )
+                        .onTapGesture {
+                            selectedIndex = index
+                            onSelect(item)
+                        }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
             .onChange(of: selectedIndex) { newValue in
-                withAnimation(.easeOut(duration: 0.1)) {
-                    proxy.scrollTo(items[safe: newValue]?.id, anchor: .center)
+                if let item = items[safe: newValue] {
+                    proxy.scrollTo(item.id, anchor: .center)
                 }
             }
         }
         .background(KeyboardHandler(
-            onUp: {
-                if selectedIndex > 0 {
-                    selectedIndex -= 1
-                }
-            },
-            onDown: {
-                if selectedIndex < items.count - 1 {
-                    selectedIndex += 1
-                }
-            },
-            onEnter: {
-                if let item = items[safe: selectedIndex] {
-                    onPaste(item)
-                }
-            },
-            onCopy: {
-                if let item = items[safe: selectedIndex] {
-                    onSelect(item)
-                }
-            },
+            onUp: { if selectedIndex > 0 { selectedIndex -= 1 } },
+            onDown: { if selectedIndex < items.count - 1 { selectedIndex += 1 } },
+            onEnter: { if let item = items[safe: selectedIndex] { onPaste(item) } },
+            onCopy: { if let item = items[safe: selectedIndex] { onSelect(item) } },
             onDelete: {
                 if let item = items[safe: selectedIndex] {
                     onDelete(item)
@@ -76,14 +56,6 @@ struct ClipboardListView: View {
     }
 }
 
-// Safe array access
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        return indices.contains(index) ? self[index] : nil
-    }
-}
-
-/// Handles keyboard input for the list
 struct KeyboardHandler: NSViewRepresentable {
     let onUp: () -> Void
     let onDown: () -> Void
@@ -100,11 +72,7 @@ struct KeyboardHandler: NSViewRepresentable {
         view.onCopy = onCopy
         view.onDelete = onDelete
         view.onEscape = onEscape
-        
-        DispatchQueue.main.async {
-            view.window?.makeFirstResponder(view)
-        }
-        
+        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
         return view
     }
     
@@ -130,24 +98,13 @@ class KeyboardView: NSView {
     
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 126: // Up arrow
-            onUp?()
-        case 125: // Down arrow
-            onDown?()
-        case 36: // Return/Enter
-            onEnter?()
-        case 53: // Escape
-            onEscape?()
-        case 51: // Delete/Backspace
-            onDelete?()
-        case 8: // C key
-            if event.modifierFlags.contains(.command) {
-                onCopy?()
-            } else {
-                super.keyDown(with: event)
-            }
-        default:
-            super.keyDown(with: event)
+        case 126: onUp?()
+        case 125: onDown?()
+        case 36: onEnter?()
+        case 53: onEscape?()
+        case 51: onDelete?()
+        case 8 where event.modifierFlags.contains(.command): onCopy?()
+        default: super.keyDown(with: event)
         }
     }
 }

@@ -16,14 +16,13 @@ class HistoryPanel: NSPanel {
 /// Manages the floating history window
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
-    private var ignoreCopyUntil: Date = .distantPast
     
     init(store: ClipboardStore) {
         self.store = store
         
-        // Create a floating panel
+        // Wider window for split pane
         let panel = HistoryPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 450),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 480),
             styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -31,7 +30,6 @@ class HistoryWindowController: NSWindowController {
         
         super.init(window: panel)
         
-        // Close when clicking outside
         panel.onClickOutside = { [weak self] in
             self?.close()
         }
@@ -45,28 +43,23 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func setupPanel(_ panel: NSPanel) {
-        // Floating behavior
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
         
-        // Visual style - cleaner, darker
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
         panel.backgroundColor = NSColor.windowBackgroundColor
         panel.isMovableByWindowBackground = true
         panel.hasShadow = true
         
-        // Round corners
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.cornerRadius = 10
         panel.contentView?.layer?.masksToBounds = true
         
-        // Center on screen
         panel.center()
         
-        // Hide window buttons
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
@@ -90,14 +83,12 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func copyToClipboard(_ item: ClipboardItem) {
-        // Set flag to ignore this clipboard change
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
         PasteController.copyToClipboard(item, store: store)
     }
     
     private func pasteItem(_ item: ClipboardItem) {
         close()
-        // Set flag to ignore this clipboard change
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
         PasteController.paste(item, store: store)
     }
@@ -113,7 +104,7 @@ extension Notification.Name {
     static let bufferIgnoreNextChange = Notification.Name("bufferIgnoreNextChange")
 }
 
-/// Main content view for the history window
+/// Main content view - Split pane with list and detail
 struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
     let onCopyToClipboard: (ClipboardItem) -> Void
@@ -133,43 +124,82 @@ struct HistoryContentView: View {
         }
     }
     
+    private var selectedItem: ClipboardItem? {
+        filteredItems[safe: selectedIndex]
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Search bar
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 13))
-                
-                TextField("Type to search...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                Spacer()
-                
-                // Item count
-                Text("\(filteredItems.count) items")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(NSColor.controlBackgroundColor))
+            searchBar
             
             Divider()
             
-            // Clipboard list
+            // Split pane: List + Detail
+            HSplitView {
+                // Left: List
+                listPane
+                    .frame(minWidth: 280, maxWidth: 350)
+                
+                // Right: Detail
+                detailPane
+                    .frame(minWidth: 300)
+            }
+            
+            Divider()
+            
+            // Bottom action bar
+            actionBar
+        }
+        .frame(width: 700, height: 480)
+        .background(Color(NSColor.windowBackgroundColor))
+        .onChange(of: searchText) { _ in
+            selectedIndex = 0
+        }
+    }
+    
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .foregroundColor(.secondary)
+                .font(.system(size: 14))
+            
+            TextField("Type to search...", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+            
+            if !searchText.isEmpty {
+                Button(action: { searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Spacer()
+            
+            // Sort buttons (visual only for now)
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up.arrow.down")
+                Image(systemName: "command")
+            }
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var listPane: some View {
+        Group {
             if filteredItems.isEmpty {
-                emptyState
+                VStack {
+                    Spacer()
+                    Text(searchText.isEmpty ? "No clipboard history" : "No matches")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
             } else {
                 ClipboardListView(
                     items: filteredItems,
@@ -177,34 +207,146 @@ struct HistoryContentView: View {
                     store: store,
                     onSelect: onCopyToClipboard,
                     onPaste: onPaste,
-                    onDelete: { item in
-                        store.delete(item)
-                    },
+                    onDelete: { item in store.delete(item) },
                     onDismiss: onDismiss
                 )
             }
         }
-        .frame(width: 380, height: 450)
-        .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: searchText) { _ in
-            selectedIndex = 0
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+    
+    private var detailPane: some View {
+        VStack(spacing: 0) {
+            // Type indicator
+            HStack {
+                Spacer()
+                
+                if let item = selectedItem {
+                    HStack(spacing: 8) {
+                        Text(item.type == .text ? "Text" : "Image")
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.accentColor.opacity(0.2))
+                            .cornerRadius(4)
+                        
+                        if item.type == .text {
+                            Text("Plain")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Action buttons
+                HStack(spacing: 12) {
+                    Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy")
+                    
+                    Button(action: {}) {
+                        Image(systemName: "star")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Favorite")
+                    
+                    Button(action: {}) {
+                        Image(systemName: "ellipsis")
+                    }
+                    .buttonStyle(.plain)
+                }
+                .foregroundColor(.secondary)
+                .font(.system(size: 13))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+            
+            Divider()
+            
+            // Content preview
+            ScrollView {
+                if let item = selectedItem {
+                    itemContent(item)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                } else {
+                    Text("Select an item")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
     }
     
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 40, weight: .light))
-                .foregroundColor(.secondary.opacity(0.5))
-            Text(searchText.isEmpty ? "No clipboard history" : "No matching items")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-            Text(searchText.isEmpty ? "Copy something to get started" : "Try a different search")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary.opacity(0.7))
-            Spacer()
+    @ViewBuilder
+    private func itemContent(_ item: ClipboardItem) -> some View {
+        switch item.type {
+        case .text:
+            Text(item.textContent ?? "")
+                .font(.system(size: 13, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        case .image:
+            if let img = store.image(for: item) {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Text("Image not found")
+                    .foregroundColor(.secondary)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private var actionBar: some View {
+        HStack {
+            // Navigate buttons
+            HStack(spacing: 4) {
+                Button(action: { if selectedIndex < filteredItems.count - 1 { selectedIndex += 1 } }) {
+                    Image(systemName: "chevron.down")
+                }
+                Button(action: { if selectedIndex > 0 { selectedIndex -= 1 } }) {
+                    Image(systemName: "chevron.up")
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
+            
+            Text("Navigate")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            
+            Spacer()
+            
+            // Paste button
+            Button(action: { if let item = selectedItem { onPaste(item) } }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.turn.down.left")
+                    Text("Paste")
+                }
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.accentColor)
+                .foregroundColor(.white)
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+}
+
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

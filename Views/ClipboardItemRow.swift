@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Single row displaying a clipboard item - cleaner design with hover
+/// Single row displaying a clipboard item - optimized for smooth scrolling
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let store: ClipboardStore
     let isSelected: Bool
     
     @State private var isHovered = false
+    @State private var cachedImage: NSImage?
     
     private var backgroundColor: Color {
         if isSelected {
@@ -21,21 +22,13 @@ struct ClipboardItemRow: View {
         HStack(spacing: 10) {
             // Icon
             icon
-                .frame(width: 20)
+                .frame(width: 20, height: 20)
             
-            // Content preview
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.previewText)
-                    .font(.system(size: 13))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                if item.type == .image, let filename = item.imageFilename {
-                    Text(filename)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-            }
+            // Content preview - simplified
+            Text(item.previewText)
+                .font(.system(size: 13))
+                .foregroundColor(.primary)
+                .lineLimit(1)
             
             Spacer(minLength: 0)
             
@@ -44,20 +37,21 @@ struct ClipboardItemRow: View {
                 Text(app)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(4)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(backgroundColor)
-        .cornerRadius(6)
-        .animation(.easeOut(duration: 0.1), value: isHovered)
-        .animation(.easeOut(duration: 0.1), value: isSelected)
+        .cornerRadius(4)
+        .animation(.linear(duration: 0.08), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
+        }
+        .onAppear {
+            // Load image once on appear
+            if item.type == .image && cachedImage == nil {
+                cachedImage = store.image(for: item)
+            }
         }
     }
     
@@ -66,18 +60,19 @@ struct ClipboardItemRow: View {
         switch item.type {
         case .text:
             Image(systemName: "doc.text")
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundColor(.secondary)
         case .image:
-            if let nsImage = store.image(for: item) {
-                Image(nsImage: nsImage)
+            if let img = cachedImage {
+                Image(nsImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 20, height: 20)
-                    .cornerRadius(3)
+                    .clipped()
+                    .cornerRadius(2)
             } else {
                 Image(systemName: "photo")
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundColor(.secondary)
             }
         }
