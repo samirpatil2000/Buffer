@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/samirpatil/Buffer/releases/latest">
+  <a href="https://github.com/samirpatil2000/Buffer/releases/latest">
     <img src="https://img.shields.io/badge/Download-v1.0-blue?style=for-the-badge&logo=apple" alt="Download">
   </a>
   <img src="https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple" alt="macOS 13+">
@@ -34,7 +34,7 @@
 ## 📥 Download
 
 <p align="center">
-  <a href="https://github.com/samirpatil/Buffer/releases/download/v1.0/Buffer.dmg">
+  <a href="https://github.com/samirpatil2000/Buffer/releases/download/v1.0/Buffer.dmg">
     <img src="https://img.shields.io/badge/⬇️_Download_Buffer.dmg-1.0-2ea44f?style=for-the-badge" alt="Download Buffer.dmg">
   </a>
 </p>
@@ -59,7 +59,7 @@
 ## 🖥️ Screenshots
 
 <p align="center">
-  <img src="Assets/screenshot-history.png" alt="Clipboard History" width="600">
+  <img width="891" height="667" alt="image" src="https://github.com/user-attachments/assets/997631ea-c22e-41e6-9337-d97aa0cdc921" />
 </p>
 
 <p align="center">
@@ -83,7 +83,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/samirpatil/Buffer.git
+git clone https://github.com/samirpatil2000/Buffer.git
 cd Buffer
 
 # Open in Xcode
