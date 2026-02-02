@@ -7,7 +7,7 @@ struct ClipboardListView: View {
     @Binding var selectedIndex: Int
     let store: ClipboardStore
     let onSelect: (ClipboardItem) -> Void  // Single click - copy to clipboard
-    let onPaste: (ClipboardItem) -> Void   // Double click or Enter - paste
+    let onPaste: (ClipboardItem) -> Void   // Enter key - paste
     let onDelete: (ClipboardItem) -> Void
     let onDismiss: () -> Void
     
@@ -23,20 +23,21 @@ struct ClipboardListView: View {
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedIndex = index
-                            onSelect(item)  // Copy to clipboard on single click
-                        }
-                        .onTapGesture(count: 2) {
-                            onPaste(item)
-                        }
+                        // Single gesture - no delay
+                        .gesture(
+                            TapGesture()
+                                .onEnded {
+                                    selectedIndex = index
+                                    onSelect(item)
+                                }
+                        )
                     }
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
             }
             .onChange(of: selectedIndex) { newValue in
-                withAnimation(.easeOut(duration: 0.15)) {
+                withAnimation(.easeOut(duration: 0.1)) {
                     proxy.scrollTo(items[safe: newValue]?.id, anchor: .center)
                 }
             }
@@ -45,17 +46,11 @@ struct ClipboardListView: View {
             onUp: {
                 if selectedIndex > 0 {
                     selectedIndex -= 1
-                    if let item = items[safe: selectedIndex] {
-                        onSelect(item)
-                    }
                 }
             },
             onDown: {
                 if selectedIndex < items.count - 1 {
                     selectedIndex += 1
-                    if let item = items[safe: selectedIndex] {
-                        onSelect(item)
-                    }
                 }
             },
             onEnter: {

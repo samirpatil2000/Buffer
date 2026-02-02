@@ -1,10 +1,21 @@
 import SwiftUI
 
-/// Single row displaying a clipboard item - cleaner design
+/// Single row displaying a clipboard item - cleaner design with hover
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let store: ClipboardStore
     let isSelected: Bool
+    
+    @State private var isHovered = false
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.25)
+        } else if isHovered {
+            return Color.primary.opacity(0.06)
+        }
+        return Color.clear
+    }
     
     var body: some View {
         HStack(spacing: 10) {
@@ -41,8 +52,13 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .background(backgroundColor)
         .cornerRadius(6)
+        .animation(.easeOut(duration: 0.1), value: isHovered)
+        .animation(.easeOut(duration: 0.1), value: isSelected)
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
     
     @ViewBuilder
