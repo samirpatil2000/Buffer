@@ -25,16 +25,22 @@ struct ClipboardListView: View {
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            // Double-click: copy and dismiss
-                            selectedIndex = index
-                            onSelect(item)
-                            onDismiss()
-                        }
-                        .onTapGesture(count: 1) {
-                            // Single-click: just select the item (no scroll)
-                            selectedIndex = index
-                        }
+                        .simultaneousGesture(
+                            TapGesture(count: 1)
+                                .onEnded { _ in
+                                    // Single-click: instant select
+                                    selectedIndex = index
+                                }
+                        )
+                        .highPriorityGesture(
+                            TapGesture(count: 2)
+                                .onEnded { _ in
+                                    // Double-click: copy and dismiss
+                                    selectedIndex = index
+                                    onSelect(item)
+                                    onDismiss()
+                                }
+                        )
                     }
                 }
                 .padding(.horizontal, 4)
