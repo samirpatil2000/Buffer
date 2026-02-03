@@ -7,7 +7,7 @@ struct ClipboardItemRow: View {
     let isSelected: Bool
     
     @State private var isHovered = false
-    @State private var cachedImage: NSImage?
+    @State private var thumbnail: NSImage?
     
     private var backgroundColor: Color {
         if isSelected {
@@ -43,14 +43,14 @@ struct ClipboardItemRow: View {
         .padding(.vertical, 6)
         .background(backgroundColor)
         .cornerRadius(4)
-        .animation(.linear(duration: 0.08), value: isHovered)
+        .drawingGroup() // Flatten to bitmap for smoother scrolling
         .onHover { hovering in
             isHovered = hovering
         }
-        .onAppear {
-            // Load image once on appear
-            if item.type == .image && cachedImage == nil {
-                cachedImage = store.image(for: item)
+        .task(id: item.id) {
+            // Load thumbnail async off main thread
+            if item.type == .image && thumbnail == nil {
+                thumbnail = await loadThumbnail()
             }
         }
     }
@@ -63,17 +63,45 @@ struct ClipboardItemRow: View {
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
         case .image:
-            if let img = cachedImage {
+            if let img = thumbnail {
                 Image(nsImage: img)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 20, height: 20)
                     .clipped()
                     .cornerRadius(2)
             } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                // Placeholder while loading
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: 20, height: 20)
+            }
+        }
+    }
+    
+    /// Generate a small thumbnail asynchronously
+    private func loadThumbnail() async -> NSImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let original = store.image(for: item) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                // Create a tiny thumbnail (40x40 for retina)
+                let thumbSize = NSSize(width: 40, height: 40)
+                let thumb = NSImage(size: thumbSize)
+                thumb.lockFocus()
+                original.draw(
+                    in: NSRect(origin: .zero, size: thumbSize),
+                    from: NSRect(origin: .zero, size: original.size),
+                    operation: .copy,
+                    fraction: 1.0
+                )
+                thumb.unlockFocus()
+                
+                continuation.resume(returning: thumb)
             }
         }
     }
