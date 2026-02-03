@@ -59,8 +59,9 @@
 ## 🖥️ Screenshots
 
 <p align="center">
-  <img width="891" height="667" alt="image" src="https://github.com/user-attachments/assets/997631ea-c22e-41e6-9337-d97aa0cdc921" />
+  <img width="919" height="864" alt="image" src="https://github.com/user-attachments/assets/ebd0d454-8362-45e4-af22-27f054ba43c6" />
 </p>
+
 
 <p align="center">
   <em>Beautiful split-pane interface with search and preview</em>
