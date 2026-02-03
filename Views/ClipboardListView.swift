@@ -23,9 +23,15 @@ struct ClipboardListView: View {
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
-                        .onTapGesture {
+                        .onTapGesture(count: 2) {
+                            // Double-click: copy and dismiss
                             selectedIndex = index
                             onSelect(item)
+                            onDismiss()
+                        }
+                        .onTapGesture(count: 1) {
+                            // Single-click: just select
+                            selectedIndex = index
                         }
                     }
                 }
