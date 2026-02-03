@@ -113,6 +113,7 @@ struct HistoryContentView: View {
     
     @State private var searchText = ""
     @State private var selectedIndex = 0
+    @State private var previewImage: NSImage?
     
     private var filteredItems: [ClipboardItem] {
         if searchText.isEmpty {
@@ -155,6 +156,25 @@ struct HistoryContentView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { _ in
             selectedIndex = 0
+        }
+        .onChange(of: selectedIndex) { _ in
+            // Clear preview image when selection changes
+            previewImage = nil
+            // Load new preview async
+            if let item = filteredItems[safe: selectedIndex], item.type == .image {
+                Task {
+                    previewImage = await loadPreviewImage(for: item)
+                }
+            }
+        }
+    }
+    
+    private func loadPreviewImage(for item: ClipboardItem) async -> NSImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let img = store.image(for: item)
+                continuation.resume(returning: img)
+            }
         }
     }
     
@@ -291,14 +311,15 @@ struct HistoryContentView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         case .image:
-            if let img = store.image(for: item) {
+            if let img = previewImage {
                 Image(nsImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity)
             } else {
-                Text("Image not found")
-                    .foregroundColor(.secondary)
+                // Loading placeholder
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: 200)
             }
         }
     }

@@ -43,7 +43,6 @@ struct ClipboardItemRow: View {
         .padding(.vertical, 6)
         .background(backgroundColor)
         .cornerRadius(4)
-        .drawingGroup() // Flatten to bitmap for smoother scrolling
         .onHover { hovering in
             isHovered = hovering
         }
