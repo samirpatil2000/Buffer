@@ -72,6 +72,24 @@ class ClipboardStore: ObservableObject {
         }
     }
     
+    /// Move an item to the top of the list (most recent position)
+    func moveToTop(_ item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        
+        // Already at top, no need to move
+        if index == 0 { return }
+        
+        // Remove from current position and insert at top
+        let removed = items.remove(at: index)
+        items.insert(removed, at: 0)
+        
+        // Save updated order to disk
+        let itemsToSave = items
+        saveQueue.async { [weak self] in
+            self?.saveHistoryToDisk(itemsToSave)
+        }
+    }
+    
     func clear() {
         // Delete all image files
         for item in items {

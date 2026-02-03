@@ -11,6 +11,8 @@ struct ClipboardListView: View {
     let onDelete: (ClipboardItem) -> Void
     let onDismiss: () -> Void
     
+    @State private var scrollOnNextChange = false
+    
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
@@ -30,7 +32,7 @@ struct ClipboardListView: View {
                             onDismiss()
                         }
                         .onTapGesture(count: 1) {
-                            // Single-click: just select
+                            // Single-click: just select the item (no scroll)
                             selectedIndex = index
                         }
                     }
@@ -39,14 +41,26 @@ struct ClipboardListView: View {
                 .padding(.vertical, 2)
             }
             .onChange(of: selectedIndex) { newValue in
-                if let item = items[safe: newValue] {
+                // Only scroll to center if triggered by keyboard navigation
+                if scrollOnNextChange, let item = items[safe: newValue] {
                     proxy.scrollTo(item.id, anchor: .center)
                 }
+                scrollOnNextChange = false
             }
         }
         .background(KeyboardHandler(
-            onUp: { if selectedIndex > 0 { selectedIndex -= 1 } },
-            onDown: { if selectedIndex < items.count - 1 { selectedIndex += 1 } },
+            onUp: {
+                if selectedIndex > 0 {
+                    scrollOnNextChange = true
+                    selectedIndex -= 1
+                }
+            },
+            onDown: {
+                if selectedIndex < items.count - 1 {
+                    scrollOnNextChange = true
+                    selectedIndex += 1
+                }
+            },
             onEnter: { if let item = items[safe: selectedIndex] { onPaste(item) } },
             onCopy: { if let item = items[safe: selectedIndex] { onSelect(item) } },
             onDelete: {

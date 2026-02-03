@@ -151,7 +151,7 @@ struct HistoryContentView: View {
             // Bottom action bar
             actionBar
         }
-        .frame(width: 700, height: 480)
+        .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { _ in
             selectedIndex = 0
@@ -222,20 +222,12 @@ struct HistoryContentView: View {
                 Spacer()
                 
                 if let item = selectedItem {
-                    HStack(spacing: 8) {
-                        Text(item.type == .text ? "Text" : "Image")
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.accentColor.opacity(0.2))
-                            .cornerRadius(4)
-                        
-                        if item.type == .text {
-                            Text("Plain")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    Text(item.type == .text ? "Text" : "Image")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.2))
+                        .cornerRadius(4)
                 }
                 
                 Spacer()
@@ -304,19 +296,49 @@ struct HistoryContentView: View {
         }
     }
     
+    private func navigateUp() {
+        if selectedIndex > 0 {
+            selectedIndex -= 1
+        }
+    }
+    
+    private func navigateDown() {
+        if selectedIndex < filteredItems.count - 1 {
+            selectedIndex += 1
+        }
+    }
+    
     private var actionBar: some View {
         HStack {
             // Navigate buttons
-            HStack(spacing: 4) {
-                Button(action: { if selectedIndex < filteredItems.count - 1 { selectedIndex += 1 } }) {
+            HStack(spacing: 8) {
+                Button(action: navigateDown) {
                     Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 24, height: 24)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        )
                 }
-                Button(action: { if selectedIndex > 0 { selectedIndex -= 1 } }) {
+                .buttonStyle(.plain)
+                
+                Button(action: navigateUp) {
                     Image(systemName: "chevron.up")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 24, height: 24)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        )
                 }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
+            .foregroundColor(.primary)
             
             Text("Navigate")
                 .font(.system(size: 11))
@@ -324,7 +346,7 @@ struct HistoryContentView: View {
             
             Spacer()
             
-            // Paste button
+            // Paste button - Green color
             Button(action: { if let item = selectedItem { onPaste(item) } }) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.turn.down.left")
@@ -333,7 +355,7 @@ struct HistoryContentView: View {
                 .font(.system(size: 12, weight: .medium))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.accentColor)
+                .background(Color.green)
                 .foregroundColor(.white)
                 .cornerRadius(6)
             }
