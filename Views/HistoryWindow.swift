@@ -159,36 +159,43 @@ struct HistoryContentView: View {
     }
     
     private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(.secondary)
-                .font(.system(size: 14))
+        HStack(spacing: 10) {
+            // Search icon
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary.opacity(0.7))
+                .font(.system(size: 13, weight: .medium))
             
-            TextField("Type to search...", text: $searchText)
+            TextField("Search clipboard...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
             
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.secondary.opacity(0.5))
+                        .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
             }
             
             Spacer()
             
-            // Sort buttons (visual only for now)
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.up.arrow.down")
-                Image(systemName: "command")
-            }
-            .font(.system(size: 12))
-            .foregroundColor(.secondary)
+            // Item count
+            Text("\(filteredItems.count) items")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundColor(.secondary.opacity(0.6))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Color(NSColor.controlBackgroundColor)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundColor(Color.primary.opacity(0.06)),
+                    alignment: .bottom
+                )
+        )
     }
     
     private var listPane: some View {
@@ -309,61 +316,88 @@ struct HistoryContentView: View {
     }
     
     private var actionBar: some View {
-        HStack {
-            // Navigate buttons
-            HStack(spacing: 8) {
+        HStack(spacing: 16) {
+            // Navigate buttons - minimal, elegant
+            HStack(spacing: 6) {
                 Button(action: navigateDown) {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(4)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(NSColor.controlBackgroundColor))
+                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
+                        )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
                         )
                 }
                 .buttonStyle(.plain)
                 
                 Button(action: navigateUp) {
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(4)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(NSColor.controlBackgroundColor))
+                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
+                        )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
                         )
                 }
                 .buttonStyle(.plain)
             }
-            .foregroundColor(.primary)
             
             Text("Navigate")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundColor(.secondary.opacity(0.8))
             
             Spacer()
             
-            // Paste button - Green color
+            // Keyboard shortcut hint
+            HStack(spacing: 4) {
+                Image(systemName: "return")
+                    .font(.system(size: 10))
+                Text("to paste")
+                    .font(.system(size: 11))
+            }
+            .foregroundColor(.secondary.opacity(0.6))
+            
+            // Paste button - Apple-style, refined
             Button(action: { if let item = selectedItem { onPaste(item) } }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.turn.down.left")
+                HStack(spacing: 5) {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 11, weight: .medium))
                     Text("Paste")
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(6)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.primary.opacity(0.85))
+                )
+                .foregroundColor(Color(NSColor.windowBackgroundColor))
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Color(NSColor.controlBackgroundColor)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundColor(Color.primary.opacity(0.06)),
+                    alignment: .top
+                )
+        )
     }
 }
 
