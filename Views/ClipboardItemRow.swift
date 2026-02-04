@@ -18,14 +18,26 @@ struct ClipboardItemRow: View {
         return Color.clear
     }
     
+    /// Truncated preview for list display - short and single line
+    private var truncatedPreviewText: String {
+        let text = item.textContent ?? item.previewText
+        // Replace newlines and extra whitespace with single space
+        let singleLine = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        // Truncate to 50 characters for compact display
+        if singleLine.count > 50 {
+            return String(singleLine.prefix(50)) + "…"
+        }
+        return singleLine
+    }
+    
     var body: some View {
         HStack(spacing: 10) {
             // Icon
             icon
                 .frame(width: 20, height: 20)
             
-            // Content preview - simplified
-            Text(item.previewText)
+            // Content preview - truncated for list view
+            Text(truncatedPreviewText)
                 .font(.system(size: 13))
                 .foregroundColor(.primary)
                 .lineLimit(1)
