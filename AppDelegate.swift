@@ -43,9 +43,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func toggleHistoryWindow() {
+        print("[AppDelegate] toggleHistoryWindow called")
         if let window = historyWindowController?.window, window.isVisible {
+            print("[AppDelegate] Window is visible, closing...")
             historyWindowController?.close()
         } else {
+            print("[AppDelegate] Window is hidden, showing...")
             showHistoryWindow()
         }
     }

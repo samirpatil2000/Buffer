@@ -1,4 +1,5 @@
 import Cocoa
+import SwiftUI
 
 /// Manages the menu bar status item - click to toggle window
 class StatusBarController {
@@ -49,8 +50,26 @@ class StatusBarController {
         }
     }
     
+    private var settingsWindow: NSWindow?
+    
     private func showContextMenu() {
         let menu = NSMenu()
+        
+        // Show current shortcut
+        let settings = SettingsManager.shared
+        let shortcutDisplay = "\(settings.hotkeyModifiers.displayString)\(keyCodeNames[settings.hotkeyKeyCode] ?? "?")"
+        let shortcutItem = NSMenuItem(title: "Shortcut: \(shortcutDisplay)", action: nil, keyEquivalent: "")
+        shortcutItem.isEnabled = false
+        menu.addItem(shortcutItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Settings
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
+        menu.addItem(NSMenuItem.separator())
         
         // Pause/Resume
         let pauseTitle = watcher.isPaused ? "Resume Capture" : "Pause Capture"
@@ -75,6 +94,25 @@ class StatusBarController {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil  // Reset so left click works
+    }
+    
+    @objc private func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Buffer Settings"
+            window.level = .floating  // Keep on top
+            window.center()
+            window.contentView = NSHostingView(rootView: SettingsView())
+            settingsWindow = window
+        }
+        
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     @objc private func togglePause() {

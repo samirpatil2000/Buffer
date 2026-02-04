@@ -1,88 +1,92 @@
 import Cocoa
-import Carbon.HIToolbox
+import Carbon
 
-/// Manages global keyboard shortcut registration
+/// Manages global keyboard shortcut registration using Carbon API
 class HotkeyManager {
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var hotKeyRef: EventHotKeyRef?
     private let callback: () -> Void
     
+    // Store the singleton for the C callback
+    private static var instance: HotkeyManager?
+    
     // Shift + Command + V
-    private let requiredModifiers: CGEventFlags = [.maskShift, .maskCommand]
-    private let requiredKeyCode: CGKeyCode = 9 // V key
+    private let requiredKeyCode: UInt32 = 9 // V key
     
     init(callback: @escaping () -> Void) {
         self.callback = callback
+        HotkeyManager.instance = self
     }
     
     func register() {
-        // Create event tap to listen for key events
-        let eventMask = (1 << CGEventType.keyDown.rawValue)
+        print("[HotkeyManager] Registering hotkey using Carbon API...")
         
-        // Store self reference for callback
-        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        // Install event handler
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         
-        eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
-                guard let refcon = refcon else {
-                    return Unmanaged.passRetained(event)
-                }
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { (nextHandler, theEvent, userData) -> OSStatus in
+                var hotKeyID = EventHotKeyID()
+                GetEventParameter(
+                    theEvent,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
                 
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                
-                // Check if this is our hotkey
-                let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-                let flags = event.flags
-                
-                // Check for Shift + Command + V
-                if keyCode == manager.requiredKeyCode &&
-                    flags.contains(.maskShift) &&
-                    flags.contains(.maskCommand) &&
-                    !flags.contains(.maskControl) &&
-                    !flags.contains(.maskAlternate) {
-                    
-                    // Execute callback on main thread
+                if hotKeyID.id == 1 {
+                    print("[HotkeyManager] Carbon hotkey detected! ⇧⌘V")
                     DispatchQueue.main.async {
-                        manager.callback()
+                        HotkeyManager.instance?.callback()
                     }
-                    
-                    // Consume the event
-                    return nil
                 }
                 
-                return Unmanaged.passRetained(event)
+                return noErr
             },
-            userInfo: refcon
+            1,
+            &eventType,
+            nil,
+            nil
         )
         
-        guard let eventTap = eventTap else {
-            print("Failed to create event tap. Accessibility permissions may be required.")
-            requestAccessibilityPermissions()
+        if status != noErr {
+            print("[HotkeyManager] ❌ Failed to install event handler: \(status)")
             return
         }
         
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+        // Register the hotkey: Shift + Command + V
+        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1) // "BUFF"
+        let modifiers: UInt32 = UInt32(shiftKey | cmdKey)
+        
+        let registerStatus = RegisterEventHotKey(
+            requiredKeyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        
+        if registerStatus == noErr {
+            print("[HotkeyManager] ✅ Carbon hotkey registered: ⇧⌘V (Shift+Command+V)")
+        } else {
+            print("[HotkeyManager] ❌ Failed to register hotkey: \(registerStatus)")
+        }
     }
     
     func unregister() {
-        if let eventTap = eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
+        if let hotKeyRef = hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+            print("[HotkeyManager] Hotkey unregistered")
         }
-        if let runLoopSource = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
     }
     
-    private func requestAccessibilityPermissions() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+    deinit {
+        unregister()
+        HotkeyManager.instance = nil
     }
 }
