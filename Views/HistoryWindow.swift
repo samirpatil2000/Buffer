@@ -114,6 +114,7 @@ struct HistoryContentView: View {
     @State private var searchText = ""
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
+    @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     
     private var filteredItems: [ClipboardItem] {
         if searchText.isEmpty {
@@ -167,6 +168,24 @@ struct HistoryContentView: View {
                 }
             }
         }
+        .background(GlobalKeyMonitor(
+            onUp: {
+                scrollTrigger = true
+                navigateUp()
+            },
+            onDown: {
+                scrollTrigger = true
+                navigateDown()
+            },
+            onEnter: { if let item = selectedItem { onPaste(item) } },
+            onEscape: onDismiss,
+            onDelete: {
+                if let item = selectedItem {
+                    store.delete(item)
+                }
+            },
+            onCopy: { if let item = selectedItem { onCopyToClipboard(item) } }
+        ))
     }
     
     private func loadPreviewImage(for item: ClipboardItem) async -> NSImage? {
@@ -231,6 +250,7 @@ struct HistoryContentView: View {
                 ClipboardListView(
                     items: filteredItems,
                     selectedIndex: $selectedIndex,
+                    scrollTrigger: $scrollTrigger,
                     store: store,
                     onSelect: onCopyToClipboard,
                     onPaste: onPaste,
@@ -425,5 +445,91 @@ struct HistoryContentView: View {
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+/// Monitors global key events for the window
+struct GlobalKeyMonitor: NSViewRepresentable {
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onEnter: () -> Void
+    let onEscape: () -> Void
+    let onDelete: () -> Void
+    let onCopy: () -> Void
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            // Add local monitor to window
+            guard let window = view.window else { return }
+            
+            // We use a property on the window or controller to store the monitor
+            // But for simplicity in SwiftUI, we'll use a weak ref approach here
+            // or just rely on the view traversing up. 
+            // Actually, best way is to add monitor to the window.
+            
+            let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                switch event.keyCode {
+                case 126: // Up
+                    onUp()
+                    return nil // Consume event
+                case 125: // Down
+                    onDown()
+                    return nil // Consume event
+                case 36: // Enter
+                    onEnter()
+                    return nil
+                case 53: // Escape
+                    onEscape()
+                    return nil
+                case 51: // Delete
+                    // Check if search field is first responder - if so, don't consume delete unless empty?
+                    // For now, let's assume Cmd+Delete or just Delete on list.
+                    // If we consume Delete always, we can't delete text in search.
+                    // So let's only consume if we are NOT editing text OR if modifier is used.
+                    // But simpler: Only trigger if search text is empty? 
+                    // Let's rely on Command+Delete for item deletion to be safe/standard
+                    if event.modifierFlags.contains(.command) {
+                        onDelete()
+                        return nil
+                    }
+                    return event
+                case 8: // C (for Copy)
+                    if event.modifierFlags.contains(.command) {
+                        onCopy()
+                        return nil
+                    }
+                    return event
+                default:
+                    return event
+                }
+            }
+            
+            // Store monitor to remove later? 
+            // In a real app we need to clean up. For this snippet, 
+            // the monitor lasts as long as the window is open.
+            // Since the window is closed/released, the monitor should be cleaned up 
+            // if we attached it to the window properly or if we remove it on dismantle.
+            // However, NSEvent.addLocalMonitorForEvents returns an object that must be removed.
+            
+            context.coordinator.monitor = monitor
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var monitor: Any?
+        
+        deinit {
+            if let monitor = monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
     }
 }
