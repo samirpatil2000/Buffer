@@ -118,6 +118,10 @@ struct HistoryContentView: View {
     @State private var isLoadingText = false
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     
+    // OCR state
+    @State private var extractedOCRText: String?
+    @State private var isExtractingText = false
+    
     private var filteredItems: [ClipboardItem] {
         if searchText.isEmpty {
             return store.items
@@ -164,6 +168,8 @@ struct HistoryContentView: View {
             // Clear preview
             previewImage = nil
             fullTextPreview = nil
+            extractedOCRText = nil
+            isExtractingText = false
             isLoadingText = false
             
             // Load new preview async
@@ -323,6 +329,26 @@ struct HistoryContentView: View {
                     .buttonStyle(.plain)
                     .help("Copy")
                     
+                    // OCR button — only for image items
+                    if selectedItem?.type == .image && previewImage != nil {
+                        Button(action: {
+                            Task {
+                                guard let img = previewImage else { return }
+                                isExtractingText = true
+                                extractedOCRText = await OCRService.shared.recognizeText(from: img)
+                                isExtractingText = false
+                                if extractedOCRText == nil {
+                                    extractedOCRText = "No text found in this image."
+                                }
+                            }
+                        }) {
+                            Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isExtractingText)
+                        .help("Extract Text from Image")
+                    }
+                    
                     Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
                         Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
                     }
@@ -387,15 +413,51 @@ struct HistoryContentView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         case .image:
-            if let img = previewImage {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-            } else {
-                // Loading placeholder
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: 200)
+            VStack(spacing: 12) {
+                if let img = previewImage {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    // Loading placeholder
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: 200)
+                }
+                
+                // OCR result
+                if isExtractingText {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.vertical, 12)
+                } else if let ocrText = extractedOCRText {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(height: 0.5)
+                        
+                        HStack(alignment: .top) {
+                            Text(ocrText)
+                                .font(.system(size: 13))
+                                .textSelection(.enabled)
+                                .lineSpacing(4)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                            
+                            Button(action: {
+                                NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(ocrText, forType: .string)
+                            }) {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy extracted text")
+                        }
+                        .padding(.top, 12)
+                    }
+                }
             }
         }
     }
