@@ -135,7 +135,11 @@ struct HistoryContentView: View {
     }
     
     private var selectedItem: ClipboardItem? {
-        filteredItems[safe: selectedIndex]
+        // Prefer ID-based lookup for stability during list mutations
+        if let id = selectedID, let item = filteredItems.first(where: { $0.id == id }) {
+            return item
+        }
+        return filteredItems[safe: selectedIndex]
     }
     
     var body: some View {
