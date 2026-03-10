@@ -122,6 +122,9 @@ struct HistoryContentView: View {
     @State private var extractedOCRText: String?
     @State private var isExtractingText = false
     
+    // Track selection by ID so it survives list insertions
+    @State private var selectedID: UUID?
+    
     private var filteredItems: [ClipboardItem] {
         if searchText.isEmpty {
             return store.items
@@ -163,6 +166,17 @@ struct HistoryContentView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { _ in
             selectedIndex = 0
+            selectedID = filteredItems[safe: 0]?.id
+        }
+        .onChange(of: selectedIndex) { newIndex in
+            selectedID = filteredItems[safe: newIndex]?.id
+        }
+        .onChange(of: store.items) { _ in
+            // Preserve selection when items change (new entry added at top)
+            guard let id = selectedID else { return }
+            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }), selectedIndex != newIndex {
+                selectedIndex = newIndex
+            }
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -615,6 +629,10 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     return event
                 case 8: // C (for Copy)
                     if event.modifierFlags.contains(.command) {
+                        // If text is selected in a text view, let the system handle native copy
+                        if let responder = view.window?.firstResponder, responder is NSTextView {
+                            return event
+                        }
                         onCopy()
                         return nil
                     }
