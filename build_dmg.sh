@@ -38,6 +38,12 @@ cat > ${APP_DIR}/Contents/Info.plist <<EOF
 <key>CFBundleExecutable</key>
 <string>${APP_NAME}</string>
 
+<key>CFBundleIconFile</key>
+<string>AppIcon</string>
+
+<key>CFBundleIconName</key>
+<string>AppIcon</string>
+
 <key>CFBundleIdentifier</key>
 <string>${BUNDLE_ID}</string>
 
@@ -72,7 +78,8 @@ xcrun actool Assets.xcassets \
 --compile ${APP_DIR}/Contents/Resources \
 --platform macosx \
 --minimum-deployment-target ${DEPLOY_TARGET} \
---app-icon AppIcon
+--app-icon AppIcon \
+--output-partial-info-plist ${BUILD_DIR}/partial.plist 2>/dev/null
 
 echo "📦 Creating PkgInfo..."
 

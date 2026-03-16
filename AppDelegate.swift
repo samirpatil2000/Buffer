@@ -14,6 +14,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide dock icon - we're menu bar only
         NSApp.setActivationPolicy(.accessory)
         
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "hasLaunchedBefore") {
+            // Give it a tiny delay to ensure everything is loaded before registering SMAppService
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                SettingsManager.shared.toggleLaunchAtLogin(true)
+                defaults.set(true, forKey: "hasLaunchedBefore")
+            }
+        }
+        
         // Initialize clipboard watcher
         clipboardWatcher = ClipboardWatcher(store: clipboardStore)
         clipboardWatcher?.startWatching()
