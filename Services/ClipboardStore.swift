@@ -229,6 +229,31 @@ class ClipboardStore: ObservableObject {
         }
     }
     
+    /// Get the total size of an item (in bytes) for UI display
+    func itemSize(for item: ClipboardItem) -> Int? {
+        if let original = item.originalSizeBytes {
+            return original
+        }
+        
+        switch item.type {
+        case .text:
+            if let filename = item.textFilename {
+                let url = textsDirectory.appendingPathComponent(filename)
+                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+                return attributes?[.size] as? Int
+            } else {
+                return item.textContent?.utf8.count
+            }
+        case .image:
+            if let filename = item.imageFilename {
+                let url = imagesDirectory.appendingPathComponent(filename)
+                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+                return attributes?[.size] as? Int
+            }
+        }
+        return nil
+    }
+    
     // MARK: - Private
     
     private func ensureDirectoriesExist() {

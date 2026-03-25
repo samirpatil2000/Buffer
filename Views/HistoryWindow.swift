@@ -128,6 +128,8 @@ struct HistoryContentView: View {
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
+    @State private var itemSize: Int?         // Holds computed size of item
+    
     
     // OCR state
     @State private var isExtractingText = false
@@ -197,9 +199,12 @@ struct HistoryContentView: View {
             previewImage = nil
             chunkedText = ChunkedTextState()
             isExtractingText = false
+            itemSize = nil
             
             // Load new preview async
             if let item = selectedItem {
+                itemSize = store.itemSize(for: item)
+                
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
                 } else if item.type == .text {
@@ -378,8 +383,8 @@ struct HistoryContentView: View {
                                 .cornerRadius(4)
                         }
                         
-                        if item.isFileBacked && chunkedText.totalBytes > 0 {
-                            Text(formattedByteCount(chunkedText.totalBytes))
+                        if let size = itemSize, size > 0 {
+                            Text(formattedByteCount(size))
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary.opacity(0.5))
                         }
