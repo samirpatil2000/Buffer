@@ -16,7 +16,6 @@ class ClipboardWatcher: ObservableObject {
     
     // Size thresholds for text handling
     private let inlineTextLimit = 50_000       // 50 KB — store inline
-    private let maxTextFileSize = 5_000_000    // 5 MB — store as file
     private let previewLength = 500            // Characters kept as inline preview
     
     init(store: ClipboardStore) {
@@ -99,7 +98,7 @@ class ClipboardWatcher: ObservableObject {
                     // Small text: store inline (current behavior)
                     let item = ClipboardItem.text(text, sourceApp: sourceApp)
                     store.add(item)
-                } else if textSize <= maxTextFileSize {
+                } else {
                     // Large text: save to file, store preview inline
                     let preview = String(text.prefix(previewLength))
                     if let filename = store.saveText(text) {
@@ -107,12 +106,6 @@ class ClipboardWatcher: ObservableObject {
                         store.add(item)
                         print("[Buffer] Large text (\(textSize / 1024) KB) saved to file: \(filename)")
                     }
-                } else {
-                    // Extreme text: store preview only, skip file
-                    let preview = String(text.prefix(previewLength))
-                    let item = ClipboardItem.truncatedText(preview, originalSizeBytes: textSize, sourceApp: sourceApp)
-                    store.add(item)
-                    print("[Buffer] Extreme text (\(textSize / 1_000_000) MB) — stored preview only")
                 }
             }
             return
