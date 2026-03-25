@@ -538,7 +538,7 @@ struct HistoryContentView: View {
     
     @ViewBuilder
     private func textContent(_ item: ClipboardItem) -> some View {
-        VStack(spacing: 8) {
+        LazyVStack(spacing: 8, pinnedViews: []) {
             Text(chunkedText.visibleText)
                 .font(.system(size: 13, design: .monospaced))
                 .textSelection(.enabled)
@@ -548,16 +548,18 @@ struct HistoryContentView: View {
                 ProgressView()
                     .controlSize(.small)
                     .padding(.vertical, 8)
-            }
-            
-            // Scroll sensor
-            Color.clear
-                .frame(height: 1)
-                .onAppear {
-                    if chunkedText.hasMore && !chunkedText.isLoadingMore {
+            } else if chunkedText.hasMore {
+                // This hint fires .onAppear only when it scrolls into view (LazyVStack)
+                // That's what triggers the next chunk load
+                Text("— \(formattedByteCount(chunkedText.totalBytes)) total · scroll to load more —")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 6)
+                    .onAppear {
                         Task { await loadNextChunk(for: item) }
                     }
-                }
+            }
         }
     }
     
