@@ -74,6 +74,15 @@ class HistoryWindowController: NSWindowController {
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
+        
+        // Notify content view when window becomes key so it can reset state
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: panel,
+            queue: .main
+        ) { _ in
+            NotificationCenter.default.post(name: .bufferWindowDidOpen, object: nil)
+        }
     }
     
     private func setupContent() {
@@ -107,13 +116,16 @@ class HistoryWindowController: NSWindowController {
     override func showWindow(_ sender: Any?) {
         window?.center()
         super.showWindow(sender)
+        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(window?.contentView)
     }
 }
 
 extension Notification.Name {
     static let bufferIgnoreNextChange = Notification.Name("bufferIgnoreNextChange")
     static let bufferHotkeyChanged = Notification.Name("bufferHotkeyChanged")
+    static let bufferWindowDidOpen = Notification.Name("bufferWindowDidOpen")
 }
 
 /// Main content view - Split pane with list and detail
@@ -193,6 +205,11 @@ struct HistoryContentView: View {
             if let newIndex = filteredItems.firstIndex(where: { $0.id == id }), selectedIndex != newIndex {
                 selectedIndex = newIndex
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
+            searchText = ""
+            selectedIndex = 0
+            selectedID = store.items.first?.id
         }
         .task(id: selectedItem?.id) {
             // Clear preview
