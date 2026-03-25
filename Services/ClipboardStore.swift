@@ -183,6 +183,52 @@ class ClipboardStore: ObservableObject {
         }
     }
     
+    /// Load a chunk of text content, reading only what's necessary
+    func textChunk(for item: ClipboardItem, charCount: Int) -> (text: String, totalBytes: Int, reachedEOF: Bool)? {
+        if let filename = item.textFilename {
+            // File-backed large text
+            let url = textsDirectory.appendingPathComponent(filename)
+            
+            do {
+                // Get total size from attributes without reading file
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let totalBytes = attributes[.size] as? Int ?? 0
+                
+                // Read a chunk that should contain enough characters
+                // UTF-8 can be up to 4 bytes per character, so we read charCount * 4
+                // to guarantee we have enough bytes for the requested characters
+                let maximumBytesToRead = min(charCount * 4, totalBytes)
+                
+                let fileHandle = try FileHandle(forReadingFrom: url)
+                defer { try? fileHandle.close() }
+                
+                let data = try fileHandle.read(upToCount: maximumBytesToRead) ?? Data()
+                
+                // Decode to string and take exact requested characters
+                let fullChunkStr = String(decoding: data, as: UTF8.self)
+                let exactChunkStr = String(fullChunkStr.prefix(charCount))
+                
+                // If the decoded string length is less than requested, we hit EOF
+                let reachedEOF = fullChunkStr.count < charCount
+                
+                return (exactChunkStr, totalBytes, reachedEOF)
+                
+            } catch {
+                print("[Buffer] Failed to read text chunk: \(error)")
+                return nil
+            }
+        } else {
+            // Inline text
+            let content = item.textContent ?? ""
+            let totalBytes = item.originalSizeBytes ?? content.utf8.count
+            
+            let prefix = String(content.prefix(charCount))
+            let reachedEOF = content.count <= charCount
+            
+            return (prefix, totalBytes, reachedEOF)
+        }
+    }
+    
     // MARK: - Private
     
     private func ensureDirectoriesExist() {

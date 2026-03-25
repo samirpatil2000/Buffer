@@ -13,6 +13,17 @@ class HistoryPanel: NSPanel {
     }
 }
 
+private struct ChunkedTextState {
+    var visibleText: String = ""
+    var totalBytes: Int = 0
+    var loadedCharCount: Int = 0
+    var reachedEOF: Bool = true
+    var isLoadingMore: Bool = false
+    static let chunkSize = 2_000
+    static let initialChars = 2_000
+    var hasMore: Bool { !reachedEOF && loadedCharCount >= Self.initialChars }
+}
+
 /// Manages the floating history window
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
@@ -115,8 +126,7 @@ struct HistoryContentView: View {
     @State private var searchText = ""
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
-    @State private var fullTextPreview: String?
-    @State private var isLoadingText = false
+    @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     
     // OCR state
@@ -185,18 +195,20 @@ struct HistoryContentView: View {
         .task(id: selectedItem?.id) {
             // Clear preview
             previewImage = nil
-            fullTextPreview = nil
+            chunkedText = ChunkedTextState()
             isExtractingText = false
-            isLoadingText = false
             
             // Load new preview async
             if let item = selectedItem {
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
-                } else if item.type == .text && item.isFileBacked {
-                    isLoadingText = true
-                    fullTextPreview = await loadFullText(for: item)
-                    isLoadingText = false
+                } else if item.type == .text {
+                    if item.isFileBacked {
+                        await loadInitialChunk(for: item)
+                    } else {
+                        chunkedText.visibleText = item.textContent ?? ""
+                        chunkedText.reachedEOF = true
+                    }
                 }
             }
         }
@@ -235,13 +247,50 @@ struct HistoryContentView: View {
         }
     }
     
-    private func loadFullText(for item: ClipboardItem) async -> String? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let text = store.fullText(for: item)
-                continuation.resume(returning: text)
-            }
+    private func loadInitialChunk(for item: ClipboardItem) async {
+        chunkedText.isLoadingMore = true // Initial load spinner
+        
+        let chunkResult = await Task.detached(priority: .userInitiated) {
+            self.store.textChunk(for: item, charCount: ChunkedTextState.initialChars)
+        }.value
+        
+        if let result = chunkResult {
+            chunkedText.visibleText = result.text
+            chunkedText.totalBytes = result.totalBytes
+            chunkedText.loadedCharCount = result.text.count
+            chunkedText.reachedEOF = result.reachedEOF
         }
+        chunkedText.isLoadingMore = false
+    }
+    
+    private func loadNextChunk(for item: ClipboardItem) async {
+        guard !chunkedText.isLoadingMore && chunkedText.hasMore else { return }
+        
+        chunkedText.isLoadingMore = true
+        let nextCharCount = chunkedText.loadedCharCount + ChunkedTextState.chunkSize
+        
+        let chunkResult = await Task.detached(priority: .userInitiated) {
+            self.store.textChunk(for: item, charCount: nextCharCount)
+        }.value
+        
+        if let result = chunkResult {
+            chunkedText.visibleText = result.text
+            chunkedText.totalBytes = result.totalBytes
+            chunkedText.loadedCharCount = result.text.count
+            chunkedText.reachedEOF = result.reachedEOF
+        }
+        chunkedText.isLoadingMore = false
+    }
+    
+    private func formattedByteCount(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func formattedSize(bytes: Int) -> String {
+        return formattedByteCount(bytes)
     }
     
     private var searchBar: some View {
@@ -328,6 +377,12 @@ struct HistoryContentView: View {
                                 .background(Color.orange.opacity(0.8))
                                 .cornerRadius(4)
                         }
+                        
+                        if item.isFileBacked && chunkedText.totalBytes > 0 {
+                            Text(formattedByteCount(chunkedText.totalBytes))
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.5))
+                        }
                     }
                     .font(.system(size: 11, weight: .medium))
                     .padding(.horizontal, 8)
@@ -406,22 +461,20 @@ struct HistoryContentView: View {
     private func itemContent(_ item: ClipboardItem) -> some View {
         switch item.type {
         case .text:
-            if item.isFileBacked {
-                if isLoadingText {
-                    VStack {
-                        ProgressView()
-                            .padding()
-                        Text("Loading large text...")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Text(fullTextPreview ?? item.textContent ?? "")
+            if item.isTruncated {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(item.textContent ?? "")
                         .font(.system(size: 13, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
+                    
+                    Label("Content was too large to store (\(formattedSize(bytes: item.originalSizeBytes ?? 0))). Showing first 500 characters.", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
                 }
+            } else if item.isFileBacked {
+                textContent(item)
             } else {
                 Text(item.textContent ?? "")
                     .font(.system(size: 13, design: .monospaced))
@@ -475,6 +528,31 @@ struct HistoryContentView: View {
                     }
                 }
             }
+        }
+    }
+    
+    @ViewBuilder
+    private func textContent(_ item: ClipboardItem) -> some View {
+        VStack(spacing: 8) {
+            Text(chunkedText.visibleText)
+                .font(.system(size: 13, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            
+            if chunkedText.isLoadingMore {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.vertical, 8)
+            }
+            
+            // Scroll sensor
+            Color.clear
+                .frame(height: 1)
+                .onAppear {
+                    if chunkedText.hasMore && !chunkedText.isLoadingMore {
+                        Task { await loadNextChunk(for: item) }
+                    }
+                }
         }
     }
     

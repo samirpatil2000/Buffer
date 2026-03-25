@@ -109,8 +109,8 @@ class ClipboardWatcher: ObservableObject {
                     }
                 } else {
                     // Extreme text: store preview only, skip file
-                    let preview = String(text.prefix(previewLength)) + "\n\n[Text too large to store — \(textSize / 1_000_000) MB]"
-                    let item = ClipboardItem.text(preview, sourceApp: sourceApp)
+                    let preview = String(text.prefix(previewLength))
+                    let item = ClipboardItem.truncatedText(preview, originalSizeBytes: textSize, sourceApp: sourceApp)
                     store.add(item)
                     print("[Buffer] Extreme text (\(textSize / 1_000_000) MB) — stored preview only")
                 }

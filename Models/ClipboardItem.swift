@@ -23,7 +23,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // Extracted OCR text (persisted after first extraction)
     var ocrText: String?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isBookmarked: Bool = false, ocrText: String? = nil) {
+    // For extreme text items — true if content exceeded storage limit and only preview is saved
+    let isTruncated: Bool
+    
+    // For large/extreme text items — original size in bytes (for display purposes)
+    let originalSizeBytes: Int?
+    
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isBookmarked: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -33,6 +39,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.imageFilename = imageFilename
         self.isBookmarked = isBookmarked
         self.ocrText = ocrText
+        self.isTruncated = isTruncated
+        self.originalSizeBytes = originalSizeBytes
     }
     
     /// Create a text clipboard item
@@ -60,6 +68,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             sourceApp: sourceApp,
             textContent: preview,
             textFilename: filename
+        )
+    }
+    
+    /// Create an extremely large text item where only the preview is saved
+    static func truncatedText(_ preview: String, originalSizeBytes: Int, sourceApp: String?) -> ClipboardItem {
+        ClipboardItem(
+            type: .text,
+            sourceApp: sourceApp,
+            textContent: preview,
+            isTruncated: true,
+            originalSizeBytes: originalSizeBytes
         )
     }
     
