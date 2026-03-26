@@ -117,6 +117,12 @@ hdiutil create \
 -format UDZO \
 ${APP_NAME}_Release.dmg
 
+echo "🔏 Signing DMG..."
+codesign \
+--force \
+--sign "${SIGN_IDENTITY}" \
+${APP_NAME}_Release.dmg
+
 echo "📤 Notarizing DMG..."
 xcrun notarytool submit ${APP_NAME}_Release.dmg \
 --keychain-profile "${NOTARY_PROFILE}" \
