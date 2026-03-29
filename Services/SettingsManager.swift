@@ -11,12 +11,10 @@ class SettingsManager: ObservableObject {
     // Keys
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
-    private let lastSearchQueryKey = "lastSearchQuery"
     
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool = false
-    @Published var lastSearchQuery: String
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -34,9 +32,6 @@ class SettingsManager: ObservableObject {
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
         self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : defaultKeyCode
         
-        // Load last search query
-        self.lastSearchQuery = defaults.string(forKey: lastSearchQueryKey) ?? ""
-        
         // Load launch at login status
         if #available(macOS 13.0, *) {
             self.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -46,11 +41,6 @@ class SettingsManager: ObservableObject {
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
-    }
-    
-    func saveLastSearchQuery(_ query: String) {
-        lastSearchQuery = query
-        defaults.set(query, forKey: lastSearchQueryKey)
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {

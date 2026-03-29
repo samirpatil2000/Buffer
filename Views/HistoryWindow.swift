@@ -194,10 +194,9 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: searchText) { newValue in
+        .onChange(of: searchText) { _ in
             selectedIndex = 0
             selectedID = filteredItems[safe: 0]?.id
-            SettingsManager.shared.saveLastSearchQuery(newValue)
         }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
@@ -217,7 +216,7 @@ struct HistoryContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
-            searchText = SettingsManager.shared.lastSearchQuery
+            searchText = ""
             selectedIndex = 0
             selectedID = filteredItems[safe: 0]?.id
             // Auto-focus search field and select all text on open
