@@ -142,12 +142,14 @@ struct HistoryContentView: View {
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     @State private var itemSize: Int?         // Holds computed size of item
     
-    
     // OCR state
     @State private var isExtractingText = false
     
     // Track selection by ID so it survives list insertions
     @State private var selectedID: UUID?
+    
+    // Search field focus state for auto-focus on window open
+    @FocusState private var isSearchFocused: Bool
     
     private var filteredItems: [ClipboardItem] {
         if searchText.isEmpty {
@@ -206,10 +208,19 @@ struct HistoryContentView: View {
                 selectedIndex = newIndex
             }
         }
+        .onChange(of: isSearchFocused) { focused in
+            // Select all text when the search field gains focus on window open,
+            // so the user can immediately replace the existing query by typing.
+            if focused {
+                NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSText.selectAll(_:)), with: nil)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
             searchText = ""
             selectedIndex = 0
-            selectedID = store.items.first?.id
+            selectedID = filteredItems[safe: 0]?.id
+            // Auto-focus search field and select all text on open
+            isSearchFocused = true
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -325,6 +336,7 @@ struct HistoryContentView: View {
             TextField("Search clipboard...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .focused($isSearchFocused)
             
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
