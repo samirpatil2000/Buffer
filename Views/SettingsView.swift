@@ -3,6 +3,7 @@ import SwiftUI
 /// Settings view for configuring Buffer preferences
 struct SettingsView: View {
     @StateObject private var settings = SettingsViewModel()
+    @ObservedObject private var themeManager = ThemeManager.shared
     @State private var isRecording = false
     @State private var recordedKeyCode: UInt16 = 0
     @State private var recordedModifiers = HotkeyModifiers()
@@ -79,7 +80,22 @@ struct SettingsView: View {
             }
             
             Divider()
-            
+
+            // Appearance section
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Appearance")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 12) {
+                    ForEach(BufferTheme.allCases, id: \.rawValue) { theme in
+                        themeButton(theme)
+                    }
+                }
+            }
+
+            Divider()
+
             // System section
             VStack(alignment: .leading, spacing: 12) {
                 Text("System")
@@ -106,7 +122,8 @@ struct SettingsView: View {
                 .foregroundColor(.secondary)
         }
         .padding(20)
-        .frame(width: 320, height: 280)
+        .frame(width: 320, height: 370)
+        .accentColor(themeManager.current.accentColor)
         .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
             settings.hotkeyKeyCode = keyCode
             settings.hotkeyModifiers = modifiers
@@ -115,6 +132,29 @@ struct SettingsView: View {
         })
     }
     
+    private func themeButton(_ theme: BufferTheme) -> some View {
+        let isSelected = themeManager.current == theme
+        return VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(theme == .system ? AnyShapeStyle(AngularGradient(colors: [.blue, .purple, .pink, .blue], center: .center)) : AnyShapeStyle(theme.accentColor))
+                    .frame(width: 26, height: 26)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+            .overlay(
+                Circle().stroke(isSelected ? Color.primary.opacity(0.4) : Color.clear, lineWidth: 2)
+            )
+            Text(theme.name)
+                .font(.system(size: 10))
+                .foregroundColor(isSelected ? .primary : .secondary)
+        }
+        .onTapGesture { themeManager.apply(theme) }
+    }
+
     private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {
         Button(action: {
             settings.hotkeyModifiers = mods
