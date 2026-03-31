@@ -47,7 +47,19 @@ class ClipboardStore: ObservableObject {
     
     private func performAdd(_ item: ClipboardItem) {
         print("[Buffer] Store: Adding item, current count: \(items.count)")
-        
+
+        // Deduplication: if an identical inline text entry already exists, promote it
+        // to the top instead of adding a duplicate. File-backed large text is already
+        // deduplicated consecutively via hash in ClipboardWatcher.
+        if SettingsManager.shared.deduplicateHistory,
+           item.type == .text,
+           let newText = item.textContent,
+           !item.isFileBacked,
+           let existing = items.first(where: { $0.type == .text && !$0.isFileBacked && $0.textContent == newText }) {
+            moveToTop(existing)
+            return
+        }
+
         // Insert at beginning (newest first)
         items.insert(item, at: 0)
         

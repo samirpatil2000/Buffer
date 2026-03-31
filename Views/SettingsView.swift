@@ -79,34 +79,63 @@ struct SettingsView: View {
             }
             
             Divider()
-            
+
+            // History section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("History")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("Ignore entries shorter than")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Stepper(
+                        settings.minTextLength == 1
+                            ? "1 character"
+                            : "\(settings.minTextLength) characters",
+                        value: $settings.minTextLength,
+                        in: 1...20
+                    )
+                    .font(.system(size: 12))
+                    .onChange(of: settings.minTextLength) { _ in settings.save() }
+                }
+
+                Toggle("Deduplicate history", isOn: $settings.deduplicateHistory)
+                    .font(.system(size: 12))
+                    .onChange(of: settings.deduplicateHistory) { _ in settings.save() }
+                    .toggleStyle(.switch)
+            }
+
+            Divider()
+
             // System section
             VStack(alignment: .leading, spacing: 12) {
                 Text("System")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
-                
+
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
                     .font(.system(size: 12))
                     .onChange(of: settings.launchAtLogin) { newValue in
                         SettingsManager.shared.toggleLaunchAtLogin(newValue)
-                        // Sync back state in case toggle fails 
+                        // Sync back state in case toggle fails
                         DispatchQueue.main.async {
                             settings.launchAtLogin = SettingsManager.shared.launchAtLogin
                         }
                     }
                     .toggleStyle(.switch)
             }
-            
+
             Spacer()
-            
+
             // Footer
             Text("Changes take effect after restarting Buffer")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
         .padding(20)
-        .frame(width: 320, height: 280)
+        .frame(width: 320, height: 400)
         .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
             settings.hotkeyKeyCode = keyCode
             settings.hotkeyModifiers = modifiers
@@ -187,11 +216,13 @@ class SettingsViewModel: ObservableObject {
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool
-    
+    @Published var minTextLength: Int
+    @Published var deduplicateHistory: Bool
+
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
-    
+
     init() {
         // Load modifiers
         if let savedMods = defaults.array(forKey: hotkeyModifiersKey) as? [String] {
@@ -199,23 +230,29 @@ class SettingsViewModel: ObservableObject {
         } else {
             self.hotkeyModifiers = HotkeyModifiers(shift: true, command: true, option: false, control: false)
         }
-        
+
         // Load keycode (default to V = 9)
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
         self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : 9
-        
+
         // Load launch at login status from manager natively via SMAppService
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
+
+        // Load history filter settings
+        self.minTextLength = SettingsManager.shared.minTextLength
+        self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
     }
-    
+
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
-        
+
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
+        SettingsManager.shared.minTextLength = minTextLength
+        SettingsManager.shared.deduplicateHistory = deduplicateHistory
         SettingsManager.shared.save()
-        
+
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
     }
 }
