@@ -136,6 +136,7 @@ struct HistoryContentView: View {
     let onDismiss: () -> Void
     
     @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
@@ -192,9 +193,10 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
-        .onChange(of: searchText) { _ in
+        .onChange(of: searchText) { newValue in
             selectedIndex = 0
             selectedID = filteredItems[safe: 0]?.id
+            UserDefaults.standard.set(newValue, forKey: "lastSearchQuery")
         }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
@@ -207,9 +209,16 @@ struct HistoryContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
-            searchText = ""
+            searchText = UserDefaults.standard.string(forKey: "lastSearchQuery") ?? ""
             selectedIndex = 0
-            selectedID = store.items.first?.id
+            selectedID = filteredItems.first?.id
+            // Focus the search field and select all existing text so the user can
+            // immediately start typing to replace the query, or press a key to act
+            // on the pre-filtered results without touching the keyboard.
+            isSearchFocused = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -325,6 +334,7 @@ struct HistoryContentView: View {
             TextField("Search clipboard...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .focused($isSearchFocused)
             
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
