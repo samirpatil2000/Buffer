@@ -23,6 +23,7 @@
 - **Ultra-lightweight** — Only ~2 MB download/install, minimal RAM/CPU usage
 - **100% Private & Local** — Everything stays on your Mac, no cloud, no tracking
 - **Text + Images + OCR** — Copies anything; extracts searchable text from images/screenshots/memes using on-device Vision
+- **Great for developers** — Handles large text snippets, JSON payloads, logs, and other verbose content with ease
 - **Instant Access** — Global hotkey ⇧⌘V opens history in a flash
 - **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app
 - **Bookmarks** — Star important items with Cmd+B for quick reuse
