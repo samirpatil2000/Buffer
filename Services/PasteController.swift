@@ -28,11 +28,9 @@ class PasteController {
         copyToClipboard(item, store: store)
 
         // Reactivate previous app, then simulate paste after it has focus
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            previousApp?.activate(options: .activateIgnoringOtherApps)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                simulatePaste()
-            }
+        previousApp?.activate(options: .activateIgnoringOtherApps)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            simulatePaste()
         }
     }
     
