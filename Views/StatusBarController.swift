@@ -106,6 +106,7 @@ class StatusBarController {
             )
             window.title = "Buffer Settings"
             window.level = .floating  // Keep on top
+            window.isReleasedWhenClosed = false
             window.center()
             window.contentView = NSHostingView(rootView: SettingsView())
             settingsWindow = window
