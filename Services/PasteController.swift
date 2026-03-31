@@ -23,13 +23,16 @@ class PasteController {
     }
     
     /// Paste item into the frontmost application
-    static func paste(_ item: ClipboardItem, store: ClipboardStore) {
+    static func paste(_ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
         // First copy to clipboard
         copyToClipboard(item, store: store)
-        
-        // Small delay to ensure clipboard is updated
+
+        // Reactivate previous app, then simulate paste after it has focus
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            simulatePaste()
+            previousApp?.activate(options: .activateIgnoringOtherApps)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                simulatePaste()
+            }
         }
     }
     
