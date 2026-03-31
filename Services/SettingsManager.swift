@@ -11,36 +11,46 @@ class SettingsManager: ObservableObject {
     // Keys
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
-    
+    private let minTextLengthKey = "minTextLength"
+    private let deduplicateHistoryKey = "deduplicateHistory"
+
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool = false
-    
+    @Published var minTextLength: Int
+    @Published var deduplicateHistory: Bool
+
     private init() {
         // Initialize with defaults first, then load saved values
         let defaultMods = HotkeyModifiers(shift: true, command: true, option: false, control: false)
         let defaultKeyCode: UInt16 = 9  // V key
-        
+
         // Load saved modifiers or use default
         if let savedMods = defaults.array(forKey: hotkeyModifiersKey) as? [String] {
             self.hotkeyModifiers = HotkeyModifiers(from: savedMods)
         } else {
             self.hotkeyModifiers = defaultMods
         }
-        
+
         // Load saved keycode or use default (V key)
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
         self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : defaultKeyCode
-        
+
         // Load launch at login status
         if #available(macOS 13.0, *) {
             self.launchAtLogin = SMAppService.mainApp.status == .enabled
         }
+
+        // Load history filter settings
+        self.minTextLength = defaults.object(forKey: minTextLengthKey) as? Int ?? 1
+        self.deduplicateHistory = defaults.bool(forKey: deduplicateHistoryKey)
     }
-    
+
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
+        defaults.set(minTextLength, forKey: minTextLengthKey)
+        defaults.set(deduplicateHistory, forKey: deduplicateHistoryKey)
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {

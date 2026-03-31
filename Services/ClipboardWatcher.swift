@@ -84,6 +84,9 @@ class ClipboardWatcher: ObservableObject {
         
         // Try to capture text first
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
+            // Drop entries that are shorter than the configured minimum length
+            guard text.count >= SettingsManager.shared.minTextLength else { return }
+
             let textSize = text.utf8.count
             
             // Use prefix hash for large text to avoid expensive full-string hashing
