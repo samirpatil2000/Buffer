@@ -212,11 +212,8 @@ struct HistoryContentView: View {
             searchText = UserDefaults.standard.string(forKey: "lastSearchQuery") ?? ""
             selectedIndex = 0
             selectedID = filteredItems.first?.id
-            // Focus the search field and select all existing text so the user can
-            // immediately start typing to replace the query, or press a key to act
-            // on the pre-filtered results without touching the keyboard.
-            isSearchFocused = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isSearchFocused = true
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
             }
         }
