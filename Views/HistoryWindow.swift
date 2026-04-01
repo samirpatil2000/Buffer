@@ -638,23 +638,6 @@ struct HistoryContentView: View {
                 .foregroundColor(.secondary.opacity(0.8))
 
             Spacer()
-
-            // Theme switcher
-            HStack(spacing: 6) {
-                ForEach(BufferTheme.allCases, id: \.rawValue) { theme in
-                    Circle()
-                        .fill(theme == .system
-                              ? AnyShapeStyle(AngularGradient(colors: [.blue, .purple, .pink, .blue], center: .center))
-                              : AnyShapeStyle(theme.accentColor))
-                        .frame(width: 12, height: 12)
-                        .overlay(
-                            Circle().stroke(themeManager.current == theme ? Color.primary.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                        )
-                        .onTapGesture { themeManager.apply(theme) }
-                }
-            }
-
-            Spacer()
             
             // Keyboard shortcut hint
             HStack(spacing: 4) {
