@@ -99,13 +99,14 @@ class StatusBarController {
     @objc private func showSettings() {
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
+                contentRect: NSRect(x: 0, y: 0, width: 320, height: 370),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "Buffer Settings"
             window.level = .floating  // Keep on top
+            window.isReleasedWhenClosed = false
             window.center()
             window.contentView = NSHostingView(rootView: SettingsView())
             settingsWindow = window

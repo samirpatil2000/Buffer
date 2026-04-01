@@ -134,6 +134,7 @@ struct HistoryContentView: View {
     let onCopyToClipboard: (ClipboardItem) -> Void
     let onPaste: (ClipboardItem) -> Void
     let onDismiss: () -> Void
+    @ObservedObject private var themeManager = ThemeManager.shared
     
     @State private var searchText = ""
     @State private var selectedIndex = 0
@@ -192,6 +193,7 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
+        .accentColor(themeManager.current.accentColor)
         .onChange(of: searchText) { _ in
             selectedIndex = 0
             selectedID = filteredItems[safe: 0]?.id
@@ -634,7 +636,7 @@ struct HistoryContentView: View {
             Text("Navigate")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.8))
-            
+
             Spacer()
             
             // Keyboard shortcut hint

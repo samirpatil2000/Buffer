@@ -22,6 +22,7 @@
 		AAA00013 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00015 /* SettingsManager.swift */; };
 		AAA00014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00016 /* SettingsView.swift */; };
 		AAA00015 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00017 /* OCRService.swift */; };
+		AAA00016 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00018 /* ThemeManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		BBB00015 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		BBB00016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		BBB00017 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
+		BBB00018 /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,7 +78,7 @@
 				BBB00014 /* Buffer.entitlements */,
 			);
 			name = Buffer;
-			path = ".";
+			path = .;
 			sourceTree = "<group>";
 		};
 		DDD00002 /* Models */ = {
@@ -96,6 +98,7 @@
 				BBB00007 /* PasteController.swift */,
 				BBB00015 /* SettingsManager.swift */,
 				BBB00017 /* OCRService.swift */,
+				BBB00018 /* ThemeManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -204,6 +207,7 @@
 				AAA00013 /* SettingsManager.swift in Sources */,
 				AAA00014 /* SettingsView.swift in Sources */,
 				AAA00015 /* OCRService.swift in Sources */,
+				AAA00016 /* ThemeManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,7 +340,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = N26FZ4GW28;
+				DEVELOPMENT_TEAM = R3CU4LNF52;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -377,7 +381,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = N26FZ4GW28;
+				DEVELOPMENT_TEAM = R3CU4LNF52;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
