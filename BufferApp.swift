@@ -7,7 +7,7 @@ struct BufferApp: App {
     var body: some Scene {
         // Empty scene - we're a menu bar only app
         Settings {
-            EmptyView()
+            SettingsView()
         }
     }
 }

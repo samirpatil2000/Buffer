@@ -224,6 +224,21 @@ class KeyRecorderView: NSView {
     
     override var acceptsFirstResponder: Bool { true }
     
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window = self.window {
+            // Set level to be above other apps but below system items
+            window.level = .floating
+            
+            // Use a tiny delay to allow the window to be properly added to the window list
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+    
     override func keyDown(with event: NSEvent) {
         guard isRecording else {
             super.keyDown(with: event)
