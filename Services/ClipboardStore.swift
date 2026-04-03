@@ -6,7 +6,7 @@ import Combine
 class ClipboardStore: ObservableObject {
     @Published var items: [ClipboardItem] = []
     
-    private let maxItems = 100
+    private var maxItems: Int { SettingsManager.shared.historyLimit.rawValue }
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
     
@@ -30,6 +30,29 @@ class ClipboardStore: ObservableObject {
     init() {
         ensureDirectoriesExist()
         loadHistory()
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleLimitChanged),
+            name: .bufferHistoryLimitChanged,
+            object: nil
+        )
+    }
+    
+    @objc private func handleLimitChanged() {
+        guard items.count > maxItems else { return }
+        // Trim from tail, bookmarked items survive
+        var trimmed = items
+        while trimmed.count > maxItems {
+            if let idx = trimmed.lastIndex(where: { !$0.isBookmarked }) {
+                deleteAssociatedFiles(for: trimmed[idx])
+                trimmed.remove(at: idx)
+            } else {
+                break // All remaining are bookmarked — respect them
+            }
+        }
+        items = trimmed
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(trimmed) }
     }
     
     // MARK: - Public API
