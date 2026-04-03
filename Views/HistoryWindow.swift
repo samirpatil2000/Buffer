@@ -135,6 +135,7 @@ struct HistoryContentView: View {
     let onPaste: (ClipboardItem) -> Void
     let onDismiss: () -> Void
     
+    @FocusState private var isSearchFocused: Bool
     @State private var searchText = ""
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
@@ -210,6 +211,10 @@ struct HistoryContentView: View {
             searchText = ""
             selectedIndex = 0
             selectedID = store.items.first?.id
+            // Delay needed for NSHostingView to have settled as key window
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isSearchFocused = true
+            }
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -325,6 +330,7 @@ struct HistoryContentView: View {
             TextField("Search clipboard...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .focused($isSearchFocused)
             
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
