@@ -4,7 +4,7 @@ cask "buffer" do
   version "latest"
   sha256 :no_check
 
-  url "https://github.com/samirpatil2000/Buffer/releases/latest/download/Buffer_#{arch}.dmg",
+  url "https://github.com/samirpatil2000/Buffer/releases/download/buffer-v1.6/Buffer_#{arch}.dmg",
       verified: "github.com/samirpatil2000/Buffer/"
   name "Buffer"
   desc "Lightweight clipboard manager for macOS"
