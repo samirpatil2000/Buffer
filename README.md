@@ -45,6 +45,14 @@
 3. Launch it (lives in menu bar)
 4. **Note (not yet notarized)**: Right-click → Open → confirm in security dialog
 
+### 🍺 Install with Homebrew
+
+```bash
+brew install --cask https://raw.githubusercontent.com/samirpatil2000/Buffer/main/Casks/buffer.rb
+```
+
+This cask installs the latest GitHub release and automatically picks the right DMG for Apple Silicon or Intel Macs.
+
 ---
 
 ## 🚀 Getting Started
