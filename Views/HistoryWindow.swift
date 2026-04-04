@@ -27,6 +27,10 @@ private struct ChunkedTextState {
 /// Manages the floating history window
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
+    /// The application that was frontmost before Buffer's panel was activated.
+    /// Captured in `showWindow(_:)` so that `pasteItem(_:)` can restore focus
+    /// to the correct app before simulating ⌘V.
+    private var previousApp: NSRunningApplication?
     
     init(store: ClipboardStore) {
         self.store = store
@@ -108,12 +112,17 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func pasteItem(_ item: ClipboardItem) {
+        let appToRestore = previousApp
         close()
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
-        PasteController.paste(item, store: store)
+        PasteController.paste(item, store: store, previousApp: appToRestore)
     }
     
     override func showWindow(_ sender: Any?) {
+        // Capture the frontmost app *before* we steal focus so we can
+        // return to it when the user selects an item to paste.
+        previousApp = NSWorkspace.shared.frontmostApplication
+
         window?.center()
         super.showWindow(sender)
         NSApp.activate(ignoringOtherApps: true)
