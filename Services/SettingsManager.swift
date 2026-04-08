@@ -2,6 +2,29 @@ import Foundation
 import ServiceManagement
 import Combine
 
+/// Define the tiers as a type
+enum HistoryLimit: Int, CaseIterable, Codable {
+    case essential  = 100
+    case deep       = 500
+    case unlimited  = 1000
+    
+    var label: String {
+        switch self {
+        case .essential: return "Essential"
+        case .deep:      return "Deep"
+        case .unlimited: return "Unlimited"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .essential: return "100 items"
+        case .deep:      return "500 items"
+        case .unlimited: return "1,000 items"
+        }
+    }
+}
+
 /// Manages user preferences for Buffer
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
@@ -15,6 +38,7 @@ class SettingsManager: ObservableObject {
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool = false
+    @Published var historyLimit: HistoryLimit = .essential
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -36,11 +60,16 @@ class SettingsManager: ObservableObject {
         if #available(macOS 13.0, *) {
             self.launchAtLogin = SMAppService.mainApp.status == .enabled
         }
+        
+        // Load history limit
+        let rawLimit = defaults.integer(forKey: "historyLimit")
+        self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
     }
     
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
+        defaults.set(historyLimit.rawValue, forKey: "historyLimit")
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {

@@ -7,6 +7,7 @@ class StatusBarController {
     private let store: ClipboardStore
     private let watcher: ClipboardWatcher
     private let onToggleHistory: () -> Void
+    private var settingsWindowController: NSWindowController?
     
     init(store: ClipboardStore, watcher: ClipboardWatcher, onShowHistory: @escaping () -> Void) {
         self.store = store
@@ -50,7 +51,6 @@ class StatusBarController {
         }
     }
     
-    private var settingsWindow: NSWindow?
     
     private func showContextMenu() {
         let menu = NSMenu()
@@ -97,21 +97,19 @@ class StatusBarController {
     }
     
     @objc private func showSettings() {
-        if settingsWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Buffer Settings"
-            window.level = .floating  // Keep on top
-            window.center()
-            window.contentView = NSHostingView(rootView: SettingsView())
-            settingsWindow = window
+        if let controller = settingsWindowController, let window = controller.window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
-        
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        let hostingController = NSHostingController(rootView: SettingsView())
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable]
+        window.center()
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
     

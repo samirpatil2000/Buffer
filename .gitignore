@@ -28,9 +28,12 @@ DerivedData/
 *.xcworkspace/
 
 # macOS
-.DS_Store
 .AppleDouble
 .LSOverride
+
+# macOS
+.DS_Store
+**/.DS_Store
 
 # Icon must end with two \r
 Icon

@@ -6,6 +6,8 @@ struct SettingsView: View {
     @State private var isRecording = false
     @State private var recordedKeyCode: UInt16 = 0
     @State private var recordedModifiers = HotkeyModifiers()
+    @State private var showingTrimAlert = false
+    @State private var pendingTier: HistoryLimit?
     
     var body: some View {
         VStack(spacing: 20) {
@@ -86,27 +88,92 @@ struct SettingsView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                 
-                Toggle("Launch at Login", isOn: $settings.launchAtLogin)
-                    .font(.system(size: 12))
-                    .onChange(of: settings.launchAtLogin) { newValue in
-                        SettingsManager.shared.toggleLaunchAtLogin(newValue)
-                        // Sync back state in case toggle fails 
-                        DispatchQueue.main.async {
-                            settings.launchAtLogin = SettingsManager.shared.launchAtLogin
+                HStack {
+                    Text("Launch at Login")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.launchAtLogin)
+                        .labelsHidden()
+                        .onChange(of: settings.launchAtLogin) { newValue in
+                            SettingsManager.shared.toggleLaunchAtLogin(newValue)
+                            DispatchQueue.main.async {
+                                settings.launchAtLogin = SettingsManager.shared.launchAtLogin
+                            }
                         }
+                        .toggleStyle(.switch)
+                }
+                
+                // History Size Section
+                Divider()
+                    .padding(.vertical, 4)
+                
+                Text("History Size")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 12) {
+                    ForEach(HistoryLimit.allCases, id: \.self) { tier in
+                        Button(action: { 
+                            if tier.rawValue < settings.historyLimit.rawValue {
+                                pendingTier = tier
+                                showingTrimAlert = true
+                            } else {
+                                settings.historyLimit = tier
+                                settings.save()
+                            }
+                        }) {
+                            VStack(alignment: .center, spacing: 6) {
+                                if settings.historyLimit == tier {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.accentColor)
+                                        .font(.system(size: 14))
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(.secondary.opacity(0.3))
+                                        .font(.system(size: 14))
+                                }
+                                
+                                Text(tier.label)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(settings.historyLimit == tier ? .primary : .secondary)
+                                
+                                Text(tier.subtitle)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                            }
+                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(settings.historyLimit == tier 
+                                          ? Color.accentColor.opacity(0.1) 
+                                          : Color(NSColor.controlBackgroundColor))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(settings.historyLimit == tier 
+                                            ? Color.accentColor : Color.clear, lineWidth: settings.historyLimit == tier ? 1.5 : 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .toggleStyle(.switch)
+                }
             }
             
-            Spacer()
-            
-            // Footer
-            Text("Changes take effect after restarting Buffer")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
         }
-        .padding(20)
-        .frame(width: 320, height: 280)
+        .padding(24)
+        .frame(width: 380)
+        .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reduce & Delete", role: .destructive) {
+                if let tier = pendingTier {
+                    settings.historyLimit = tier
+                    settings.save()
+                }
+            }
+        } message: {
+            Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
+        }
         .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
             settings.hotkeyKeyCode = keyCode
             settings.hotkeyModifiers = modifiers
@@ -157,6 +224,21 @@ class KeyRecorderView: NSView {
     
     override var acceptsFirstResponder: Bool { true }
     
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window = self.window {
+            // Set level to be above other apps but below system items
+            window.level = .floating
+            
+            // Use a tiny delay to allow the window to be properly added to the window list
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+    
     override func keyDown(with event: NSEvent) {
         guard isRecording else {
             super.keyDown(with: event)
@@ -187,6 +269,7 @@ class SettingsViewModel: ObservableObject {
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool
+    @Published var historyLimit: HistoryLimit
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -206,16 +289,23 @@ class SettingsViewModel: ObservableObject {
         
         // Load launch at login status from manager natively via SMAppService
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
+        
+        // Load history limit
+        let rawLimit = defaults.integer(forKey: "historyLimit")
+        self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
     }
     
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
+        defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
+        SettingsManager.shared.historyLimit = historyLimit
         SettingsManager.shared.save()
         
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
+        NotificationCenter.default.post(name: .bufferHistoryLimitChanged, object: nil)
     }
 }

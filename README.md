@@ -35,8 +35,8 @@
 ### 📥 Download
 
 <p align="center">
-  <a href="https://github.com/samirpatil2000/Buffer/releases/download/v1.0/Buffer.dmg">
-    <img src="https://img.shields.io/badge/⬇️_Download_Buffer.dmg-1.0-2ea44f?style=for-the-badge" alt="Download Buffer.dmg">
+  <a href="https://github.com/samirpatil2000/Buffer/releases/download/buffer-v1.6/Buffer_Release.dmg">
+    <img src="https://img.shields.io/badge/⬇️_Download_Buffer.dmg-v1.6-2ea44f?style=for-the-badge" alt="Download Buffer.dmg">
   </a>
 </p>
 

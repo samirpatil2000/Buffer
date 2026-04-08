@@ -126,6 +126,7 @@ extension Notification.Name {
     static let bufferIgnoreNextChange = Notification.Name("bufferIgnoreNextChange")
     static let bufferHotkeyChanged = Notification.Name("bufferHotkeyChanged")
     static let bufferWindowDidOpen = Notification.Name("bufferWindowDidOpen")
+    static let bufferHistoryLimitChanged = Notification.Name("bufferHistoryLimitChanged")
 }
 
 /// Main content view - Split pane with list and detail
@@ -135,8 +136,8 @@ struct HistoryContentView: View {
     let onPaste: (ClipboardItem) -> Void
     let onDismiss: () -> Void
     
-    @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
+    @State private var searchText = ""
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
@@ -212,6 +213,7 @@ struct HistoryContentView: View {
             searchText = UserDefaults.standard.string(forKey: "lastSearchQuery") ?? ""
             selectedIndex = 0
             selectedID = filteredItems.first?.id
+            // Delay needed for NSHostingView to have settled as key window
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isSearchFocused = true
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
