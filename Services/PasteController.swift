@@ -56,7 +56,12 @@ class PasteController {
         DispatchQueue.main.async {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.png]
-            panel.nameFieldStringValue = "Image"
+            
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let timestamp = formatter.string(from: Date())
+            
+            panel.nameFieldStringValue = "Image-\(timestamp)"
             panel.canCreateDirectories = true
             
             if panel.runModal() == .OK, let url = panel.url {
