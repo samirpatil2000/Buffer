@@ -74,3 +74,6 @@ fastlane/test_output
 *.app
 *.dmg
 .env
+**/*.dmg
+
+build_test/
