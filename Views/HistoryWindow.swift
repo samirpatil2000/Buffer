@@ -155,13 +155,16 @@ struct HistoryContentView: View {
     @State private var selectedID: UUID?
     
     private var filteredItems: [ClipboardItem] {
+        let baseItems: [ClipboardItem]
         if searchText.isEmpty {
-            return store.items
+            baseItems = store.items
+        } else {
+            baseItems = store.items.filter { item in
+                guard item.type == .text else { return false }
+                return item.textContent?.localizedCaseInsensitiveContains(searchText) ?? false
+            }
         }
-        return store.items.filter { item in
-            guard item.type == .text else { return false }
-            return item.textContent?.localizedCaseInsensitiveContains(searchText) ?? false
-        }
+        return baseItems.sorted { $0.isPinned && !$1.isPinned }
     }
     
     private var selectedItem: ClipboardItem? {
@@ -264,6 +267,16 @@ struct HistoryContentView: View {
             onBookmark: {
                 if let item = selectedItem {
                     store.toggleBookmark(for: item)
+                }
+            },
+            onPin: {
+                if let item = selectedItem {
+                    store.togglePin(for: item)
+                }
+            },
+            onSaveImage: {
+                if selectedItem?.type == .image, let img = previewImage {
+                    PasteController.saveImageToDisk(img)
                 }
             }
         ))
@@ -433,6 +446,16 @@ struct HistoryContentView: View {
                     .buttonStyle(.plain)
                     .help("Copy")
                     
+                    if selectedItem?.type == .image && previewImage != nil {
+                        Button(action: {
+                            if let img = previewImage { PasteController.saveImageToDisk(img) }
+                        }) {
+                            Image(systemName: "arrow.down.to.line")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Save image")
+                    }
+                    
                     // OCR button — only for image items without existing OCR text
                     if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
                         Button(action: {
@@ -451,6 +474,13 @@ struct HistoryContentView: View {
                         .disabled(isExtractingText)
                         .help("Extract Text from Image")
                     }
+                    
+                    Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
+                        Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
+                    .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
                     
                     Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
                         Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
@@ -645,6 +675,26 @@ struct HistoryContentView: View {
                 .font(.system(size: 11, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.8))
             
+            HStack(spacing: 4) {
+                Text("⌘P")
+                    .font(.system(size: 10))
+                Text("pin")
+                    .font(.system(size: 11))
+            }
+            .foregroundColor(.secondary.opacity(0.6))
+            .padding(.leading, 8)
+            
+            if selectedItem?.type == .image {
+                HStack(spacing: 4) {
+                    Text("⌘S")
+                        .font(.system(size: 10))
+                    Text("save")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+                .padding(.leading, 4)
+            }
+            
             Spacer()
             
             // Keyboard shortcut hint
@@ -703,6 +753,8 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onDelete: () -> Void
     let onCopy: () -> Void
     let onBookmark: () -> Void
+    let onPin: () -> Void
+    let onSaveImage: () -> Void
     
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -754,6 +806,18 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 case 11: // B (for Bookmark)
                     if event.modifierFlags.contains(.command) {
                         onBookmark()
+                        return nil
+                    }
+                    return event
+                case 35: // Cmd+P (P is 35)
+                    if event.modifierFlags.contains(.command) {
+                        onPin()
+                        return nil
+                    }
+                    return event
+                case 1: // Cmd+S (S is 1)
+                    if event.modifierFlags.contains(.command) {
+                        onSaveImage()
                         return nil
                     }
                     return event

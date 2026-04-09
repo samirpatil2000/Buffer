@@ -16,7 +16,28 @@ struct ClipboardListView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 0) {
+                    if items.contains(where: { $0.isPinned }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pin")
+                            Text("Pinned")
+                        }
+                        .font(.system(size: 10).smallCaps())
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        // Thin separator between pinned and recent items
+                        if !item.isPinned && index > 0 && items[index - 1].isPinned {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.06))
+                                .frame(height: 0.5)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
+                        }
+                        
                         ClipboardItemRow(
                             item: item,
                             store: store,
