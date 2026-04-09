@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 
 /// Handles pasting content into the frontmost application
 class PasteController {
@@ -48,5 +49,30 @@ class PasteController {
         // Post the events
         keyDown?.post(tap: .cgAnnotatedSessionEventTap)
         keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+    }
+    
+    /// Save an image to disk using NSSavePanel
+    static func saveImageToDisk(_ image: NSImage) {
+        DispatchQueue.main.async {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.png]
+            panel.nameFieldStringValue = "Image"
+            panel.canCreateDirectories = true
+            
+            if panel.runModal() == .OK, let url = panel.url {
+                guard let tiffData = image.tiffRepresentation,
+                      let bitmapRep = NSBitmapImageRep(data: tiffData),
+                      let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
+                    print("[Buffer] Failed to create PNG data from image")
+                    return
+                }
+                
+                do {
+                    try pngData.write(to: url)
+                } catch {
+                    print("[Buffer] Failed to save image to disk: \(error)")
+                }
+            }
+        }
     }
 }

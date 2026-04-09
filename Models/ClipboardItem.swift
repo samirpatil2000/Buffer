@@ -20,6 +20,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // Bookmark state
     var isBookmarked: Bool
     
+    // Pin state
+    var isPinned: Bool = false
+    
     // Extracted OCR text (persisted after first extraction)
     var ocrText: String?
     
@@ -29,7 +32,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For large/extreme text items — original size in bytes (for display purposes)
     let originalSizeBytes: Int?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isBookmarked: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isBookmarked: Bool = false, isPinned: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -38,9 +41,47 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.textFilename = textFilename
         self.imageFilename = imageFilename
         self.isBookmarked = isBookmarked
+        self.isPinned = isPinned
         self.ocrText = ocrText
         self.isTruncated = isTruncated
         self.originalSizeBytes = originalSizeBytes
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
+        case isBookmarked, isPinned, ocrText, isTruncated, originalSizeBytes
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.type = try container.decode(ClipboardItemType.self, forKey: .type)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
+        self.textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
+        self.textFilename = try container.decodeIfPresent(String.self, forKey: .textFilename)
+        self.imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
+        self.isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
+        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
+        self.isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
+        self.originalSizeBytes = try container.decodeIfPresent(Int.self, forKey: .originalSizeBytes)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(sourceApp, forKey: .sourceApp)
+        try container.encodeIfPresent(textContent, forKey: .textContent)
+        try container.encodeIfPresent(textFilename, forKey: .textFilename)
+        try container.encodeIfPresent(imageFilename, forKey: .imageFilename)
+        try container.encode(isBookmarked, forKey: .isBookmarked)
+        try container.encode(isPinned, forKey: .isPinned)
+        try container.encodeIfPresent(ocrText, forKey: .ocrText)
+        try container.encode(isTruncated, forKey: .isTruncated)
+        try container.encodeIfPresent(originalSizeBytes, forKey: .originalSizeBytes)
     }
     
     /// Create a text clipboard item

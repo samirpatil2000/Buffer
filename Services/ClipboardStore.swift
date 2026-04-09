@@ -41,10 +41,10 @@ class ClipboardStore: ObservableObject {
     
     @objc private func handleLimitChanged() {
         guard items.count > maxItems else { return }
-        // Trim from tail, bookmarked items survive
+        // Trim from tail, bookmarked/pinned items survive
         var trimmed = items
         while trimmed.count > maxItems {
-            if let idx = trimmed.lastIndex(where: { !$0.isBookmarked }) {
+            if let idx = trimmed.lastIndex(where: { !$0.isBookmarked && !$0.isPinned }) {
                 deleteAssociatedFiles(for: trimmed[idx])
                 trimmed.remove(at: idx)
             } else {
@@ -74,9 +74,9 @@ class ClipboardStore: ObservableObject {
         // Insert at beginning (newest first)
         items.insert(item, at: 0)
         
-        // Evict oldest unbookmarked item if over limit
+        // Evict oldest unbookmarked/unpinned item if over limit
         if items.count > maxItems {
-            if let indexToRemove = items.lastIndex(where: { !$0.isBookmarked }) {
+            if let indexToRemove = items.lastIndex(where: { !$0.isBookmarked && !$0.isPinned }) {
                 let removed = items.remove(at: indexToRemove)
                 deleteAssociatedFiles(for: removed)
             } else {
@@ -113,6 +113,21 @@ class ClipboardStore: ObservableObject {
         items[index].isBookmarked.toggle()
         
         // Save updated state to disk
+        let itemsToSave = items
+        saveQueue.async { [weak self] in
+            self?.saveHistoryToDisk(itemsToSave)
+        }
+    }
+    
+    /// Toggle pin state for an item
+    func togglePin(for item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        
+        items[index].isPinned.toggle()
+        if items[index].isPinned {
+            items[index].isBookmarked = true
+        }
+        
         let itemsToSave = items
         saveQueue.async { [weak self] in
             self?.saveHistoryToDisk(itemsToSave)
