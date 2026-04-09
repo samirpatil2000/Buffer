@@ -34,8 +34,8 @@ struct ClipboardListView: View {
                             Rectangle()
                                 .fill(Color.primary.opacity(0.06))
                                 .frame(height: 0.5)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
                         }
                         
                         ClipboardItemRow(
