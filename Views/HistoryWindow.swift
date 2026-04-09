@@ -27,6 +27,7 @@ private struct ChunkedTextState {
 /// Manages the floating history window
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
+    private var previousApp: NSRunningApplication?
     
     init(store: ClipboardStore) {
         self.store = store
@@ -108,12 +109,14 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func pasteItem(_ item: ClipboardItem) {
+        let appToRestore = previousApp
         close()
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
-        PasteController.paste(item, store: store)
+        PasteController.paste(item, store: store, previousApp: appToRestore)
     }
     
     override func showWindow(_ sender: Any?) {
+        previousApp = NSWorkspace.shared.frontmostApplication
         window?.center()
         super.showWindow(sender)
         NSApp.activate(ignoringOtherApps: true)
