@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 /// Monitors the system clipboard for changes and captures new content
 class ClipboardWatcher: ObservableObject {
@@ -82,6 +83,20 @@ class ClipboardWatcher: ObservableObject {
         // Get current frontmost app as source
         let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
         
+        // Check for single image file from Finder BEFORE text check
+        // (Finder always writes both NSFilenamesPboardType + .string, so we must intercept first)
+        if let filePaths = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String],
+           filePaths.count == 1,
+           let filePath = filePaths.first {
+            if isImageFile(filePath) {
+                // Read and process image file asynchronously to avoid blocking the poll timer
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.processImageFile(filePath, sourceApp: sourceApp)
+                }
+                return  // Prevent .string branch from also processing this change
+            }
+        }
+        
         // Try to capture text first
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
             let textSize = text.utf8.count
@@ -144,5 +159,52 @@ class ClipboardWatcher: ObservableObject {
         }
         
         return nil
+    }
+    
+    /// Check if a file path points to an image by examining its UTType
+    private func isImageFile(_ filePath: String) -> Bool {
+        let fileExtension = (filePath as NSString).pathExtension.lowercased()
+        guard !fileExtension.isEmpty else { return false }
+        
+        if let utType = UTType(filenameExtension: fileExtension) {
+            return utType.conforms(to: .image)
+        }
+        return false
+    }
+    
+    /// Read image file from disk, convert to PNG, and store as image item
+    private func processImageFile(_ filePath: String, sourceApp: String?) {
+        do {
+            // Read file bytes
+            let fileURL = URL(fileURLWithPath: filePath)
+            let fileData = try Data(contentsOf: fileURL)
+            
+            // Convert to PNG using the same pattern as pasteboard image handling
+            guard let image = NSImage(data: fileData),
+                  let tiffData = image.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiffData),
+                  let pngData = bitmap.representation(using: .png, properties: [:]) else {
+                print("[Buffer] Failed to convert image file: \(filePath)")
+                return
+            }
+            
+            // Check for duplicate using hash
+            let hash = pngData.hashValue
+            guard hash != lastContentHash else {
+                // print("[Buffer] Duplicate image file detected: \(filePath)")
+                return
+            }
+            
+            // Save image to disk and add to store
+            if let filename = store.saveImage(pngData) {
+                let item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                DispatchQueue.main.async { [weak self] in
+                    self?.lastContentHash = hash
+                    self?.store.add(item)
+                }
+            }
+        } catch {
+            print("[Buffer] Error processing image file: \(filePath) - \(error)")
+        }
     }
 }
