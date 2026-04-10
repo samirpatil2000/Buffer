@@ -167,6 +167,11 @@ struct HistoryContentView: View {
         return baseItems.sorted { $0.isPinned && !$1.isPinned }
     }
     
+    /// Get the first unpinned item, or the first pinned item if no unpinned items exist
+    private var defaultSelectedItem: ClipboardItem? {
+        return filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first
+    }
+    
     private var selectedItem: ClipboardItem? {
         // Prefer ID-based lookup for stability during list mutations
         if let id = selectedID, let item = filteredItems.first(where: { $0.id == id }) {
@@ -201,8 +206,15 @@ struct HistoryContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { _ in
-            selectedIndex = 0
-            selectedID = filteredItems[safe: 0]?.id
+            // Find first unpinned item in filtered results
+            let defaultItem = defaultSelectedItem
+            selectedID = defaultItem?.id
+            // Calculate the correct index
+            if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
+                selectedIndex = index
+            } else {
+                selectedIndex = 0
+            }
         }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
@@ -216,8 +228,15 @@ struct HistoryContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
             searchText = ""
-            selectedIndex = 0
-            selectedID = store.items.first?.id
+            // Select first unpinned item, or first item if all are pinned
+            let firstUnpinned = store.items.first(where: { !$0.isPinned }) ?? store.items.first
+            selectedID = firstUnpinned?.id
+            // Find the correct index in the filtered (sorted) items
+            if let index = filteredItems.firstIndex(where: { $0.id == firstUnpinned?.id }) {
+                selectedIndex = index
+            } else {
+                selectedIndex = 0
+            }
             // Delay needed for NSHostingView to have settled as key window
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isSearchFocused = true
