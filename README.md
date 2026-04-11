@@ -47,6 +47,54 @@
 
 ---
 
+## 🍺 Install with Homebrew
+
+Buffer is a GUI macOS app, so Homebrew support should be added as a `cask`, not a formula.
+
+### For users
+
+If you publish a tap, users can install Buffer with:
+
+```bash
+brew install --cask samirpatil2000/buffer/buffer
+```
+
+### For maintainers
+
+The easiest setup is:
+
+1. Create a tap repo named `homebrew-buffer`
+2. Keep the cask file at `Casks/buffer.rb`
+3. Continue shipping notarized `.dmg` assets from GitHub Releases
+
+This repo includes a helper script to generate the cask from your release DMGs:
+
+```bash
+./scripts/generate_homebrew_cask.sh 1.6 Buffer_Silicon.dmg Buffer_Intel.dmg
+```
+
+That writes `Casks/buffer.rb` using:
+
+- `https://github.com/samirpatil2000/Buffer/releases/download/buffer-v#{version}/Buffer_Silicon.dmg`
+- `https://github.com/samirpatil2000/Buffer/releases/download/buffer-v#{version}/Buffer_Intel.dmg`
+
+Typical release flow:
+
+```bash
+# 1. Build and notarize both DMGs
+./build_dmg.sh
+
+# 2. Generate the Homebrew cask with real SHA256 values
+./scripts/generate_homebrew_cask.sh 1.6 Buffer_Silicon.dmg Buffer_Intel.dmg
+
+# 3. Commit Casks/buffer.rb to your tap repo
+# 4. Push the release assets and the cask update
+```
+
+If you want to use this repo itself as the tap, users can still install from the full tap name or URL, but a dedicated `homebrew-buffer` repository is the standard Homebrew layout.
+
+---
+
 ## 🚀 Getting Started
 
 1. **Download** the `.dmg` file from above
