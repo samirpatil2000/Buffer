@@ -397,8 +397,22 @@ struct HistoryContentView: View {
             
             // Preserve selection by UUID lookup, adjust index if needed
             guard let id = selectedID else { return }
-            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }), selectedIndex != newIndex {
-                selectedIndex = newIndex
+            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }) {
+                if selectedIndex != newIndex { selectedIndex = newIndex }
+            } else {
+                // Selected item was deleted — select the item now at the same position (or last)
+                let fallbackIndex = min(selectedIndex, filteredItems.count - 1)
+                if let fallbackItem = filteredItems[safe: fallbackIndex] {
+                    selectedID = fallbackItem.id
+                    selectedIDs = [fallbackItem.id]
+                    selectionAnchor = fallbackItem.id
+                    selectedIndex = fallbackIndex
+                } else {
+                    selectedID = nil
+                    selectedIDs = []
+                    selectionAnchor = nil
+                    selectedIndex = 0
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
@@ -476,68 +490,7 @@ struct HistoryContentView: View {
             onEscape: onDismiss,
             onDelete: {
                 if let item = selectedItem {
-                    // Find the current index of the selected item in filteredItems
-                    let currentIndex = filteredItems.firstIndex(where: { $0.id == item.id }) ?? 0
-                    let itemCount = filteredItems.count
-                    
-                    // Determine which item ID to select BEFORE deletion
-                    var nextItemToSelectID: UUID? = nil
-                    if itemCount > 1 {
-                        let nextIndexBeforeDeletion: Int
-                        if currentIndex < itemCount - 1 {
-                            nextIndexBeforeDeletion = currentIndex  // Item below moves into this spot
-                        } else {
-                            nextIndexBeforeDeletion = currentIndex - 1  // Last item, go to previous
-                        }
-                        
-                        if let nextItem = filteredItems[safe: nextIndexBeforeDeletion] {
-                            nextItemToSelectID = nextItem.id
-                        }
-                    }
-                    
-                    // Delete the item
                     store.delete(item)
-                    
-                    // Update selection after state settles (100ms for store change propagation)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        if let nextID = nextItemToSelectID {
-                            // Try to find the item we wanted to select in the new filtered list
-                            if let nextItem = filteredItems.first(where: { $0.id == nextID }) {
-                                if let idx = filteredItems.firstIndex(where: { $0.id == nextID }) {
-                                    selectedID = nextItem.id
-                                    selectedIDs = [nextItem.id]
-                                    selectionAnchor = nextItem.id
-                                    selectedIndex = idx
-                                }
-                            } else if filteredItems.count > 0 {
-                                // Fallback: select first item if the intended item is gone
-                                let firstItem = filteredItems[0]
-                                selectedID = firstItem.id
-                                selectedIDs = [firstItem.id]
-                                selectionAnchor = firstItem.id
-                                selectedIndex = 0
-                            } else {
-                                // No items left
-                                selectedID = nil
-                                selectedIDs = []
-                                selectionAnchor = nil
-                                selectedIndex = 0
-                            }
-                        } else if filteredItems.count > 0 {
-                            // No specific next item to select, select first
-                            let firstItem = filteredItems[0]
-                            selectedID = firstItem.id
-                            selectedIDs = [firstItem.id]
-                            selectionAnchor = firstItem.id
-                            selectedIndex = 0
-                        } else {
-                            // No items left
-                            selectedID = nil
-                            selectedIDs = []
-                            selectionAnchor = nil
-                            selectedIndex = 0
-                        }
-                    }
                 }
             },
             onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
