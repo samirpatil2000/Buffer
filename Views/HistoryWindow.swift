@@ -215,9 +215,9 @@ struct HistoryContentView: View {
     private func selectSingle(_ id: UUID) {
         selectedIDs = [id]
         selectionAnchor = id
+        selectedID = id  // Explicitly set selectedID
         if let index = filteredItems.firstIndex(where: { $0.id == id }) {
             selectedIndex = index
-            // selectedID will be synced via onChange(of: selectedIndex)
         }
     }
     
@@ -302,7 +302,39 @@ struct HistoryContentView: View {
         selectedID = nil
     }
     
-
+    /// Download all selected images to a folder
+    private func downloadAllImages() {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        savePanel.title = "Save Images"
+        savePanel.prompt = "Download"
+        savePanel.nameFieldStringValue = "clipboard-images"
+        
+        savePanel.begin { response in
+            if response == .OK, let folderURL = savePanel.url {
+                let imageItems = selectedItems.filter { $0.type == .image }
+                
+                for (index, item) in imageItems.enumerated() {
+                    if let image = store.image(for: item) {
+                        let paddedNumber = String(format: "%04d", index + 1)
+                        let fileName = "image-\(paddedNumber).png"
+                        let fileURL = folderURL.appendingPathComponent(fileName)
+                        
+                        if let tiffData = image.tiffRepresentation,
+                           let bitmapImage = NSBitmapImageRep(data: tiffData),
+                           let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+                            do {
+                                try pngData.write(to: fileURL)
+                            } catch {
+                                print("Error saving image to \(fileURL): \(error)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -437,8 +469,48 @@ struct HistoryContentView: View {
             onEscape: onDismiss,
             onDelete: {
                 if let item = selectedItem {
+                    let currentIndex = selectedIndex
+                    let itemCount = filteredItems.count
+                    
+                    // Calculate which item to select BEFORE deletion
+                    var nextIndex: Int? = nil
+                    if itemCount > 1 {
+                        if currentIndex < itemCount - 1 {
+                            nextIndex = currentIndex  // Item below moves into this spot
+                        } else {
+                            nextIndex = currentIndex - 1  // Last item, go to previous
+                        }
+                    }
+                    
+                    // Delete the item
                     store.delete(item)
-                    // Clear search or reset selection if needed, but the array update will re-render
+                    
+                    // Update selection after state settles (100ms for store change propagation)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        if let idx = nextIndex, idx >= 0, idx < filteredItems.count {
+                            // Select by index, which will trigger onChange to update selectedID
+                            selectedIndex = idx
+                            // Also explicitly update the selection sets
+                            if let nextItem = filteredItems[safe: idx] {
+                                selectedID = nextItem.id
+                                selectedIDs = [nextItem.id]
+                                selectionAnchor = nextItem.id
+                            }
+                        } else if filteredItems.count > 0 {
+                            // Fallback: select first item
+                            selectedIndex = 0
+                            let firstItem = filteredItems[0]
+                            selectedID = firstItem.id
+                            selectedIDs = [firstItem.id]
+                            selectionAnchor = firstItem.id
+                        } else {
+                            // No items left
+                            selectedIndex = 0
+                            selectedID = nil
+                            selectedIDs = []
+                            selectionAnchor = nil
+                        }
+                    }
                 }
             },
             onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
@@ -775,6 +847,22 @@ struct HistoryContentView: View {
             
             Divider()
             
+            // Download All Images button (only show if all selected items are images)
+            if textCount == 0 && imageCount > 0 {
+                Button(action: downloadAllImages) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("Download All (\(imageCount))")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Divider()
+            }
+            
             // First selected item preview (optional)
             if let firstItem = selectedItems.first, firstItem.type == .text {
                 VStack(alignment: .leading, spacing: 6) {
@@ -898,9 +986,11 @@ struct HistoryContentView: View {
         if selectedIndex > 0 {
             selectedIndex -= 1
             // Clear multi-selection when navigating without Shift
-            selectedIDs = [filteredItems[selectedIndex].id]
-            selectionAnchor = filteredItems[selectedIndex].id
-            // selectedID will be synced via onChange(of: selectedIndex)
+            if let item = filteredItems[safe: selectedIndex] {
+                selectedID = item.id
+                selectedIDs = [item.id]
+                selectionAnchor = item.id
+            }
         }
     }
     
@@ -908,8 +998,11 @@ struct HistoryContentView: View {
         if selectedIndex < filteredItems.count - 1 {
             selectedIndex += 1
             // Clear multi-selection when navigating without Shift
-            selectedIDs = [filteredItems[selectedIndex].id]
-            selectionAnchor = filteredItems[selectedIndex].id
+            if let item = filteredItems[safe: selectedIndex] {
+                selectedID = item.id
+                selectedIDs = [item.id]
+                selectionAnchor = item.id
+            }
             // selectedID will be synced via onChange(of: selectedIndex)
         }
     }

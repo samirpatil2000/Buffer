@@ -4,6 +4,28 @@ import UniformTypeIdentifiers
 /// Handles pasting content into the frontmost application
 class PasteController {
     
+    /// Get or create temp directory for paste operations
+    private static func getTempDirectory() -> URL? {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("BufferPaste")
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        return tempDir
+    }
+    
+    /// Save image with proper filename and return file URL
+    private static func saveImageToTemp(_ image: NSImage, fileName: String) -> URL? {
+        guard let tempDir = getTempDirectory() else { return nil }
+        
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        
+        if let tiffData = image.tiffRepresentation,
+           let bitmapImage = NSBitmapImageRep(data: tiffData),
+           let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+            try? pngData.write(to: fileURL)
+            return fileURL
+        }
+        return nil
+    }
+    
     /// Copy item content back to system clipboard
     static func copyToClipboard(_ item: ClipboardItem, store: ClipboardStore) {
         let pasteboard = NSPasteboard.general
@@ -25,12 +47,33 @@ class PasteController {
     
     /// Paste item into the frontmost application
     static func paste(_ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
-        // First copy to clipboard
-        copyToClipboard(item, store: store)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        switch item.type {
+        case .text:
+            if let text = store.fullText(for: item) {
+                pasteboard.setString(text, forType: .string)
+            }
+        case .image:
+            if let image = store.image(for: item) {
+                // Save image to temp with proper name
+                if let fileURL = saveImageToTemp(image, fileName: "image-0001.png") {
+                    pasteboard.writeObjects([fileURL as NSPasteboardWriting])
+                } else {
+                    // Fallback to TIFF if file save fails
+                    if let tiffData = image.tiffRepresentation {
+                        pasteboard.setData(tiffData, forType: .tiff)
+                    }
+                }
+            }
+        }
 
         // Reactivate previous app, then simulate paste after it has focus
         previousApp?.activate(options: .activateIgnoringOtherApps)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Post ignore notification right before paste
+            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
             simulatePaste()
         }
     }
@@ -41,64 +84,72 @@ class PasteController {
         guard !items.isEmpty else { return }
         
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
         
         // Separate items by type
         let textItems = items.filter { $0.type == .text }
         let imageItems = items.filter { $0.type == .image }
         
-        // Join all text items with newlines
+        // If we have text items, paste them first
         if !textItems.isEmpty {
+            pasteboard.clearContents()
             let joinedText = textItems.compactMap { store.fullText(for: $0) }.joined(separator: "\n")
             pasteboard.setString(joinedText, forType: .string)
             
             // If all items are text, paste once and done
             if imageItems.isEmpty {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    simulatePaste()
-                }
+                simulatePasteWithCustomDelay(0.1)
                 return
             }
-        }
-        
-        // If we have mixed items (text + images), paste text first, then images
-        if !textItems.isEmpty {
-            previousApp?.activate(options: .activateIgnoringOtherApps)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                simulatePaste()
-            }
             
-            // Then paste each image (with delay between each)
-            for (index, imageItem) in imageItems.enumerated() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(index) * 0.25) {
-                    if let image = store.image(for: imageItem), let tiffData = image.tiffRepresentation {
-                        let imgPasteboard = NSPasteboard.general
-                        imgPasteboard.clearContents()
-                        imgPasteboard.setData(tiffData, forType: .tiff)
-                        simulatePaste()
+            // Paste text first, then images together after
+            previousApp?.activate(options: .activateIgnoringOtherApps)
+            simulatePasteWithCustomDelay(0.1)
+            
+            // Then paste all images together
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                pasteboard.clearContents()
+                
+                // Save all images and collect URLs
+                var imageURLs: [URL] = []
+                for (index, imageItem) in imageItems.enumerated() {
+                    if let image = store.image(for: imageItem) {
+                        let paddedNumber = String(format: "%04d", index + 1)
+                        let fileName = "image-\(paddedNumber).png"
+                        if let fileURL = saveImageToTemp(image, fileName: fileName) {
+                            imageURLs.append(fileURL)
+                        }
                     }
+                }
+                
+                // Paste all URLs together
+                if !imageURLs.isEmpty {
+                    pasteboard.writeObjects(imageURLs as [NSPasteboardWriting])
+                    simulatePasteWithCustomDelay(0.05)
                 }
             }
         } else if !imageItems.isEmpty {
-            // Images only - paste each one
-            for (index, imageItem) in imageItems.enumerated() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 + Double(index) * 0.25) {
-                    if let image = store.image(for: imageItem), let tiffData = image.tiffRepresentation {
-                        let imgPasteboard = NSPasteboard.general
-                        imgPasteboard.clearContents()
-                        imgPasteboard.setData(tiffData, forType: .tiff)
-                        
-                        // Activate app on first image
-                        if index == 0 {
-                            previousApp?.activate(options: .activateIgnoringOtherApps)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                simulatePaste()
-                            }
-                        } else {
-                            simulatePaste()
+            // Images only - paste all together at once (like Finder multi-select)
+            previousApp?.activate(options: .activateIgnoringOtherApps)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                pasteboard.clearContents()
+                
+                // Save all images and collect URLs
+                var imageURLs: [URL] = []
+                for (index, imageItem) in imageItems.enumerated() {
+                    if let image = store.image(for: imageItem) {
+                        let paddedNumber = String(format: "%04d", index + 1)
+                        let fileName = "image-\(paddedNumber).png"
+                        if let fileURL = saveImageToTemp(image, fileName: fileName) {
+                            imageURLs.append(fileURL)
                         }
                     }
+                }
+                
+                // Paste all URLs together at once
+                if !imageURLs.isEmpty {
+                    pasteboard.writeObjects(imageURLs as [NSPasteboardWriting])
+                    simulatePasteWithCustomDelay(0.05)
                 }
             }
         }
@@ -119,6 +170,24 @@ class PasteController {
         // Post the events
         keyDown?.post(tap: .cgAnnotatedSessionEventTap)
         keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+    }
+    
+    /// Simulate Command + V keystroke with delay to ensure pasteboard is ready
+    private static func simulatePasteWithDelay() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            // Post ignore notification right before paste
+            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+            simulatePaste()
+        }
+    }
+    
+    /// Simulate Command + V keystroke with custom delay
+    private static func simulatePasteWithCustomDelay(_ delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            // Post ignore notification right before paste
+            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+            simulatePaste()
+        }
     }
     
     /// Save an image to disk using NSSavePanel
