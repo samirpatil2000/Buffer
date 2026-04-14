@@ -415,7 +415,8 @@ struct HistoryContentView: View {
                     onSelect: onCopyToClipboard,
                     onPaste: onPaste,
                     onDelete: { item in store.delete(item) },
-                    onDismiss: onDismiss
+                    onDismiss: onDismiss,
+                    selectedID: selectedID
                 )
             }
         }

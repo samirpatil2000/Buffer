@@ -4,13 +4,13 @@ import SwiftUI
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let store: ClipboardStore
-    let isSelected: Bool
+    let isPrimarySelection: Bool  // True for focused row (full accent), false otherwise
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
     
     private var backgroundColor: Color {
-        if isSelected {
+        if isPrimarySelection {
             return Color.accentColor.opacity(0.25)
         } else if isHovered {
             return Color.primary.opacity(0.06)

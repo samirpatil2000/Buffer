@@ -11,6 +11,7 @@ struct ClipboardListView: View {
     let onPaste: (ClipboardItem) -> Void
     let onDelete: (ClipboardItem) -> Void
     let onDismiss: () -> Void
+    let selectedID: UUID?  // Track selection by item ID for stability during list mutations
     
     var body: some View {
         ScrollViewReader { proxy in
@@ -41,7 +42,7 @@ struct ClipboardListView: View {
                         ClipboardItemRow(
                             item: item,
                             store: store,
-                            isSelected: index == selectedIndex
+                            isPrimarySelection: item.id == selectedID
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
