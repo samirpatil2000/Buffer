@@ -303,31 +303,38 @@ struct HistoryContentView: View {
     }
     
     /// Download all selected images to a folder
+    /// Download all selected images to a folder
     private func downloadAllImages() {
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.isExtensionHidden = false
-        savePanel.title = "Save Images"
-        savePanel.prompt = "Download"
-        savePanel.nameFieldStringValue = "clipboard-images"
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.title = "Select Folder to Save Images"
+        openPanel.prompt = "Select"
         
-        savePanel.begin { response in
-            if response == .OK, let folderURL = savePanel.url {
-                let imageItems = selectedItems.filter { $0.type == .image }
-                
-                for (index, item) in imageItems.enumerated() {
-                    if let image = store.image(for: item) {
-                        let paddedNumber = String(format: "%04d", index + 1)
-                        let fileName = "image-\(paddedNumber).png"
-                        let fileURL = folderURL.appendingPathComponent(fileName)
+        // Use the newer sheet modal approach
+        if let window = NSApplication.shared.windows.first {
+            openPanel.beginSheetModal(for: window) { response in
+                if response == .OK, let folderURL = openPanel.url {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let imageItems = self.selectedItems.filter { $0.type == .image }
                         
-                        if let tiffData = image.tiffRepresentation,
-                           let bitmapImage = NSBitmapImageRep(data: tiffData),
-                           let pngData = bitmapImage.representation(using: .png, properties: [:]) {
-                            do {
-                                try pngData.write(to: fileURL)
-                            } catch {
-                                print("Error saving image to \(fileURL): \(error)")
+                        for (index, item) in imageItems.enumerated() {
+                            if let image = self.store.image(for: item) {
+                                let paddedNumber = String(format: "%04d", index + 1)
+                                let fileName = "image-\(paddedNumber).png"
+                                let fileURL = folderURL.appendingPathComponent(fileName)
+                                
+                                if let tiffData = image.tiffRepresentation,
+                                   let bitmapImage = NSBitmapImageRep(data: tiffData),
+                                   let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+                                    do {
+                                        try pngData.write(to: fileURL)
+                                        print("✅ Saved image to \(fileURL.lastPathComponent)")
+                                    } catch {
+                                        print("❌ Error saving image to \(fileURL): \(error)")
+                                    }
+                                }
                             }
                         }
                     }
