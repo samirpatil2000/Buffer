@@ -43,7 +43,6 @@
 1. Download the `.dmg` from the latest release
 2. Drag **Buffer.app** to your **Applications** folder
 3. Launch it (lives in menu bar)
-4. **Note (not yet notarized)**: Right-click → Open → confirm in security dialog
 
 ---
 
