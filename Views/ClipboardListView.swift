@@ -62,13 +62,27 @@ struct ClipboardListView: View {
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
+                        .overlay(
+                            ClickModifierDetector { modifiers in
+                                selectedIndex = index
+                                
+                                if modifiers.hasCommand {
+                                    // Cmd+click: toggle selection
+                                    onToggleSelection(item.id)
+                                } else if modifiers.hasShift {
+                                    // Shift+click: extend selection
+                                    onExtendSelectionTo(item.id)
+                                } else {
+                                    // Regular click: single select
+                                    onSelectSingle(item.id)
+                                }
+                            },
+                            alignment: .center
+                        )
                         .simultaneousGesture(
                             TapGesture(count: 1)
                                 .onEnded { _ in
-                                    selectedIndex = index
-                                    // Check modifiers - this will be set by NSEvent monitoring
-                                    // For now, single tap = single select
-                                    onSelectSingle(item.id)
+                                    // This will be handled by ClickModifierDetector
                                 }
                         )
                         .highPriorityGesture(
@@ -103,5 +117,46 @@ struct ClipboardListView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Click Modifier Detector
+
+/// Detects clicks with modifier keys using NSViewRepresentable
+struct ClickModifierDetector: NSViewRepresentable {
+    let onClickWithModifiers: (NSEvent.ModifierFlags) -> Void
+    
+    class ClickView: NSView {
+        var onClickWithModifiers: ((NSEvent.ModifierFlags) -> Void)?
+        
+        override func mouseDown(with event: NSEvent) {
+            onClickWithModifiers?(event.modifierFlags)
+        }
+    }
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = ClickView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = .clear
+        view.onClickWithModifiers = onClickWithModifiers
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let clickView = nsView as? ClickView {
+            clickView.onClickWithModifiers = onClickWithModifiers
+        }
+    }
+}
+
+// MARK: - Modifier Flags Extension
+
+extension NSEvent.ModifierFlags {
+    var hasCommand: Bool {
+        self.contains(.command)
+    }
+    
+    var hasShift: Bool {
+        self.contains(.shift)
     }
 }

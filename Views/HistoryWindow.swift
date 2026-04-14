@@ -476,16 +476,22 @@ struct HistoryContentView: View {
             onEscape: onDismiss,
             onDelete: {
                 if let item = selectedItem {
-                    let currentIndex = selectedIndex
+                    // Find the current index of the selected item in filteredItems
+                    let currentIndex = filteredItems.firstIndex(where: { $0.id == item.id }) ?? 0
                     let itemCount = filteredItems.count
                     
-                    // Calculate which item to select BEFORE deletion
-                    var nextIndex: Int? = nil
+                    // Determine which item ID to select BEFORE deletion
+                    var nextItemToSelectID: UUID? = nil
                     if itemCount > 1 {
+                        let nextIndexBeforeDeletion: Int
                         if currentIndex < itemCount - 1 {
-                            nextIndex = currentIndex  // Item below moves into this spot
+                            nextIndexBeforeDeletion = currentIndex  // Item below moves into this spot
                         } else {
-                            nextIndex = currentIndex - 1  // Last item, go to previous
+                            nextIndexBeforeDeletion = currentIndex - 1  // Last item, go to previous
+                        }
+                        
+                        if let nextItem = filteredItems[safe: nextIndexBeforeDeletion] {
+                            nextItemToSelectID = nextItem.id
                         }
                     }
                     
@@ -494,28 +500,42 @@ struct HistoryContentView: View {
                     
                     // Update selection after state settles (100ms for store change propagation)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        if let idx = nextIndex, idx >= 0, idx < filteredItems.count {
-                            // Select by index, which will trigger onChange to update selectedID
-                            selectedIndex = idx
-                            // Also explicitly update the selection sets
-                            if let nextItem = filteredItems[safe: idx] {
-                                selectedID = nextItem.id
-                                selectedIDs = [nextItem.id]
-                                selectionAnchor = nextItem.id
+                        if let nextID = nextItemToSelectID {
+                            // Try to find the item we wanted to select in the new filtered list
+                            if let nextItem = filteredItems.first(where: { $0.id == nextID }) {
+                                if let idx = filteredItems.firstIndex(where: { $0.id == nextID }) {
+                                    selectedID = nextItem.id
+                                    selectedIDs = [nextItem.id]
+                                    selectionAnchor = nextItem.id
+                                    selectedIndex = idx
+                                }
+                            } else if filteredItems.count > 0 {
+                                // Fallback: select first item if the intended item is gone
+                                let firstItem = filteredItems[0]
+                                selectedID = firstItem.id
+                                selectedIDs = [firstItem.id]
+                                selectionAnchor = firstItem.id
+                                selectedIndex = 0
+                            } else {
+                                // No items left
+                                selectedID = nil
+                                selectedIDs = []
+                                selectionAnchor = nil
+                                selectedIndex = 0
                             }
                         } else if filteredItems.count > 0 {
-                            // Fallback: select first item
-                            selectedIndex = 0
+                            // No specific next item to select, select first
                             let firstItem = filteredItems[0]
                             selectedID = firstItem.id
                             selectedIDs = [firstItem.id]
                             selectionAnchor = firstItem.id
+                            selectedIndex = 0
                         } else {
                             // No items left
-                            selectedIndex = 0
                             selectedID = nil
                             selectedIDs = []
                             selectionAnchor = nil
+                            selectedIndex = 0
                         }
                     }
                 }
