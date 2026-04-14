@@ -13,6 +13,21 @@ struct ClipboardListView: View {
     let onDismiss: () -> Void
     let selectedID: UUID?  // Track selection by item ID for stability during list mutations
     
+    // Multi-select support
+    @Binding var selectedIDs: Set<UUID>
+    var onSelectSingle: (UUID) -> Void = { _ in }
+    var onToggleSelection: (UUID) -> Void = { _ in }
+    var onExtendSelectionTo: (UUID) -> Void = { _ in }
+    
+    @State private var lastClickedItemID: UUID?
+    @State private var lastClickGesture: ClickType = .single
+    
+    enum ClickType {
+        case single
+        case shiftClick
+        case cmdClick
+    }
+    
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
@@ -42,7 +57,8 @@ struct ClipboardListView: View {
                         ClipboardItemRow(
                             item: item,
                             store: store,
-                            isPrimarySelection: item.id == selectedID
+                            isPrimarySelection: item.id == selectedID,
+                            isMultiSelected: selectedIDs.contains(item.id)
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
@@ -50,6 +66,9 @@ struct ClipboardListView: View {
                             TapGesture(count: 1)
                                 .onEnded { _ in
                                     selectedIndex = index
+                                    // Check modifiers - this will be set by NSEvent monitoring
+                                    // For now, single tap = single select
+                                    onSelectSingle(item.id)
                                 }
                         )
                         .highPriorityGesture(

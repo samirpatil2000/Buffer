@@ -35,6 +35,75 @@ class PasteController {
         }
     }
     
+    /// Paste multiple items into the frontmost application
+    /// Text items are joined with newlines, images are handled individually
+    static func pasteMultiple(_ items: [ClipboardItem], store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
+        guard !items.isEmpty else { return }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        // Separate items by type
+        let textItems = items.filter { $0.type == .text }
+        let imageItems = items.filter { $0.type == .image }
+        
+        // Join all text items with newlines
+        if !textItems.isEmpty {
+            let joinedText = textItems.compactMap { store.fullText(for: $0) }.joined(separator: "\n")
+            pasteboard.setString(joinedText, forType: .string)
+            
+            // If all items are text, paste once and done
+            if imageItems.isEmpty {
+                previousApp?.activate(options: .activateIgnoringOtherApps)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    simulatePaste()
+                }
+                return
+            }
+        }
+        
+        // If we have mixed items (text + images), paste text first, then images
+        if !textItems.isEmpty {
+            previousApp?.activate(options: .activateIgnoringOtherApps)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                simulatePaste()
+            }
+            
+            // Then paste each image (with delay between each)
+            for (index, imageItem) in imageItems.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(index) * 0.25) {
+                    if let image = store.image(for: imageItem), let tiffData = image.tiffRepresentation {
+                        let imgPasteboard = NSPasteboard.general
+                        imgPasteboard.clearContents()
+                        imgPasteboard.setData(tiffData, forType: .tiff)
+                        simulatePaste()
+                    }
+                }
+            }
+        } else if !imageItems.isEmpty {
+            // Images only - paste each one
+            for (index, imageItem) in imageItems.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 + Double(index) * 0.25) {
+                    if let image = store.image(for: imageItem), let tiffData = image.tiffRepresentation {
+                        let imgPasteboard = NSPasteboard.general
+                        imgPasteboard.clearContents()
+                        imgPasteboard.setData(tiffData, forType: .tiff)
+                        
+                        // Activate app on first image
+                        if index == 0 {
+                            previousApp?.activate(options: .activateIgnoringOtherApps)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                simulatePaste()
+                            }
+                        } else {
+                            simulatePaste()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     /// Simulate Command + V keystroke
     private static func simulatePaste() {
         let source = CGEventSource(stateID: .hidSystemState)
