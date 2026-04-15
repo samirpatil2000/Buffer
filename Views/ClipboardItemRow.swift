@@ -5,12 +5,17 @@ struct ClipboardItemRow: View {
     let item: ClipboardItem
     let store: ClipboardStore
     let isPrimarySelection: Bool  // True for focused row (full accent), false otherwise
+    let isMultiSelected: Bool     // True if this item is part of multi-selection
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
     
     private var backgroundColor: Color {
-        if isPrimarySelection {
+        if isMultiSelected && !isPrimarySelection {
+            // Multi-selected item: distinct purple highlight
+            return Color.purple.opacity(0.15)
+        } else if isPrimarySelection {
+            // Single selection: blue highlight (original behavior)
             return Color.accentColor.opacity(0.25)
         } else if isHovered {
             return Color.primary.opacity(0.06)

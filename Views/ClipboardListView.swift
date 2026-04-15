@@ -13,6 +13,21 @@ struct ClipboardListView: View {
     let onDismiss: () -> Void
     let selectedID: UUID?  // Track selection by item ID for stability during list mutations
     
+    // Multi-select support
+    @Binding var selectedIDs: Set<UUID>
+    var onSelectSingle: (UUID) -> Void = { _ in }
+    var onToggleSelection: (UUID) -> Void = { _ in }
+    var onExtendSelectionTo: (UUID) -> Void = { _ in }
+    
+    @State private var lastClickedItemID: UUID?
+    @State private var lastClickGesture: ClickType = .single
+    
+    enum ClickType {
+        case single
+        case shiftClick
+        case cmdClick
+    }
+    
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
@@ -42,14 +57,32 @@ struct ClipboardListView: View {
                         ClipboardItemRow(
                             item: item,
                             store: store,
-                            isPrimarySelection: item.id == selectedID
+                            isPrimarySelection: item.id == selectedID,
+                            isMultiSelected: selectedIDs.contains(item.id)
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
+                        .overlay(
+                            ClickModifierDetector { modifiers in
+                                selectedIndex = index
+                                
+                                if modifiers.hasCommand {
+                                    // Cmd+click: toggle selection
+                                    onToggleSelection(item.id)
+                                } else if modifiers.hasShift {
+                                    // Shift+click: extend selection
+                                    onExtendSelectionTo(item.id)
+                                } else {
+                                    // Regular click: single select
+                                    onSelectSingle(item.id)
+                                }
+                            },
+                            alignment: .center
+                        )
                         .simultaneousGesture(
                             TapGesture(count: 1)
                                 .onEnded { _ in
-                                    selectedIndex = index
+                                    // This will be handled by ClickModifierDetector
                                 }
                         )
                         .highPriorityGesture(
@@ -86,3 +119,4 @@ struct ClipboardListView: View {
         }
     }
 }
+

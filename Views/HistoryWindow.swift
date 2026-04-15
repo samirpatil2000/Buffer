@@ -95,6 +95,9 @@ class HistoryWindowController: NSWindowController {
             onPaste: { [weak self] item in
                 self?.pasteItem(item)
             },
+            onPasteMultiple: { [weak self] items in
+                self?.pasteMultiple(items)
+            },
             onDismiss: { [weak self] in
                 self?.close()
             }
@@ -113,6 +116,13 @@ class HistoryWindowController: NSWindowController {
         close()
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
         PasteController.paste(item, store: store, previousApp: appToRestore)
+    }
+    
+    private func pasteMultiple(_ items: [ClipboardItem]) {
+        let appToRestore = previousApp
+        close()
+        NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+        PasteController.pasteMultiple(items, store: store, previousApp: appToRestore)
     }
     
     override func showWindow(_ sender: Any?) {
@@ -137,6 +147,7 @@ struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
     let onCopyToClipboard: (ClipboardItem) -> Void
     let onPaste: (ClipboardItem) -> Void
+    let onPasteMultiple: ([ClipboardItem]) -> Void
     let onDismiss: () -> Void
     
     @FocusState private var isSearchFocused: Bool
@@ -147,6 +158,9 @@ struct HistoryContentView: View {
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     @State private var itemSize: Int?         // Holds computed size of item
     
+    // Multi-select state
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var selectionAnchor: UUID?
     
     // OCR state
     @State private var isExtractingText = false
@@ -172,12 +186,161 @@ struct HistoryContentView: View {
         return filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first
     }
     
+    /// Get all selected items in filtered list order
+    private var selectedItems: [ClipboardItem] {
+        filteredItems.filter { selectedIDs.contains($0.id) }
+    }
+    
+    /// Get the primary selected item (for detail pane when multiple selected or single item)
+    /// Returns the first selected item in list order
     private var selectedItem: ClipboardItem? {
-        // Prefer ID-based lookup for stability during list mutations
-        if let id = selectedID, let item = filteredItems.first(where: { $0.id == id }) {
-            return item
+        selectedItems.first
+    }
+    
+    /// Selection status for UI display
+    private var selectionCount: Int {
+        selectedIDs.count
+    }
+    
+    /// Total size of all selected items
+    private var selectedItemsTotalSize: Int {
+        selectedItems.reduce(0) { sum, item in
+            sum + (store.itemSize(for: item) ?? 0)
         }
-        return filteredItems[safe: selectedIndex]
+    }
+    
+    // MARK: - Selection Helpers
+    
+    /// Select a single item (clears previous multi-selection)
+    private func selectSingle(_ id: UUID) {
+        selectedIDs = [id]
+        selectionAnchor = id
+        selectedID = id  // Explicitly set selectedID
+        if let index = filteredItems.firstIndex(where: { $0.id == id }) {
+            selectedIndex = index
+        }
+    }
+    
+    /// Toggle an item in multi-select (Cmd+click behavior)
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+        selectionAnchor = id
+        if let index = filteredItems.firstIndex(where: { $0.id == id }) {
+            selectedIndex = index
+            // selectedID will be synced via onChange(of: selectedIndex)
+        }
+    }
+    
+    /// Extend selection from anchor to target item (Shift+click behavior)
+    private func extendSelectionTo(_ targetID: UUID) {
+        guard let anchorID = selectionAnchor else {
+            selectSingle(targetID)
+            return
+        }
+        
+        guard let anchorIndex = filteredItems.firstIndex(where: { $0.id == anchorID }),
+              let targetIndex = filteredItems.firstIndex(where: { $0.id == targetID }) else {
+            return
+        }
+        
+        let range = min(anchorIndex, targetIndex)...max(anchorIndex, targetIndex)
+        selectedIDs = Set(filteredItems[range].map { $0.id })
+        selectedIndex = targetIndex
+        // selectedID will be synced via onChange(of: selectedIndex)
+    }
+    
+    /// Extend selection upward (Shift+↑ behavior)
+    private func extendSelectionUp() {
+        guard selectedIndex > 0 else { return }
+        
+        let currentItem = filteredItems[selectedIndex]
+        let previousIndex = selectedIndex - 1
+        let previousItem = filteredItems[previousIndex]
+        
+        if selectedIDs.isEmpty {
+            selectSingle(currentItem.id)
+            return
+        }
+        
+        // If moving up, always include the new item
+        selectedIDs.insert(previousItem.id)
+        selectionAnchor = selectionAnchor ?? currentItem.id
+        
+        selectedIndex = previousIndex
+        // selectedID will be synced via onChange(of: selectedIndex)
+    }
+    
+    /// Extend selection downward (Shift+↓ behavior)
+    private func extendSelectionDown() {
+        guard selectedIndex < filteredItems.count - 1 else { return }
+        
+        let currentItem = filteredItems[selectedIndex]
+        let nextIndex = selectedIndex + 1
+        let nextItem = filteredItems[nextIndex]
+        
+        if selectedIDs.isEmpty {
+            selectSingle(currentItem.id)
+            return
+        }
+        
+        // If moving down, always include the new item
+        selectedIDs.insert(nextItem.id)
+        selectionAnchor = selectionAnchor ?? currentItem.id
+        
+        selectedIndex = nextIndex
+        // selectedID will be synced via onChange(of: selectedIndex)
+    }
+    
+    /// Clear all selections
+    private func clearSelection() {
+        selectedIDs = []
+        selectionAnchor = nil
+        selectedID = nil
+    }
+    
+    /// Download all selected images to a folder
+    /// Download all selected images to a folder
+    private func downloadAllImages() {
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.title = "Select Folder to Save Images"
+        openPanel.prompt = "Select"
+        
+        // Use the newer sheet modal approach
+        if let window = NSApplication.shared.windows.first {
+            openPanel.beginSheetModal(for: window) { response in
+                if response == .OK, let folderURL = openPanel.url {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let imageItems = self.selectedItems.filter { $0.type == .image }
+                        
+                        for (index, item) in imageItems.enumerated() {
+                            if let image = self.store.image(for: item) {
+                                let paddedNumber = String(format: "%04d", index + 1)
+                                let fileName = "image-\(paddedNumber).png"
+                                let fileURL = folderURL.appendingPathComponent(fileName)
+                                
+                                if let tiffData = image.tiffRepresentation,
+                                   let bitmapImage = NSBitmapImageRep(data: tiffData),
+                                   let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+                                    do {
+                                        try pngData.write(to: fileURL)
+                                        print("✅ Saved image to \(fileURL.lastPathComponent)")
+                                    } catch {
+                                        print("❌ Error saving image to \(fileURL): \(error)")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     
     var body: some View {
@@ -209,6 +372,13 @@ struct HistoryContentView: View {
             // Find first unpinned item in filtered results
             let defaultItem = defaultSelectedItem
             selectedID = defaultItem?.id
+            if let id = defaultItem?.id {
+                selectedIDs = [id]
+                selectionAnchor = id
+            } else {
+                selectedIDs = []
+                selectionAnchor = nil
+            }
             // Calculate the correct index
             if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
                 selectedIndex = index
@@ -220,10 +390,29 @@ struct HistoryContentView: View {
             selectedID = filteredItems[safe: newIndex]?.id
         }
         .onChange(of: store.items) { _ in
-            // Preserve selection when items change (new entry added at top)
+            // Remove deleted items from selection set
+            selectedIDs = selectedIDs.filter { id in
+                filteredItems.contains { $0.id == id }
+            }
+            
+            // Preserve selection by UUID lookup, adjust index if needed
             guard let id = selectedID else { return }
-            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }), selectedIndex != newIndex {
-                selectedIndex = newIndex
+            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }) {
+                if selectedIndex != newIndex { selectedIndex = newIndex }
+            } else {
+                // Selected item was deleted — select the item now at the same position (or last)
+                let fallbackIndex = min(selectedIndex, filteredItems.count - 1)
+                if let fallbackItem = filteredItems[safe: fallbackIndex] {
+                    selectedID = fallbackItem.id
+                    selectedIDs = [fallbackItem.id]
+                    selectionAnchor = fallbackItem.id
+                    selectedIndex = fallbackIndex
+                } else {
+                    selectedID = nil
+                    selectedIDs = []
+                    selectionAnchor = nil
+                    selectedIndex = 0
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
@@ -231,6 +420,13 @@ struct HistoryContentView: View {
             // Select first unpinned item, or first item if all are pinned
             let firstUnpinned = store.items.first(where: { !$0.isPinned }) ?? store.items.first
             selectedID = firstUnpinned?.id
+            if let id = firstUnpinned?.id {
+                selectedIDs = [id]
+                selectionAnchor = id
+            } else {
+                selectedIDs = []
+                selectionAnchor = nil
+            }
             // Find the correct index in the filtered (sorted) items
             if let index = filteredItems.firstIndex(where: { $0.id == firstUnpinned?.id }) {
                 selectedIndex = index
@@ -274,12 +470,27 @@ struct HistoryContentView: View {
                 scrollTrigger = true
                 navigateDown()
             },
-            onEnter: { if let item = selectedItem { onPaste(item) } },
+            onExtendUp: {
+                scrollTrigger = true
+                extendSelectionUp()
+            },
+            onExtendDown: {
+                scrollTrigger = true
+                extendSelectionDown()
+            },
+            onEnter: { 
+                if !selectedItems.isEmpty {
+                    // Paste all selected items
+                    onPasteMultiple(Array(selectedItems))
+                } else if let item = selectedItem {
+                    // Fallback to single item paste
+                    onPaste(item)
+                }
+            },
             onEscape: onDismiss,
             onDelete: {
                 if let item = selectedItem {
                     store.delete(item)
-                    // Clear search or reset selection if needed, but the array update will re-render
                 }
             },
             onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
@@ -416,7 +627,11 @@ struct HistoryContentView: View {
                     onPaste: onPaste,
                     onDelete: { item in store.delete(item) },
                     onDismiss: onDismiss,
-                    selectedID: selectedID
+                    selectedID: selectedID,
+                    selectedIDs: $selectedIDs,
+                    onSelectSingle: selectSingle,
+                    onToggleSelection: toggleSelection,
+                    onExtendSelectionTo: extendSelectionTo
                 )
             }
         }
@@ -425,11 +640,23 @@ struct HistoryContentView: View {
     
     private var detailPane: some View {
         VStack(spacing: 0) {
-            // Type indicator
+            // Header with count info or type indicator
             HStack {
                 Spacer()
                 
-                if let item = selectedItem {
+                if selectionCount > 1 {
+                    // Multi-selection header
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle")
+                        Text("\(selectionCount) items selected")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.15))
+                    .cornerRadius(4)
+                } else if let item = selectedItem {
+                    // Single selection header
                     HStack(spacing: 6) {
                         Text(item.type == .text ? "Text" : "Image")
                         
@@ -458,65 +685,67 @@ struct HistoryContentView: View {
                 
                 Spacer()
                 
-                // Action buttons
-                HStack(spacing: 12) {
-                    Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Copy")
-                    
-                    if selectedItem?.type == .image && previewImage != nil {
-                        Button(action: {
-                            if let img = previewImage { PasteController.saveImageToDisk(img) }
-                        }) {
-                            Image(systemName: "arrow.down.to.line")
+                // Action buttons - only show for single selection or hide for multi
+                if selectionCount <= 1 {
+                    HStack(spacing: 12) {
+                        Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
+                            Image(systemName: "doc.on.doc")
                         }
                         .buttonStyle(.plain)
-                        .help("Save image")
-                    }
-                    
-                    // OCR button — only for image items without existing OCR text
-                    if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
-                        Button(action: {
-                            Task {
-                                guard let img = previewImage, let item = selectedItem else { return }
-                                isExtractingText = true
-                                let result = await OCRService.shared.recognizeText(from: img)
-                                let text = result ?? "No text found in this image."
-                                store.setOCRText(text, for: item)
-                                isExtractingText = false
+                        .help("Copy")
+                        
+                        if selectedItem?.type == .image && previewImage != nil {
+                            Button(action: {
+                                if let img = previewImage { PasteController.saveImageToDisk(img) }
+                            }) {
+                                Image(systemName: "arrow.down.to.line")
                             }
-                        }) {
-                            Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
+                            .buttonStyle(.plain)
+                            .help("Save image")
+                        }
+                        
+                        // OCR button — only for image items without existing OCR text
+                        if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
+                            Button(action: {
+                                Task {
+                                    guard let img = previewImage, let item = selectedItem else { return }
+                                    isExtractingText = true
+                                    let result = await OCRService.shared.recognizeText(from: img)
+                                    let text = result ?? "No text found in this image."
+                                    store.setOCRText(text, for: item)
+                                    isExtractingText = false
+                                }
+                            }) {
+                                Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isExtractingText)
+                            .help("Extract Text from Image")
+                        }
+                        
+                        Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
+                            Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
                         }
                         .buttonStyle(.plain)
-                        .disabled(isExtractingText)
-                        .help("Extract Text from Image")
+                        .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
+                        .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
+                        
+                        Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
+                            Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
+                        .help(selectedItem?.isBookmarked == true ? "Remove Bookmark" : "Bookmark")
+                        
+                        Button(action: { if let item = selectedItem { store.delete(item) } }) {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete")
                     }
-                    
-                    Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
-                        Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
-                    .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
-                    
-                    Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
-                        Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
-                    .help(selectedItem?.isBookmarked == true ? "Remove Bookmark" : "Bookmark")
-                    
-                    Button(action: { if let item = selectedItem { store.delete(item) } }) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 13))
                 }
-                .foregroundColor(.secondary)
-                .font(.system(size: 13))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -526,7 +755,12 @@ struct HistoryContentView: View {
             
             // Content preview
             ScrollView {
-                if let item = selectedItem {
+                if selectionCount > 1 {
+                    // Multi-selection summary
+                    multiSelectionSummary
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                } else if let item = selectedItem {
                     itemContent(item)
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -534,6 +768,94 @@ struct HistoryContentView: View {
                     Text("Select an item")
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var multiSelectionSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Count breakdown
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Items")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    Text("\(selectionCount)")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Total Size")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    Text(formattedByteCount(selectedItemsTotalSize))
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+            }
+            
+            Divider()
+            
+            // Type breakdown
+            let textCount = selectedItems.filter { $0.type == .text }.count
+            let imageCount = selectedItems.filter { $0.type == .image }.count
+            
+            VStack(alignment: .leading, spacing: 8) {
+                if textCount > 0 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.text")
+                            .foregroundColor(.secondary)
+                        Text("\(textCount) text \(textCount == 1 ? "item" : "items")")
+                            .font(.system(size: 12))
+                    }
+                }
+                
+                if imageCount > 0 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo")
+                            .foregroundColor(.secondary)
+                        Text("\(imageCount) image \(imageCount == 1 ? "item" : "items")")
+                            .font(.system(size: 12))
+                    }
+                }
+            }
+            
+            Divider()
+            
+            // Download All Images button (only show if all selected items are images)
+            if textCount == 0 && imageCount > 0 {
+                Button(action: downloadAllImages) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("Download All (\(imageCount))")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Divider()
+            }
+            
+            // First selected item preview (optional)
+            if let firstItem = selectedItems.first, firstItem.type == .text {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("First item preview")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    
+                    let preview = (firstItem.textContent ?? "").prefix(200)
+                    Text(String(preview))
+                        .font(.system(size: 12))
+                        .foregroundColor(.primary.opacity(0.8))
+                        .lineLimit(4)
+                        .truncationMode(.tail)
                 }
             }
         }
@@ -643,12 +965,25 @@ struct HistoryContentView: View {
     private func navigateUp() {
         if selectedIndex > 0 {
             selectedIndex -= 1
+            // Clear multi-selection when navigating without Shift
+            if let item = filteredItems[safe: selectedIndex] {
+                selectedID = item.id
+                selectedIDs = [item.id]
+                selectionAnchor = item.id
+            }
         }
     }
     
     private func navigateDown() {
         if selectedIndex < filteredItems.count - 1 {
             selectedIndex += 1
+            // Clear multi-selection when navigating without Shift
+            if let item = filteredItems[safe: selectedIndex] {
+                selectedID = item.id
+                selectedIDs = [item.id]
+                selectionAnchor = item.id
+            }
+            // selectedID will be synced via onChange(of: selectedIndex)
         }
     }
     
@@ -768,6 +1103,8 @@ extension Array {
 struct GlobalKeyMonitor: NSViewRepresentable {
     let onUp: () -> Void
     let onDown: () -> Void
+    let onExtendUp: () -> Void
+    let onExtendDown: () -> Void
     let onEnter: () -> Void
     let onEscape: () -> Void
     let onDelete: () -> Void
@@ -790,10 +1127,18 @@ struct GlobalKeyMonitor: NSViewRepresentable {
             let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 switch event.keyCode {
                 case 126: // Up
-                    onUp()
+                    if event.modifierFlags.contains(.shift) {
+                        onExtendUp()
+                    } else {
+                        onUp()
+                    }
                     return nil // Consume event
                 case 125: // Down
-                    onDown()
+                    if event.modifierFlags.contains(.shift) {
+                        onExtendDown()
+                    } else {
+                        onDown()
+                    }
                     return nil // Consume event
                 case 36: // Enter
                     onEnter()
