@@ -20,14 +20,17 @@
 ---
 
 ### ✨ Why Buffer?
-- **Ultra-lightweight** — Only ~2 MB download/install, minimal RAM/CPU usage
-- **100% Private & Local** — Everything stays on your Mac, no cloud, no tracking
-- **Text + Images + OCR** — Copies anything; extracts searchable text from images/screenshots/memes using on-device Vision
-- **Great for developers** — Handles large text snippets, JSON payloads, logs, and other verbose content with ease
-- **Instant Access** — Global hotkey ⇧⌘V opens history in a flash
-- **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app
-- **Bookmarks** — Star important items with Cmd+B for quick reuse
-- **Open Source** — MIT license, actively maintained
+
+- **Ultra-lightweight** — Only ~2 MB download/install, minimal RAM/CPU usage  
+- **100% Private &amp; Local** — Everything stays on your Mac, no cloud, no tracking  
+- **Text + Images + OCR** — Copies anything; extracts searchable text from images/screenshots/memes using on-device Vision  
+- **Great for developers** — Handles large text snippets, JSON payloads, logs, and other verbose content with ease  
+- **Large-content friendly** — Lazy, chunked previews and disk-backed storage for multi‑MB text, with size indicators  
+- **Pins & Smart History** — Pin favorites, keep them anchored, and cycle history while prioritizing unpinned items  
+- **Bookmarks** — Star important items with Cmd+B for quick reuse  
+- **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
+- **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app  
+- **Open Source** — MIT license, actively maintained  
 
 ---
 
@@ -45,6 +48,11 @@
 3. Launch it (lives in menu bar)
 
 ---
+
+### 🛣️ Coming Next
+
+- Multi‑paste support for quickly pasting multiple items in sequence  
+- Content Editing
 
 ## 🚀 Getting Started
 
