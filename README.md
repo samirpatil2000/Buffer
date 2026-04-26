@@ -76,6 +76,10 @@
   <em>Beautiful split-pane interface with search and preview</em>
 </p>
 
+#### Multi select & paste
+
+<img width="800" height="525" alt="buffer-26-apr-v2-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/5dd61f35-9b16-413d-aec9-8e89fff4f7f8" />
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
