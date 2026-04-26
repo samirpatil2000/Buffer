@@ -1029,7 +1029,26 @@ struct HistoryContentView: View {
             Text("Navigate")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.8))
-            
+
+            Color.primary.opacity(0.1)
+                .frame(width: 2, height: 14)
+
+            HStack(spacing: 4) {
+                Text("⌘↑↓")
+                    .font(.system(size: 10))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(3)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                Text("multi-select")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+
             HStack(spacing: 4) {
                 Text("⌘P")
                     .font(.system(size: 10))
