@@ -114,26 +114,15 @@ open Buffer.xcodeproj
 
 ---
 
-## 📁 Project Structure
+## Star History
 
-```
-Buffer/
-├── BufferApp.swift          # App entry point
-├── AppDelegate.swift        # App lifecycle & hotkey setup
-├── Models/
-│   └── ClipboardItem.swift  # Clipboard item data model
-├── Services/
-│   ├── ClipboardStore.swift    # Persistent storage
-│   ├── ClipboardWatcher.swift  # Monitors clipboard changes
-│   ├── HotkeyManager.swift     # Global keyboard shortcuts
-│   └── PasteController.swift   # Paste functionality
-└── Views/
-    ├── HistoryWindow.swift      # Main history window
-    ├── ClipboardListView.swift  # List of clipboard items
-    ├── ClipboardItemRow.swift   # Individual item row
-    ├── SearchField.swift        # Search component
-    └── StatusBarController.swift # Menu bar controller
-```
+<a href="https://www.star-history.com/?repos=samirpatil2000%2Fbuffer&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=samirpatil2000/buffer&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=samirpatil2000/buffer&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=samirpatil2000/buffer&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
