@@ -17,7 +17,6 @@
 		AAA00008 /* HistoryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00008 /* HistoryWindow.swift */; };
 		AAA00009 /* ClipboardListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00009 /* ClipboardListView.swift */; };
 		AAA00010 /* ClipboardItemRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00010 /* ClipboardItemRow.swift */; };
-		AAA00011 /* SearchField.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00011 /* SearchField.swift */; };
 		AAA00012 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00012 /* StatusBarController.swift */; };
 		AAA00013 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00015 /* SettingsManager.swift */; };
 		AAA00014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00016 /* SettingsView.swift */; };
@@ -37,7 +36,6 @@
 		BBB00008 /* HistoryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryWindow.swift; sourceTree = "<group>"; };
 		BBB00009 /* ClipboardListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardListView.swift; sourceTree = "<group>"; };
 		BBB00010 /* ClipboardItemRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemRow.swift; sourceTree = "<group>"; };
-		BBB00011 /* SearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchField.swift; sourceTree = "<group>"; };
 		BBB00012 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		BBB00013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BBB00014 /* Buffer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Buffer.entitlements; sourceTree = "<group>"; };
@@ -109,7 +107,6 @@
 				BBB00008 /* HistoryWindow.swift */,
 				BBB00009 /* ClipboardListView.swift */,
 				BBB00010 /* ClipboardItemRow.swift */,
-				BBB00011 /* SearchField.swift */,
 				BBB00012 /* StatusBarController.swift */,
 				BBB00016 /* SettingsView.swift */,
 			);
@@ -202,7 +199,6 @@
 				AAA00008 /* HistoryWindow.swift in Sources */,
 				AAA00009 /* ClipboardListView.swift in Sources */,
 				AAA00010 /* ClipboardItemRow.swift in Sources */,
-				AAA00011 /* SearchField.swift in Sources */,
 				AAA00012 /* StatusBarController.swift in Sources */,
 				AAA00013 /* SettingsManager.swift in Sources */,
 				AAA00014 /* SettingsView.swift in Sources */,
@@ -349,7 +345,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = N26FZ4GW28;
+				DEVELOPMENT_TEAM = RN8RYUV55Y;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -390,7 +386,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = N26FZ4GW28;
+				DEVELOPMENT_TEAM = RN8RYUV55Y;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;

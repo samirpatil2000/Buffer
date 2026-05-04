@@ -11,7 +11,6 @@ struct ClipboardListView: View {
     let onPaste: (ClipboardItem) -> Void
     let onDelete: (ClipboardItem) -> Void
     let onDismiss: () -> Void
-    let selectedID: UUID?  // Track selection by item ID for stability during list mutations
     
     // Multi-select support
     @Binding var selectedIDs: Set<UUID>
@@ -57,8 +56,9 @@ struct ClipboardListView: View {
                         ClipboardItemRow(
                             item: item,
                             store: store,
-                            isPrimarySelection: item.id == selectedID,
-                            isMultiSelected: selectedIDs.contains(item.id)
+                            isMultiSelected: selectedIDs.contains(item.id),
+                            joinsSelectionAbove: index > 0 && selectedIDs.contains(items[index - 1].id),
+                            joinsSelectionBelow: index < items.count - 1 && selectedIDs.contains(items[index + 1].id)
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
@@ -98,6 +98,12 @@ struct ClipboardListView: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
             }
+            .background(
+                ScrollViewConfigurator { scrollView in
+                    scrollView.scrollerStyle = .overlay
+                    scrollView.verticalScroller?.controlSize = .small
+                }
+            )
             .onChange(of: selectedIndex) { newValue in
                 // Only scroll if triggered by keyboard
                 if scrollTrigger {
@@ -120,3 +126,24 @@ struct ClipboardListView: View {
     }
 }
 
+private struct ScrollViewConfigurator: NSViewRepresentable {
+    let configure: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let scrollView = view.enclosingScrollView {
+                configure(scrollView)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let scrollView = nsView.enclosingScrollView {
+                configure(scrollView)
+            }
+        }
+    }
+}

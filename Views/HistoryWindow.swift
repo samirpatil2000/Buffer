@@ -156,7 +156,6 @@ struct HistoryContentView: View {
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
-    @State private var itemSize: Int?         // Holds computed size of item
     
     // Multi-select state
     @State private var selectedIDs: Set<UUID> = []
@@ -368,6 +367,7 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
+        .ignoresSafeArea(.container, edges: .top)
         .onChange(of: searchText) { _ in
             // Find first unpinned item in filtered results
             let defaultItem = defaultSelectedItem
@@ -443,12 +443,9 @@ struct HistoryContentView: View {
             previewImage = nil
             chunkedText = ChunkedTextState()
             isExtractingText = false
-            itemSize = nil
             
             // Load new preview async
             if let item = selectedItem {
-                itemSize = store.itemSize(for: item)
-                
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
                 } else if item.type == .text {
@@ -524,9 +521,7 @@ struct HistoryContentView: View {
     private func loadInitialChunk(for item: ClipboardItem) async {
         chunkedText.isLoadingMore = true // Initial load spinner
         
-        let chunkResult = await Task.detached(priority: .userInitiated) {
-            self.store.textChunk(for: item, charCount: ChunkedTextState.initialChars)
-        }.value
+        let chunkResult = store.textChunk(for: item, charCount: ChunkedTextState.initialChars)
         
         if let result = chunkResult {
             chunkedText.visibleText = result.text
@@ -543,9 +538,7 @@ struct HistoryContentView: View {
         chunkedText.isLoadingMore = true
         let nextCharCount = chunkedText.loadedCharCount + ChunkedTextState.chunkSize
         
-        let chunkResult = await Task.detached(priority: .userInitiated) {
-            self.store.textChunk(for: item, charCount: nextCharCount)
-        }.value
+        let chunkResult = store.textChunk(for: item, charCount: nextCharCount)
         
         if let result = chunkResult {
             chunkedText.visibleText = result.text
@@ -596,7 +589,9 @@ struct HistoryContentView: View {
                 .foregroundColor(.secondary.opacity(0.6))
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .frame(height: 40)
         .background(
             Color(NSColor.controlBackgroundColor)
                 .overlay(
@@ -627,7 +622,6 @@ struct HistoryContentView: View {
                     onPaste: onPaste,
                     onDelete: { item in store.delete(item) },
                     onDismiss: onDismiss,
-                    selectedID: selectedID,
                     selectedIDs: $selectedIDs,
                     onSelectSingle: selectSingle,
                     onToggleSelection: toggleSelection,
@@ -653,34 +647,8 @@ struct HistoryContentView: View {
                     .font(.system(size: 11, weight: .medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.15))
-                    .cornerRadius(4)
-                } else if let item = selectedItem {
-                    // Single selection header
-                    HStack(spacing: 6) {
-                        Text(item.type == .text ? "Text" : "Image")
-                        
-                        if item.isFileBacked {
-                            Text("Large")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.8))
-                                .cornerRadius(4)
-                        }
-                        
-                        if let size = itemSize, size > 0 {
-                            Text(formattedByteCount(size))
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.5))
-                        }
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.2))
-                    .cornerRadius(4)
+                    .background(Color(nsColor: .selectedContentBackgroundColor).opacity(0.22))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 
                 Spacer()
@@ -1024,17 +992,14 @@ struct HistoryContentView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                
+                Text("Navigate")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.secondary.opacity(0.8))
             }
-            
-            Text("Navigate")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(.secondary.opacity(0.8))
-
-            Color.primary.opacity(0.1)
-                .frame(width: 2, height: 14)
 
             HStack(spacing: 4) {
-                Text("⌘↑↓")
+                Text("⇧ ↑↓")
                     .font(.system(size: 10))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
@@ -1044,19 +1009,27 @@ struct HistoryContentView: View {
                         RoundedRectangle(cornerRadius: 3)
                             .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
                     )
-                Text("multi-select")
+                Text("Multiselect")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary.opacity(0.6))
             }
+            .foregroundColor(.secondary.opacity(0.6))
 
             HStack(spacing: 4) {
                 Text("⌘P")
                     .font(.system(size: 10))
-                Text("pin")
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(3)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                Text("Pin")
                     .font(.system(size: 11))
             }
             .foregroundColor(.secondary.opacity(0.6))
-            .padding(.leading, 8)
             
             if selectedItem?.type == .image {
                 HStack(spacing: 4) {
@@ -1079,27 +1052,10 @@ struct HistoryContentView: View {
                     .font(.system(size: 11))
             }
             .foregroundColor(.secondary.opacity(0.6))
-            
-            // Paste button - Apple-style, refined
-            Button(action: { if let item = selectedItem { onPaste(item) } }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Paste")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.85))
-                )
-                .foregroundColor(Color(NSColor.windowBackgroundColor))
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(height: 40)
         .background(
             Color(NSColor.controlBackgroundColor)
                 .overlay(
@@ -1136,7 +1092,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             // Add local monitor to window
-            guard let window = view.window else { return }
+            guard view.window != nil else { return }
             
             // We use a property on the window or controller to store the monitor
             // But for simplicity in SwiftUI, we'll use a weak ref approach here

@@ -1,27 +1,35 @@
 import SwiftUI
+import AppKit
 
 /// Single row displaying a clipboard item - optimized for smooth scrolling
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let store: ClipboardStore
-    let isPrimarySelection: Bool  // True for focused row (full accent), false otherwise
     let isMultiSelected: Bool     // True if this item is part of multi-selection
+    let joinsSelectionAbove: Bool
+    let joinsSelectionBelow: Bool
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
     
     private var backgroundColor: Color {
-        if isMultiSelected && !isPrimarySelection {
-            // Multi-selected item: distinct purple highlight
-            return Color.purple.opacity(0.15)
-        } else if isPrimarySelection {
-            // Single selection: blue highlight (original behavior)
-            return Color.accentColor.opacity(0.25)
+        if isMultiSelected {
+            return Color(nsColor: .selectedContentBackgroundColor)
         } else if isHovered {
             return Color.primary.opacity(0.06)
         }
         return Color.clear
     }
+
+    private var foregroundColor: Color {
+        isMultiSelected ? Color(nsColor: .selectedTextColor) : .primary
+    }
+
+    private var secondaryForegroundColor: Color {
+        isMultiSelected ? Color(nsColor: .selectedTextColor).opacity(0.82) : .secondary
+    }
+
+    private var selectionCornerRadius: CGFloat { 6 }
     
     /// Truncated preview for list display - short and single line
     private var truncatedPreviewText: String {
@@ -44,7 +52,7 @@ struct ClipboardItemRow: View {
             // Content preview - truncated for list view
             Text(truncatedPreviewText)
                 .font(.system(size: 13))
-                .foregroundColor(.primary)
+                .foregroundColor(foregroundColor)
                 .lineLimit(1)
             
             Spacer(minLength: 0)
@@ -60,7 +68,7 @@ struct ClipboardItemRow: View {
             if let app = item.sourceApp {
                 Text(app)
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(secondaryForegroundColor)
             }
             
             // Pin indicator
@@ -72,8 +80,7 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(backgroundColor)
-        .cornerRadius(4)
+        .background(selectionBackground)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -103,7 +110,7 @@ struct ClipboardItemRow: View {
             case .text:
                 Image(systemName: "doc.text")
                     .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(secondaryForegroundColor)
             case .image:
                 if let img = thumbnail {
                     Image(nsImage: img)
@@ -120,6 +127,34 @@ struct ClipboardItemRow: View {
                         .frame(width: 20, height: 20)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionBackground: some View {
+        if isMultiSelected {
+            ZStack {
+                RoundedRectangle(cornerRadius: selectionCornerRadius)
+                    .fill(backgroundColor)
+
+                if joinsSelectionAbove {
+                    Rectangle()
+                        .fill(backgroundColor)
+                        .frame(height: selectionCornerRadius)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+
+                if joinsSelectionBelow {
+                    Rectangle()
+                        .fill(backgroundColor)
+                        .frame(height: selectionCornerRadius)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+        } else {
+            Rectangle()
+                .fill(backgroundColor)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
     }
     

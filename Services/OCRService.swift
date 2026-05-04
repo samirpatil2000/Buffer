@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import Vision
+@preconcurrency import Vision
 
 /// Service for extracting text from images using Apple's Vision framework (on-device OCR)
 class OCRService {

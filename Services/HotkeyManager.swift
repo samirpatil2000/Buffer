@@ -70,7 +70,7 @@ class HotkeyManager {
         if mods.option { modifiers |= UInt32(optionKey) }
         if mods.control { modifiers |= UInt32(controlKey) }
         
-        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1) // "BUFF"
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1) // "BUFF"
         
         let registerStatus = RegisterEventHotKey(
             requiredKeyCode,
