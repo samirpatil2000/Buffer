@@ -461,7 +461,9 @@ struct HistoryContentView: View {
     }
 
     private func setQuickPasteMode(_ isEnabled: Bool) {
-        showsQuickPasteNumbers = isEnabled
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+            showsQuickPasteNumbers = isEnabled
+        }
     }
 
     private func performQuickPaste(at index: Int) {

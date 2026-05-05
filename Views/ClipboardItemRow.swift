@@ -57,6 +57,12 @@ struct ClipboardItemRow: View {
         HStack(spacing: 10) {
             if let quickPasteNumber {
                 quickPasteBadge(quickPasteNumber)
+                    .transition(
+                        .asymmetric(
+                            insertion: .offset(x: -10).combined(with: .opacity),
+                            removal: .offset(x: -10).combined(with: .opacity)
+                        )
+                    )
             }
 
             leadingVisual
@@ -91,6 +97,7 @@ struct ClipboardItemRow: View {
                 sourceAppIcon = await loadSourceApplicationIcon()
             }
         }
+        .animation(.spring(response: 0.22, dampingFraction: 0.9), value: quickPasteNumber != nil)
     }
 
     private func quickPasteBadge(_ number: Int) -> some View {
