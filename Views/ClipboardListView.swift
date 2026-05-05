@@ -7,6 +7,7 @@ struct ClipboardListView: View {
     @Binding var selectedIndex: Int
     @Binding var scrollTrigger: Bool
     let store: ClipboardStore
+    let showsQuickPasteNumbers: Bool
     let onSelect: (ClipboardItem) -> Void
     let onPaste: (ClipboardItem) -> Void
     let onDelete: (ClipboardItem) -> Void
@@ -58,7 +59,8 @@ struct ClipboardListView: View {
                             store: store,
                             isMultiSelected: selectedIDs.contains(item.id),
                             joinsSelectionAbove: index > 0 && selectedIDs.contains(items[index - 1].id),
-                            joinsSelectionBelow: index < items.count - 1 && selectedIDs.contains(items[index + 1].id)
+                            joinsSelectionBelow: index < items.count - 1 && selectedIDs.contains(items[index + 1].id),
+                            quickPasteNumber: showsQuickPasteNumbers && index < 5 ? index + 1 : nil
                         )
                         .id(item.id)
                         .contentShape(Rectangle())

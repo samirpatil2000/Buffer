@@ -272,6 +272,7 @@ struct HistoryContentView: View {
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     @State private var shouldRefocusSearchOnActivate = false
+    @State private var showsQuickPasteNumbers = false
     
     // Multi-select state
     @State private var selectedIDs: Set<UUID> = []
@@ -458,6 +459,16 @@ struct HistoryContentView: View {
             isSearchFocused = true
         }
     }
+
+    private func setQuickPasteMode(_ isEnabled: Bool) {
+        showsQuickPasteNumbers = isEnabled
+    }
+
+    private func performQuickPaste(at index: Int) {
+        guard let item = filteredItems[safe: index] else { return }
+        selectSingle(item.id)
+        onPaste(item)
+    }
     
     /// Download all selected images to a folder
     /// Download all selected images to a folder
@@ -542,6 +553,7 @@ struct HistoryContentView: View {
         }
         .onAppear {
             syncSelection()
+            setQuickPasteMode(NSEvent.modifierFlags.contains(.command))
             if NSApp.isActive {
                 focusSearchField()
             }
@@ -549,6 +561,7 @@ struct HistoryContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { notification in
             searchText = ""
             syncSelection(preferredID: filteredItems.first?.id)
+            setQuickPasteMode(NSEvent.modifierFlags.contains(.command))
             let shouldFocusSearch = (notification.object as? Bool) ?? true
             if shouldFocusSearch {
                 shouldRefocusSearchOnActivate = true
@@ -561,6 +574,9 @@ struct HistoryContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 shouldRefocusSearchOnActivate = false
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            setQuickPasteMode(false)
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -616,7 +632,9 @@ struct HistoryContentView: View {
                 if selectedItem?.type == .image, let img = previewImage {
                     PasteController.saveImageToDisk(img)
                 }
-            }
+            },
+            onQuickPaste: performQuickPaste,
+            onCommandChanged: setQuickPasteMode
         ))
     }
     
@@ -719,6 +737,7 @@ struct HistoryContentView: View {
                     selectedIndex: $selectedIndex,
                     scrollTrigger: $scrollTrigger,
                     store: store,
+                    showsQuickPasteNumbers: showsQuickPasteNumbers,
                     onSelect: onCopyToClipboard,
                     onPaste: onPaste,
                     onDelete: { item in store.delete(item) },
@@ -1227,6 +1246,8 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onCopy: () -> Void
     let onPin: () -> Void
     let onSaveImage: () -> Void
+    let onQuickPaste: (Int) -> Void
+    let onCommandChanged: (Bool) -> Void
     
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -1239,7 +1260,14 @@ struct GlobalKeyMonitor: NSViewRepresentable {
             // or just rely on the view traversing up. 
             // Actually, best way is to add monitor to the window.
             
-            let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+                let isCommandPressed = event.modifierFlags.contains(.command)
+
+                if event.type == .flagsChanged {
+                    onCommandChanged(isCommandPressed)
+                    return event
+                }
+
                 switch event.keyCode {
                 case 126: // Up
                     if event.modifierFlags.contains(.shift) {
@@ -1295,6 +1323,23 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                         return nil
                     }
                     return event
+                case 18...23:
+                    guard isCommandPressed else { return event }
+
+                    let quickPasteIndexByKeyCode: [UInt16: Int] = [
+                        18: 0, // 1
+                        19: 1, // 2
+                        20: 2, // 3
+                        21: 3, // 4
+                        23: 4  // 5
+                    ]
+
+                    guard let quickPasteIndex = quickPasteIndexByKeyCode[event.keyCode] else {
+                        return event
+                    }
+
+                    onQuickPaste(quickPasteIndex)
+                    return nil
                 default:
                     return event
                 }

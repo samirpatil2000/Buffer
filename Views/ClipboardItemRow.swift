@@ -8,6 +8,7 @@ struct ClipboardItemRow: View {
     let isMultiSelected: Bool     // True if this item is part of multi-selection
     let joinsSelectionAbove: Bool
     let joinsSelectionBelow: Bool
+    let quickPasteNumber: Int?
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
@@ -54,6 +55,10 @@ struct ClipboardItemRow: View {
     
     var body: some View {
         HStack(spacing: 10) {
+            if let quickPasteNumber {
+                quickPasteBadge(quickPasteNumber)
+            }
+
             leadingVisual
                 .frame(width: 24, height: 24)
             
@@ -86,6 +91,21 @@ struct ClipboardItemRow: View {
                 sourceAppIcon = await loadSourceApplicationIcon()
             }
         }
+    }
+
+    private func quickPasteBadge(_ number: Int) -> some View {
+        Text("\(number)")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(foregroundColor)
+            .frame(width: 20, height: 20)
+            .background(
+                Circle()
+                    .fill(Color.primary.opacity(isMultiSelected ? 0.18 : 0.08))
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.primary.opacity(isMultiSelected ? 0.22 : 0.12), lineWidth: 0.5)
+            )
     }
     
     @ViewBuilder
