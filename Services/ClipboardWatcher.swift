@@ -81,7 +81,7 @@ class ClipboardWatcher: ObservableObject {
         }
         
         // Get current frontmost app as source
-        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
+        let sourceApp = currentSourceApplicationName()
         
         // Check for single image file from Finder BEFORE text check
         // (Finder always writes both NSFilenamesPboardType + .string, so we must intercept first)
@@ -141,6 +141,10 @@ class ClipboardWatcher: ObservableObject {
                 }
             }
         }
+    }
+
+    private func currentSourceApplicationName() -> String? {
+        ActiveApplicationMonitor.shared.currentApplicationName
     }
     
     private func getImageData(from pasteboard: NSPasteboard) -> Data? {

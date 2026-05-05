@@ -1,6 +1,5 @@
 import Cocoa
 import SwiftUI
-import Carbon.HIToolbox
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
@@ -13,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon - we're menu bar only
         NSApp.setActivationPolicy(.accessory)
+        _ = ActiveApplicationMonitor.shared
         
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: "hasLaunchedBefore") {
@@ -22,10 +22,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 defaults.set(true, forKey: "hasLaunchedBefore")
             }
         }
-        
-        // Request Accessibility permissions for global hotkeys
-        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
         
         // Initialize clipboard watcher
         clipboardWatcher = ClipboardWatcher(store: clipboardStore)
@@ -49,6 +45,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .bufferHotkeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.hotkeyManager?.reregister()
         }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.showHistoryWindow(focusSearch: true, activateApp: false)
+        }
     }
     
     func applicationWillTerminate(_ notification: Notification) {
@@ -68,9 +68,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    private func showHistoryWindow() {
+    private func showHistoryWindow(
+        focusSearch: Bool = true,
+        activateApp: Bool = true
+    ) {
         let historyWindowController = historyWindowController ?? makeHistoryWindowController()
-        historyWindowController.showWindow(nil)
+        historyWindowController.showWindow(
+            nil,
+            focusSearch: focusSearch,
+            activateApp: activateApp
+        )
     }
 
     private func makeHistoryWindowController() -> HistoryWindowController {

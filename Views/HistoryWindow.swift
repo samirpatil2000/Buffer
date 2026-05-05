@@ -38,9 +38,14 @@ private final class BufferLiquidGlassEffectView: NSGlassEffectView, BufferEffect
     }
 }
 
+private enum HistoryWindowStyle {
+    static let panelCornerRadius = CGFloat(24)
+    static let panelBorderOpacity = 0.18
+}
+
 private final class BufferFrostedGlassEffectView: NSVisualEffectView, BufferEffectView {
     convenience init() {
-        self.init(frame: .zero)
+        self.init()
         blendingMode = .behindWindow
         state = .active
         material = .hudWindow
@@ -67,6 +72,10 @@ private final class BufferFrostedGlassEffectView: NSVisualEffectView, BufferEffe
         mask.resizingMode = .stretch
         maskImage = mask
     }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 }
 
 private func makeBufferEffectView() -> BufferEffectHostView {
@@ -79,11 +88,6 @@ private func makeBufferEffectView() -> BufferEffectHostView {
     let effectView = BufferFrostedGlassEffectView()
     effectView.updateBufferAppearance(cornerRadius: HistoryWindowStyle.panelCornerRadius)
     return effectView
-}
-
-private enum HistoryWindowStyle {
-    static let panelCornerRadius = CGFloat(24)
-    static let panelBorderOpacity = 0.18
 }
 
 /// Custom panel that closes when clicking outside
@@ -114,6 +118,7 @@ class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
     private var previousApp: NSRunningApplication?
     private var hostingView: NSHostingView<HistoryContentView>?
+    private var focusSearchOnNextOpen = true
     
     init(store: ClipboardStore) {
         self.store = store
@@ -121,7 +126,7 @@ class HistoryWindowController: NSWindowController {
         // Wider window for split pane
         let panel = HistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 480),
-            styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -171,8 +176,11 @@ class HistoryWindowController: NSWindowController {
             forName: NSWindow.didBecomeKeyNotification,
             object: panel,
             queue: .main
-        ) { _ in
-            NotificationCenter.default.post(name: .bufferWindowDidOpen, object: nil)
+        ) { [weak self] _ in
+            NotificationCenter.default.post(
+                name: .bufferWindowDidOpen,
+                object: self?.focusSearchOnNextOpen ?? true
+            )
         }
     }
     
@@ -195,7 +203,6 @@ class HistoryWindowController: NSWindowController {
         let effectView = makeBufferEffectView()
         effectView.frame = window?.contentView?.bounds ?? .zero
         effectView.autoresizingMask = [.width, .height]
-        effectView.updateBufferAppearance(cornerRadius: HistoryWindowStyle.panelCornerRadius)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = effectView.bounds
         hostingView.autoresizingMask = [.width, .height]
@@ -226,12 +233,18 @@ class HistoryWindowController: NSWindowController {
     }
     
     override func showWindow(_ sender: Any?) {
-        previousApp = NSWorkspace.shared.frontmostApplication
+        showWindow(sender, focusSearch: true, activateApp: true)
+    }
+
+    func showWindow(_ sender: Any?, focusSearch: Bool, activateApp: Bool) {
+        focusSearchOnNextOpen = focusSearch
+        previousApp = ActiveApplicationMonitor.shared.currentApplication
         window?.center()
         super.showWindow(sender)
-        NSApp.activate(ignoringOtherApps: true)
+        if activateApp {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         window?.makeKeyAndOrderFront(nil)
-        window?.makeFirstResponder(window?.contentView)
     }
 }
 
@@ -256,6 +269,7 @@ struct HistoryContentView: View {
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
+    @State private var shouldRefocusSearchOnActivate = false
     
     // Multi-select state
     @State private var selectedIDs: Set<UUID> = []
@@ -400,6 +414,48 @@ struct HistoryContentView: View {
         selectionAnchor = nil
         selectedID = nil
     }
+
+    private func syncSelection(preferredID: UUID? = nil) {
+        guard !filteredItems.isEmpty else {
+            clearSelection()
+            selectedIndex = 0
+            return
+        }
+
+        let targetID = preferredID
+            ?? selectedID
+            ?? selectedIDs.first
+            ?? filteredItems.first?.id
+
+        guard let targetID,
+              let index = filteredItems.firstIndex(where: { $0.id == targetID }) else {
+            if let firstID = filteredItems.first?.id {
+                selectedID = firstID
+                selectedIDs = [firstID]
+                selectionAnchor = firstID
+                selectedIndex = 0
+            }
+            return
+        }
+
+        selectedID = targetID
+        selectedIDs = [targetID]
+        selectionAnchor = targetID
+        selectedIndex = index
+    }
+
+    private func focusSearchField() {
+        isSearchFocused = false
+        DispatchQueue.main.async {
+            isSearchFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isSearchFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isSearchFocused = true
+        }
+    }
     
     /// Download all selected images to a folder
     /// Download all selected images to a folder
@@ -474,73 +530,34 @@ struct HistoryContentView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .onChange(of: searchText) { _ in
-            // Find first unpinned item in filtered results
-            let defaultItem = defaultSelectedItem
-            selectedID = defaultItem?.id
-            if let id = defaultItem?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
-            }
-            // Calculate the correct index
-            if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
+            syncSelection(preferredID: filteredItems.first?.id)
         }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
         }
         .onChange(of: store.items) { _ in
-            // Remove deleted items from selection set
-            selectedIDs = selectedIDs.filter { id in
-                filteredItems.contains { $0.id == id }
-            }
-            
-            // Preserve selection by UUID lookup, adjust index if needed
-            guard let id = selectedID else { return }
-            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }) {
-                if selectedIndex != newIndex { selectedIndex = newIndex }
-            } else {
-                // Selected item was deleted — select the item now at the same position (or last)
-                let fallbackIndex = min(selectedIndex, filteredItems.count - 1)
-                if let fallbackItem = filteredItems[safe: fallbackIndex] {
-                    selectedID = fallbackItem.id
-                    selectedIDs = [fallbackItem.id]
-                    selectionAnchor = fallbackItem.id
-                    selectedIndex = fallbackIndex
-                } else {
-                    selectedID = nil
-                    selectedIDs = []
-                    selectionAnchor = nil
-                    selectedIndex = 0
-                }
+            syncSelection()
+        }
+        .onAppear {
+            syncSelection()
+            if NSApp.isActive {
+                focusSearchField()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { notification in
             searchText = ""
-            // Select first unpinned item, or first item if all are pinned
-            let firstUnpinned = store.items.first(where: { !$0.isPinned }) ?? store.items.first
-            selectedID = firstUnpinned?.id
-            if let id = firstUnpinned?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
+            syncSelection(preferredID: filteredItems.first?.id)
+            let shouldFocusSearch = (notification.object as? Bool) ?? true
+            if shouldFocusSearch {
+                shouldRefocusSearchOnActivate = true
+                focusSearchField()
             }
-            // Find the correct index in the filtered (sorted) items
-            if let index = filteredItems.firstIndex(where: { $0.id == firstUnpinned?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
-            // Delay needed for NSHostingView to have settled as key window
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isSearchFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard shouldRefocusSearchOnActivate else { return }
+            focusSearchField()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                shouldRefocusSearchOnActivate = false
             }
         }
         .task(id: selectedItem?.id) {
@@ -750,22 +767,27 @@ struct HistoryContentView: View {
                 // Action buttons - only show for single selection or hide for multi
                 if selectionCount <= 1 {
                     HStack(spacing: 10) {
-                        headerGlassActionButton(help: "Copy", action: {
+                        headerGlassSymbolButton(
+                            help: "Copy",
+                            systemName: "doc.on.doc"
+                        ) {
                             if let item = selectedItem { onCopyToClipboard(item) }
-                        }) {
-                            Image(systemName: "doc.on.doc")
                         }
 
                         if selectedItem?.type == .image && previewImage != nil {
-                            headerGlassActionButton(help: "Save image", action: {
+                            headerGlassSymbolButton(
+                                help: "Save image",
+                                systemName: "arrow.down.to.line"
+                            ) {
                                 if let img = previewImage { PasteController.saveImageToDisk(img) }
-                            }) {
-                                Image(systemName: "arrow.down.to.line")
                             }
                         }
 
                         if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
-                            headerGlassActionButton(help: "Extract Text from Image", action: {
+                            headerGlassSymbolButton(
+                                help: "Extract Text from Image",
+                                systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder"
+                            ) {
                                 Task {
                                     guard let img = previewImage, let item = selectedItem else { return }
                                     isExtractingText = true
@@ -774,23 +796,23 @@ struct HistoryContentView: View {
                                     store.setOCRText(text, for: item)
                                     isExtractingText = false
                                 }
-                            }) {
-                                Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
                             }
                             .disabled(isExtractingText)
                         }
 
-                        headerGlassActionButton(help: selectedItem?.isPinned == true ? "Unpin" : "Pin", action: {
+                        headerGlassSymbolButton(
+                            help: selectedItem?.isPinned == true ? "Unpin" : "Pin",
+                            systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin",
+                            tint: selectedItem?.isPinned == true ? .accentColor : .secondary
+                        ) {
                             if let item = selectedItem { store.togglePin(for: item) }
-                        }) {
-                            Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
-                                .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
                         }
 
-                        headerGlassActionButton(help: "Delete", action: {
+                        headerGlassSymbolButton(
+                            help: "Delete",
+                            systemName: "trash"
+                        ) {
                             if let item = selectedItem { store.delete(item) }
-                        }) {
-                            Image(systemName: "trash")
                         }
                     }
                     .foregroundColor(.secondary)
@@ -818,10 +840,6 @@ struct HistoryContentView: View {
                     itemContent(item)
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                } else {
-                    Text("Select an item")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -1098,7 +1116,6 @@ struct HistoryContentView: View {
                 .font(.system(size: 10))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(3)
                 .overlay(
                     RoundedRectangle(cornerRadius: 3)
@@ -1151,6 +1168,22 @@ struct HistoryContentView: View {
         .frame(height: 28)
         .bufferGlassSurface(cornerRadius: 14, interactive: true)
         .help(help)
+    }
+
+    private func headerGlassSymbolButton(
+        help: String,
+        systemName: String,
+        tint: Color = .secondary,
+        action: @escaping () -> Void
+    ) -> some View {
+        headerGlassActionButton(help: help, action: action) {
+            Image(systemName: systemName)
+                .symbolRenderingMode(.monochrome)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(tint)
+                .frame(width: 14, height: 14, alignment: .center)
+        }
     }
 }
 
