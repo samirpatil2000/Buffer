@@ -1,6 +1,91 @@
 import Cocoa
 import SwiftUI
 
+protocol BufferEffectView: AnyObject {
+    func updateBufferAppearance(cornerRadius: CGFloat)
+}
+
+typealias BufferEffectHostView = NSView & BufferEffectView
+
+@available(macOS 26.0, *)
+private final class BufferLiquidGlassEffectView: NSGlassEffectView, BufferEffectView {
+    private typealias SetVariantType = @convention(c) (AnyObject, Selector, Int) -> Void
+    private static let setVariantSelector = NSSelectorFromString("set_variant:")
+
+    static func canUsePrivateLiquidGlassLook() -> Bool {
+        class_getInstanceMethod(object_getClass(NSGlassEffectView()), setVariantSelector) != nil
+    }
+
+    convenience init(clear: Bool) {
+        self.init()
+        style = clear ? .clear : .regular
+        if clear {
+            safeSetVariant(3)
+        }
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    func updateBufferAppearance(cornerRadius: CGFloat) {
+        self.cornerRadius = cornerRadius
+    }
+
+    private func safeSetVariant(_ value: Int) {
+        guard let method = class_getInstanceMethod(object_getClass(self), Self.setVariantSelector) else { return }
+        let methodImplementation = method_getImplementation(method)
+        let function = unsafeBitCast(methodImplementation, to: SetVariantType.self)
+        function(self, Self.setVariantSelector, value)
+    }
+}
+
+private final class BufferFrostedGlassEffectView: NSVisualEffectView, BufferEffectView {
+    convenience init() {
+        self.init(frame: .zero)
+        blendingMode = .behindWindow
+        state = .active
+        material = .hudWindow
+        wantsLayer = true
+    }
+
+    func updateBufferAppearance(cornerRadius: CGFloat) {
+        material = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .hudWindow : .popover
+        updateRoundedCorners(cornerRadius)
+    }
+
+    private func updateRoundedCorners(_ cornerRadius: CGFloat) {
+        guard cornerRadius > 0 else {
+            maskImage = nil
+            return
+        }
+        let edgeLength = 2.0 * cornerRadius + 1.0
+        let mask = NSImage(size: NSSize(width: edgeLength, height: edgeLength), flipped: false) { rect in
+            NSColor.black.set()
+            NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: cornerRadius, left: cornerRadius, bottom: cornerRadius, right: cornerRadius)
+        mask.resizingMode = .stretch
+        maskImage = mask
+    }
+}
+
+private func makeBufferEffectView() -> BufferEffectHostView {
+    if #available(macOS 26.0, *) {
+        let usePrivateLook = BufferLiquidGlassEffectView.canUsePrivateLiquidGlassLook()
+        let effectView = BufferLiquidGlassEffectView(clear: usePrivateLook)
+        effectView.updateBufferAppearance(cornerRadius: HistoryWindowStyle.panelCornerRadius)
+        return effectView
+    }
+    let effectView = BufferFrostedGlassEffectView()
+    effectView.updateBufferAppearance(cornerRadius: HistoryWindowStyle.panelCornerRadius)
+    return effectView
+}
+
+private enum HistoryWindowStyle {
+    static let panelCornerRadius = CGFloat(24)
+    static let panelBorderOpacity = 0.18
+}
+
 /// Custom panel that closes when clicking outside
 class HistoryPanel: NSPanel {
     var onClickOutside: (() -> Void)?
@@ -28,6 +113,7 @@ private struct ChunkedTextState {
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
     private var previousApp: NSRunningApplication?
+    private var hostingView: NSHostingView<HistoryContentView>?
     
     init(store: ClipboardStore) {
         self.store = store
@@ -62,13 +148,17 @@ class HistoryWindowController: NSWindowController {
         
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
-        panel.backgroundColor = NSColor.windowBackgroundColor
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.isMovableByWindowBackground = true
-        panel.hasShadow = true
+        panel.hasShadow = false
         
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.cornerRadius = 10
+        panel.contentView?.layer?.cornerRadius = HistoryWindowStyle.panelCornerRadius
         panel.contentView?.layer?.masksToBounds = true
+        if let contentView = panel.contentView {
+            contentView.layer?.backgroundColor = NSColor.clear.cgColor
+        }
         
         panel.center()
         
@@ -87,7 +177,7 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func setupContent() {
-        let contentView = HistoryContentView(
+        let rootView = HistoryContentView(
             store: store,
             onCopyToClipboard: { [weak self] item in
                 self?.copyToClipboard(item)
@@ -102,8 +192,18 @@ class HistoryWindowController: NSWindowController {
                 self?.close()
             }
         )
-        
-        window?.contentView = NSHostingView(rootView: contentView)
+        let effectView = makeBufferEffectView()
+        effectView.frame = window?.contentView?.bounds ?? .zero
+        effectView.autoresizingMask = [.width, .height]
+        effectView.updateBufferAppearance(cornerRadius: HistoryWindowStyle.panelCornerRadius)
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.frame = effectView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        effectView.addSubview(hostingView)
+        self.hostingView = hostingView
+        window?.contentView = effectView
     }
     
     private func copyToClipboard(_ item: ClipboardItem) {
@@ -366,7 +466,12 @@ struct HistoryContentView: View {
             actionBar
         }
         .frame(minWidth: 600, minHeight: 400)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(windowBackdrop)
+        .clipShape(RoundedRectangle(cornerRadius: HistoryWindowStyle.panelCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: HistoryWindowStyle.panelCornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(HistoryWindowStyle.panelBorderOpacity), lineWidth: 1)
+        }
         .ignoresSafeArea(.container, edges: .top)
         .onChange(of: searchText) { _ in
             // Find first unpinned item in filtered results
@@ -475,15 +580,7 @@ struct HistoryContentView: View {
                 scrollTrigger = true
                 extendSelectionDown()
             },
-            onEnter: { 
-                if !selectedItems.isEmpty {
-                    // Paste all selected items
-                    onPasteMultiple(Array(selectedItems))
-                } else if let item = selectedItem {
-                    // Fallback to single item paste
-                    onPaste(item)
-                }
-            },
+            onEnter: performPrimaryPasteAction,
             onEscape: onDismiss,
             onDelete: {
                 if let item = selectedItem {
@@ -491,11 +588,6 @@ struct HistoryContentView: View {
                 }
             },
             onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
-            onBookmark: {
-                if let item = selectedItem {
-                    store.toggleBookmark(for: item)
-                }
-            },
             onPin: {
                 if let item = selectedItem {
                     store.togglePin(for: item)
@@ -561,46 +653,41 @@ struct HistoryContentView: View {
     }
     
     private var searchBar: some View {
-        HStack(spacing: 10) {
-            // Search icon
+        HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary.opacity(0.7))
+                .foregroundColor(.secondary.opacity(0.82))
                 .font(.system(size: 13, weight: .medium))
+                .padding(.leading, 2)
             
-            TextField("Search clipboard...", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .focused($isSearchFocused)
-            
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary.opacity(0.5))
-                        .font(.system(size: 12))
+            HStack(spacing: 10) {
+                TextField("Search clipboard...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .focused($isSearchFocused)
+                
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary.opacity(0.7))
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-            
-            Spacer()
-            
-            // Item count
+            .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+
             Text("\(filteredItems.count) items")
                 .font(.system(size: 11, weight: .regular))
-                .foregroundColor(.secondary.opacity(0.6))
+                .foregroundColor(.secondary.opacity(0.72))
+                .padding(.trailing, 2)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 12)
         .frame(height: 40)
-        .background(
-            Color(NSColor.controlBackgroundColor)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 0.5)
-                        .foregroundColor(Color.primary.opacity(0.06)),
-                    alignment: .bottom
-                )
-        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color.white.opacity(0.16))
+        }
     }
     
     private var listPane: some View {
@@ -629,7 +716,11 @@ struct HistoryContentView: View {
                 )
             }
         }
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.34)
+        }
     }
     
     private var detailPane: some View {
@@ -647,34 +738,34 @@ struct HistoryContentView: View {
                     .font(.system(size: 11, weight: .medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color(nsColor: .selectedContentBackgroundColor).opacity(0.22))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                    }
                 }
                 
                 Spacer()
                 
                 // Action buttons - only show for single selection or hide for multi
                 if selectionCount <= 1 {
-                    HStack(spacing: 12) {
-                        Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
+                    HStack(spacing: 10) {
+                        headerGlassActionButton(help: "Copy", action: {
+                            if let item = selectedItem { onCopyToClipboard(item) }
+                        }) {
                             Image(systemName: "doc.on.doc")
                         }
-                        .buttonStyle(.plain)
-                        .help("Copy")
-                        
+
                         if selectedItem?.type == .image && previewImage != nil {
-                            Button(action: {
+                            headerGlassActionButton(help: "Save image", action: {
                                 if let img = previewImage { PasteController.saveImageToDisk(img) }
                             }) {
                                 Image(systemName: "arrow.down.to.line")
                             }
-                            .buttonStyle(.plain)
-                            .help("Save image")
                         }
-                        
-                        // OCR button — only for image items without existing OCR text
+
                         if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
-                            Button(action: {
+                            headerGlassActionButton(help: "Extract Text from Image", action: {
                                 Task {
                                     guard let img = previewImage, let item = selectedItem else { return }
                                     isExtractingText = true
@@ -686,30 +777,21 @@ struct HistoryContentView: View {
                             }) {
                                 Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
                             }
-                            .buttonStyle(.plain)
                             .disabled(isExtractingText)
-                            .help("Extract Text from Image")
                         }
-                        
-                        Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
+
+                        headerGlassActionButton(help: selectedItem?.isPinned == true ? "Unpin" : "Pin", action: {
+                            if let item = selectedItem { store.togglePin(for: item) }
+                        }) {
                             Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
+                                .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
-                        .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
-                        
-                        Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
-                            Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
-                        .help(selectedItem?.isBookmarked == true ? "Remove Bookmark" : "Bookmark")
-                        
-                        Button(action: { if let item = selectedItem { store.delete(item) } }) {
+
+                        headerGlassActionButton(help: "Delete", action: {
+                            if let item = selectedItem { store.delete(item) }
+                        }) {
                             Image(systemName: "trash")
                         }
-                        .buttonStyle(.plain)
-                        .help("Delete")
                     }
                     .foregroundColor(.secondary)
                     .font(.system(size: 13))
@@ -717,7 +799,11 @@ struct HistoryContentView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+            .background {
+                Rectangle()
+                    .fill(.thinMaterial)
+                    .opacity(0.18)
+            }
             
             Divider()
             
@@ -738,6 +824,11 @@ struct HistoryContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+        }
+        .background {
+            Rectangle()
+                .fill(.regularMaterial)
+                .opacity(0.16)
         }
     }
     
@@ -954,123 +1045,143 @@ struct HistoryContentView: View {
             // selectedID will be synced via onChange(of: selectedIndex)
         }
     }
+
+    private func performPrimaryPasteAction() {
+        if !selectedItems.isEmpty {
+            onPasteMultiple(Array(selectedItems))
+        } else if let item = selectedItem {
+            onPaste(item)
+        }
+    }
     
     private var actionBar: some View {
         HStack(spacing: 16) {
-            // Navigate buttons - minimal, elegant
-            HStack(spacing: 6) {
-                Button(action: navigateDown) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(NSColor.controlBackgroundColor))
-                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: navigateUp) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(NSColor.controlBackgroundColor))
-                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-                
-                Text("Navigate")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(.secondary.opacity(0.8))
-            }
-
-            HStack(spacing: 4) {
-                Text("⇧ ↑↓")
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(3)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                    )
-                Text("Multiselect")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-            .foregroundColor(.secondary.opacity(0.6))
-
-            HStack(spacing: 4) {
-                Text("⌘P")
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(3)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                    )
-                Text("Pin")
-                    .font(.system(size: 11))
-            }
-            .foregroundColor(.secondary.opacity(0.6))
+            HStack(spacing: 10) {
+                shortcutHint("⇧ ↑↓", label: "Multiselect")
+                shortcutHint("⌘P", label: "Pin")
             
-            if selectedItem?.type == .image {
-                HStack(spacing: 4) {
-                    Text("⌘S")
-                        .font(.system(size: 10))
-                    Text("save")
-                        .font(.system(size: 11))
+                if selectedItem?.type == .image {
+                    shortcutHint("⌘S", label: "Save")
                 }
-                .foregroundColor(.secondary.opacity(0.6))
-                .padding(.leading, 4)
             }
             
             Spacer()
-            
-            // Keyboard shortcut hint
-            HStack(spacing: 4) {
-                Image(systemName: "return")
-                    .font(.system(size: 10))
-                Text("to paste")
-                    .font(.system(size: 11))
+
+            Button(action: performPrimaryPasteAction) {
+                HStack(spacing: 5) {
+                    Image(systemName: "return")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("to paste")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(.secondary.opacity(0.82))
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .foregroundColor(.secondary.opacity(0.6))
+        .buttonStyle(.plain)
+            .frame(height: 28)
+            .bufferGlassSurface(cornerRadius: 14, interactive: true)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
         .frame(height: 40)
-        .background(
-            Color(NSColor.controlBackgroundColor)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color.white.opacity(0.15))
+        }
+    }
+
+    private func shortcutHint(_ shortcut: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(shortcut)
+                .font(.system(size: 10))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(3)
                 .overlay(
-                    Rectangle()
-                        .frame(height: 0.5)
-                        .foregroundColor(Color.primary.opacity(0.06)),
-                    alignment: .top
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
                 )
-        )
+            Text(label)
+                .font(.system(size: 11))
+        }
+        .foregroundColor(.secondary.opacity(0.6))
+    }
+
+    private var windowBackdrop: some View {
+        ZStack {
+            Color.black.opacity(0.24)
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.18),
+                    Color.clear,
+                    Color.black.opacity(0.10)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.08),
+                    Color.clear,
+                    Color.white.opacity(0.03)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        .background(Color.clear)
+    }
+
+    private func headerGlassActionButton<Label: View>(
+        help: String,
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        Button(action: action) {
+            label()
+                .frame(width: 28, height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .frame(height: 28)
+        .bufferGlassSurface(cornerRadius: 14, interactive: true)
+        .help(help)
     }
 }
 
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func bufferGlassSurface(
+        cornerRadius: CGFloat,
+        tint: Color? = nil,
+        interactive: Bool = false
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            let baseGlass = Glass.regular.interactive(interactive)
+            let configuredGlass = tint.map { baseGlass.tint($0) } ?? baseGlass
+            self.glassEffect(
+                configuredGlass,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+        } else {
+            self
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                }
+        }
     }
 }
 
@@ -1084,7 +1195,6 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onEscape: () -> Void
     let onDelete: () -> Void
     let onCopy: () -> Void
-    let onBookmark: () -> Void
     let onPin: () -> Void
     let onSaveImage: () -> Void
     
@@ -1140,12 +1250,6 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                             return event
                         }
                         onCopy()
-                        return nil
-                    }
-                    return event
-                case 11: // B (for Bookmark)
-                    if event.modifierFlags.contains(.command) {
-                        onBookmark()
                         return nil
                     }
                     return event

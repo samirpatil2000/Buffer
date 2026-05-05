@@ -172,7 +172,7 @@ struct SettingsView: View {
                 }
             }
         } message: {
-            Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
+            Text("This will permanently delete your oldest unpinned items to fit the new size. This action cannot be undone.")
         }
         .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
             settings.hotkeyKeyCode = keyCode

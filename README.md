@@ -28,7 +28,7 @@
 - **Large-content friendly** — Lazy, chunked previews and disk-backed storage for multi‑MB text, with size indicators  
 - **Pins & Smart History** — Pin favorites, keep them anchored, and cycle history while prioritizing unpinned items  
 - **Multi-select & multi‑paste** — Select multiple items in history with clear on-screen instructions and paste them together 
-- **Bookmarks** — Star important items with Cmd+B for quick reuse  
+- **Pins** — Keep important items anchored in history for quick reuse  
 - **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
 - **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app  
 - **Open Source** — MIT license, actively maintained  
