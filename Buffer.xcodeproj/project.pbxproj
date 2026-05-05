@@ -22,6 +22,7 @@
 		AAA00014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00016 /* SettingsView.swift */; };
 		AAA00015 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00017 /* OCRService.swift */; };
 		AAA00017 /* ActiveApplicationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00019 /* ActiveApplicationMonitor.swift */; };
+		AAA00018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBB00020 /* Assets.xcassets */; };
 		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 /* End PBXBuildFile section */
 
@@ -44,6 +45,7 @@
 		BBB00016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		BBB00017 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		BBB00019 /* ActiveApplicationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveApplicationMonitor.swift; sourceTree = "<group>"; };
+		BBB00020 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -71,6 +73,7 @@
 			children = (
 				BBB00001 /* BufferApp.swift */,
 				BBB00002 /* AppDelegate.swift */,
+				BBB00020 /* Assets.xcassets */,
 				DDD00002 /* Models */,
 				DDD00003 /* Services */,
 				DDD00004 /* Views */,
@@ -182,6 +185,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAA00018 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -343,7 +347,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = RN8RYUV55Y;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -385,7 +389,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = RN8RYUV55Y;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
