@@ -7,6 +7,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     let type: ClipboardItemType
     let timestamp: Date
     let sourceApp: String?
+    let sourceAppBundleIdentifier: String?
+    let sourceAppBundlePath: String?
     
     // For text items — inline content (nil for file-backed large text)
     let textContent: String?
@@ -29,11 +31,27 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For large/extreme text items — original size in bytes (for display purposes)
     let originalSizeBytes: Int?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
+    init(
+        id: UUID = UUID(),
+        type: ClipboardItemType,
+        timestamp: Date = Date(),
+        sourceApp: String? = nil,
+        sourceAppBundleIdentifier: String? = nil,
+        sourceAppBundlePath: String? = nil,
+        textContent: String? = nil,
+        textFilename: String? = nil,
+        imageFilename: String? = nil,
+        isPinned: Bool = false,
+        ocrText: String? = nil,
+        isTruncated: Bool = false,
+        originalSizeBytes: Int? = nil
+    ) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
         self.sourceApp = sourceApp
+        self.sourceAppBundleIdentifier = sourceAppBundleIdentifier
+        self.sourceAppBundlePath = sourceAppBundlePath
         self.textContent = textContent
         self.textFilename = textFilename
         self.imageFilename = imageFilename
@@ -44,7 +62,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
+        case id, type, timestamp, sourceApp, sourceAppBundleIdentifier, sourceAppBundlePath, textContent, textFilename, imageFilename
         case isBookmarked, isPinned, ocrText, isTruncated, originalSizeBytes
     }
     
@@ -54,6 +72,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.type = try container.decode(ClipboardItemType.self, forKey: .type)
         self.timestamp = try container.decode(Date.self, forKey: .timestamp)
         self.sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
+        self.sourceAppBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .sourceAppBundleIdentifier)
+        self.sourceAppBundlePath = try container.decodeIfPresent(String.self, forKey: .sourceAppBundlePath)
         self.textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
         self.textFilename = try container.decodeIfPresent(String.self, forKey: .textFilename)
         self.imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
@@ -71,6 +91,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encode(type, forKey: .type)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encodeIfPresent(sourceApp, forKey: .sourceApp)
+        try container.encodeIfPresent(sourceAppBundleIdentifier, forKey: .sourceAppBundleIdentifier)
+        try container.encodeIfPresent(sourceAppBundlePath, forKey: .sourceAppBundlePath)
         try container.encodeIfPresent(textContent, forKey: .textContent)
         try container.encodeIfPresent(textFilename, forKey: .textFilename)
         try container.encodeIfPresent(imageFilename, forKey: .imageFilename)
@@ -81,38 +103,46 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
     
     /// Create a text clipboard item
-    static func text(_ content: String, sourceApp: String? = nil) -> ClipboardItem {
+    static func text(_ content: String, sourceApp: SourceApplicationInfo? = nil) -> ClipboardItem {
         ClipboardItem(
             type: .text,
-            sourceApp: sourceApp,
+            sourceApp: sourceApp?.name,
+            sourceAppBundleIdentifier: sourceApp?.bundleIdentifier,
+            sourceAppBundlePath: sourceApp?.bundlePath,
             textContent: content
         )
     }
     
     /// Create an image clipboard item
-    static func image(filename: String, sourceApp: String? = nil) -> ClipboardItem {
+    static func image(filename: String, sourceApp: SourceApplicationInfo? = nil) -> ClipboardItem {
         ClipboardItem(
             type: .image,
-            sourceApp: sourceApp,
+            sourceApp: sourceApp?.name,
+            sourceAppBundleIdentifier: sourceApp?.bundleIdentifier,
+            sourceAppBundlePath: sourceApp?.bundlePath,
             imageFilename: filename
         )
     }
     
     /// Create a large text clipboard item (file-backed with inline preview)
-    static func largeText(preview: String, filename: String, sourceApp: String? = nil) -> ClipboardItem {
+    static func largeText(preview: String, filename: String, sourceApp: SourceApplicationInfo? = nil) -> ClipboardItem {
         ClipboardItem(
             type: .text,
-            sourceApp: sourceApp,
+            sourceApp: sourceApp?.name,
+            sourceAppBundleIdentifier: sourceApp?.bundleIdentifier,
+            sourceAppBundlePath: sourceApp?.bundlePath,
             textContent: preview,
             textFilename: filename
         )
     }
     
     /// Create an extremely large text item where only the preview is saved
-    static func truncatedText(_ preview: String, originalSizeBytes: Int, sourceApp: String?) -> ClipboardItem {
+    static func truncatedText(_ preview: String, originalSizeBytes: Int, sourceApp: SourceApplicationInfo?) -> ClipboardItem {
         ClipboardItem(
             type: .text,
-            sourceApp: sourceApp,
+            sourceApp: sourceApp?.name,
+            sourceAppBundleIdentifier: sourceApp?.bundleIdentifier,
+            sourceAppBundlePath: sourceApp?.bundlePath,
             textContent: preview,
             isTruncated: true,
             originalSizeBytes: originalSizeBytes

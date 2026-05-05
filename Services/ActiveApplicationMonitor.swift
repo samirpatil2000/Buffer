@@ -1,5 +1,11 @@
 import AppKit
 
+struct SourceApplicationInfo {
+    let name: String?
+    let bundleIdentifier: String?
+    let bundlePath: String?
+}
+
 final class ActiveApplicationMonitor {
     static let shared = ActiveApplicationMonitor()
 
@@ -16,6 +22,14 @@ final class ActiveApplicationMonitor {
 
     var currentApplicationName: String? {
         currentApplication?.localizedName
+    }
+
+    var currentApplicationInfo: SourceApplicationInfo {
+        SourceApplicationInfo(
+            name: currentApplication?.localizedName,
+            bundleIdentifier: currentApplication?.bundleIdentifier,
+            bundlePath: currentApplication?.bundleURL?.path
+        )
     }
 
     @objc

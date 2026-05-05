@@ -95,8 +95,7 @@ struct ClipboardListView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .padding(4)
             }
             .background(
                 ScrollViewConfigurator { scrollView in

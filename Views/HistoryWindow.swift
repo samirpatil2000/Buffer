@@ -712,12 +712,7 @@ struct HistoryContentView: View {
     private var listPane: some View {
         Group {
             if filteredItems.isEmpty {
-                VStack {
-                    Spacer()
-                    Text(searchText.isEmpty ? "No clipboard history" : "No matches")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
+                Spacer()
             } else {
                 ClipboardListView(
                     items: filteredItems,

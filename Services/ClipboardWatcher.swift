@@ -81,7 +81,7 @@ class ClipboardWatcher: ObservableObject {
         }
         
         // Get current frontmost app as source
-        let sourceApp = currentSourceApplicationName()
+        let sourceApp = currentSourceApplicationInfo()
         
         // Check for single image file from Finder BEFORE text check
         // (Finder always writes both NSFilenamesPboardType + .string, so we must intercept first)
@@ -143,8 +143,8 @@ class ClipboardWatcher: ObservableObject {
         }
     }
 
-    private func currentSourceApplicationName() -> String? {
-        ActiveApplicationMonitor.shared.currentApplicationName
+    private func currentSourceApplicationInfo() -> SourceApplicationInfo {
+        ActiveApplicationMonitor.shared.currentApplicationInfo
     }
     
     private func getImageData(from pasteboard: NSPasteboard) -> Data? {
@@ -177,7 +177,7 @@ class ClipboardWatcher: ObservableObject {
     }
     
     /// Read image file from disk, convert to PNG, and store as image item
-    private func processImageFile(_ filePath: String, sourceApp: String?) {
+    private func processImageFile(_ filePath: String, sourceApp: SourceApplicationInfo) {
         do {
             // Read file bytes
             let fileURL = URL(fileURLWithPath: filePath)
