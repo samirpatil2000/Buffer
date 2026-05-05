@@ -23,6 +23,30 @@ struct SettingsView: View {
             
             Divider()
             
+            // System section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("System")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    Text("Launch at Login")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.launchAtLogin)
+                        .labelsHidden()
+                        .onChange(of: settings.launchAtLogin) { newValue in
+                            SettingsManager.shared.toggleLaunchAtLogin(newValue)
+                            DispatchQueue.main.async {
+                                settings.launchAtLogin = SettingsManager.shared.launchAtLogin
+                            }
+                        }
+                        .toggleStyle(.switch)
+                }
+            }
+            
+            Divider()
+            
             // Hotkey section
             VStack(alignment: .leading, spacing: 12) {
                 Text("Keyboard Shortcut")
@@ -53,6 +77,15 @@ struct SettingsView: View {
                             .font(.system(size: 12, weight: .medium))
                     }
                     .buttonStyle(.bordered)
+
+                    Button(action: {
+                        settings.restoreDefaultHotkey()
+                        isRecording = false
+                    }) {
+                        Text("Restore Default")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
                     
                     Spacer()
                 }
@@ -63,57 +96,17 @@ struct SettingsView: View {
                         .foregroundColor(.accentColor)
                 }
             }
-            
+
             Divider()
-            
-            // Preset shortcuts
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Quick Presets")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 8) {
-                    presetButton(label: "⇧⌘V", mods: HotkeyModifiers(shift: true, command: true), keyCode: 9)
-                    presetButton(label: "⌥⌘V", mods: HotkeyModifiers(command: true, option: true), keyCode: 9)
-                    presetButton(label: "⌃⇧V", mods: HotkeyModifiers(shift: true, control: true), keyCode: 9)
-                    presetButton(label: "⌘B", mods: HotkeyModifiers(command: true), keyCode: 11)
-                }
-            }
-            
-            Divider()
-            
-            // System section
+
             VStack(alignment: .leading, spacing: 12) {
-                Text("System")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack {
-                    Text("Launch at Login")
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer()
-                    Toggle("", isOn: $settings.launchAtLogin)
-                        .labelsHidden()
-                        .onChange(of: settings.launchAtLogin) { newValue in
-                            SettingsManager.shared.toggleLaunchAtLogin(newValue)
-                            DispatchQueue.main.async {
-                                settings.launchAtLogin = SettingsManager.shared.launchAtLogin
-                            }
-                        }
-                        .toggleStyle(.switch)
-                }
-                
-                // History Size Section
-                Divider()
-                    .padding(.vertical, 4)
-                
                 Text("History Size")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                 
                 HStack(spacing: 12) {
                     ForEach(HistoryLimit.allCases, id: \.self) { tier in
-                        Button(action: { 
+                        Button(action: {
                             if tier.rawValue < settings.historyLimit.rawValue {
                                 pendingTier = tier
                                 showingTrimAlert = true
@@ -145,13 +138,13 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(settings.historyLimit == tier 
-                                          ? Color.accentColor.opacity(0.1) 
+                                    .fill(settings.historyLimit == tier
+                                          ? Color.accentColor.opacity(0.1)
                                           : Color(NSColor.controlBackgroundColor))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(settings.historyLimit == tier 
+                                    .stroke(settings.historyLimit == tier
                                             ? Color.accentColor : Color.clear, lineWidth: settings.historyLimit == tier ? 1.5 : 1)
                             )
                         }
@@ -159,7 +152,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            
         }
         .padding(24)
         .frame(width: 380)
@@ -180,20 +172,6 @@ struct SettingsView: View {
             settings.save()
             isRecording = false
         })
-    }
-    
-    private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {
-        Button(action: {
-            settings.hotkeyModifiers = mods
-            settings.hotkeyKeyCode = keyCode
-            settings.save()
-        }) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-        }
-        .buttonStyle(.bordered)
     }
 }
 
@@ -266,6 +244,9 @@ class KeyRecorderView: NSView {
 
 /// ViewModel wrapper for SettingsManager to avoid crashes
 class SettingsViewModel: ObservableObject {
+    private static let defaultHotkeyModifiers = HotkeyModifiers(shift: true, command: true, option: false, control: false)
+    private static let defaultHotkeyKeyCode: UInt16 = 9
+
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool
@@ -280,12 +261,12 @@ class SettingsViewModel: ObservableObject {
         if let savedMods = defaults.array(forKey: hotkeyModifiersKey) as? [String] {
             self.hotkeyModifiers = HotkeyModifiers(from: savedMods)
         } else {
-            self.hotkeyModifiers = HotkeyModifiers(shift: true, command: true, option: false, control: false)
+            self.hotkeyModifiers = Self.defaultHotkeyModifiers
         }
         
         // Load keycode (default to V = 9)
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
-        self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : 9
+        self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : Self.defaultHotkeyKeyCode
         
         // Load launch at login status from manager natively via SMAppService
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
@@ -307,5 +288,11 @@ class SettingsViewModel: ObservableObject {
         
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
         NotificationCenter.default.post(name: .bufferHistoryLimitChanged, object: nil)
+    }
+
+    func restoreDefaultHotkey() {
+        hotkeyModifiers = Self.defaultHotkeyModifiers
+        hotkeyKeyCode = Self.defaultHotkeyKeyCode
+        save()
     }
 }

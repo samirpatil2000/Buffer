@@ -95,6 +95,7 @@ class HistoryPanel: NSPanel {
     var onClickOutside: (() -> Void)?
     
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
     
     override func resignKey() {
         super.resignKey()
@@ -242,9 +243,10 @@ class HistoryWindowController: NSWindowController {
         window?.center()
         super.showWindow(sender)
         if activateApp {
-            NSApp.activate(ignoringOtherApps: true)
+            NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
         }
         window?.makeKeyAndOrderFront(nil)
+        window?.makeMain()
     }
 }
 
