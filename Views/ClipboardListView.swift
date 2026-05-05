@@ -130,20 +130,36 @@ private struct ScrollViewConfigurator: NSViewRepresentable {
     let configure: (NSScrollView) -> Void
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let scrollView = view.enclosingScrollView {
-                configure(scrollView)
-            }
-        }
+        let view = ConfiguratorView()
+        view.configure = configure
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            if let scrollView = nsView.enclosingScrollView {
-                configure(scrollView)
-            }
+        if let view = nsView as? ConfiguratorView {
+            view.configure = configure
+            view.applyConfigurationIfNeeded()
+        }
+    }
+
+    private final class ConfiguratorView: NSView {
+        var configure: ((NSScrollView) -> Void)?
+        private weak var configuredScrollView: NSScrollView?
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            applyConfigurationIfNeeded()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyConfigurationIfNeeded()
+        }
+
+        func applyConfigurationIfNeeded() {
+            guard let scrollView = enclosingScrollView else { return }
+            configure?(scrollView)
+            configuredScrollView = scrollView
         }
     }
 }

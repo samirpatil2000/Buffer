@@ -40,9 +40,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         
-        // Initialize history window controller
-        historyWindowController = HistoryWindowController(store: clipboardStore)
-        
         // Setup global hotkey (Shift + Command + V)
         hotkeyManager = HotkeyManager { [weak self] in
             self?.toggleHistoryWindow()
@@ -61,9 +58,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func toggleHistoryWindow() {
         print("[AppDelegate] toggleHistoryWindow called")
-        if let window = historyWindowController?.window, window.isVisible {
+        let historyWindowController = historyWindowController ?? makeHistoryWindowController()
+        if let window = historyWindowController.window, window.isVisible {
             print("[AppDelegate] Window is visible, closing...")
-            historyWindowController?.close()
+            historyWindowController.close()
         } else {
             print("[AppDelegate] Window is hidden, showing...")
             showHistoryWindow()
@@ -71,6 +69,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func showHistoryWindow() {
-        historyWindowController?.showWindow(nil)
+        let historyWindowController = historyWindowController ?? makeHistoryWindowController()
+        historyWindowController.showWindow(nil)
+    }
+
+    private func makeHistoryWindowController() -> HistoryWindowController {
+        let controller = HistoryWindowController(store: clipboardStore)
+        historyWindowController = controller
+        return controller
     }
 }
