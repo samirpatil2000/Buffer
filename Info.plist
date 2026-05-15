@@ -30,5 +30,7 @@
 	<string>Copyright © 2026. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Buffer reads the active tab URL and title from supported browsers so it can label clipboard items with their source domain. URLs are not stored.</string>
 </dict>
 </plist>

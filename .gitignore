@@ -77,3 +77,9 @@ fastlane/test_output
 **/*.dmg
 
 build_test/
+
+# JetBrains / IntelliJ IDEA
+.idea/
+
+# Local planning notes (not for version control)
+copy_source_label_plan.md

@@ -56,12 +56,8 @@ struct ClipboardItemRow: View {
                     .font(.system(size: 10))
             }
             
-            // Source app badge
-            if let app = item.sourceApp {
-                Text(app)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
+            // Source badge — globe + domain for browsers, app icon + name otherwise.
+            sourceBadge
             
             // Pin indicator
             if item.isPinned {
@@ -78,10 +74,28 @@ struct ClipboardItemRow: View {
             isHovered = hovering
         }
         .task(id: item.id) {
-            // Load thumbnail async off main thread
-            if item.type == .image && thumbnail == nil {
-                thumbnail = await loadThumbnail()
+            // Build thumbnail on the main actor: NSImage + lockFocus are not safe to mix
+            // with `withCheckedContinuation` + GCD (cancellation / reuse can break invariants).
+            guard item.type == .image, thumbnail == nil else { return }
+            thumbnail = makeImageThumbnail()
+        }
+    }
+    
+    @ViewBuilder
+    private var sourceBadge: some View {
+        if let source = item.effectiveSource, !source.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: source.hasBrowserContext ? "globe" : "app")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary.opacity(0.7))
+                Text(source.listLabel)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .frame(maxWidth: 130, alignment: .trailing)
+            .help(source.tooltip)
         }
     }
     
@@ -101,52 +115,67 @@ struct ClipboardItemRow: View {
         } else {
             switch item.type {
             case .text:
-                Image(systemName: "doc.text")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-            case .image:
-                if let img = thumbnail {
-                    Image(nsImage: img)
+                if let bundleID = item.effectiveSource?.appBundleID,
+                   let appIcon = AppIconCache.shared.icon(for: bundleID) {
+                    Image(nsImage: appIcon)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 20, height: 20)
-                        .clipped()
-                        .cornerRadius(2)
+                        .frame(width: 18, height: 18)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                 } else {
-                    // Placeholder while loading
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(width: 20, height: 20)
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            case .image:
+                Group {
+                    if let img = thumbnail {
+                        Image(nsImage: img)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 20, height: 20)
+                            .clipped()
+                            .cornerRadius(2)
+                            .overlay(alignment: .bottomTrailing) {
+                                if let bundleID = item.effectiveSource?.appBundleID,
+                                   let appIcon = AppIconCache.shared.icon(for: bundleID) {
+                                    Image(nsImage: appIcon)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 10, height: 10)
+                                        .clipShape(Circle())
+                                        .background(Circle().fill(Color(NSColor.windowBackgroundColor)).frame(width: 12, height: 12))
+                                        .padding(1)
+                                }
+                            }
+                    } else {
+                        // Placeholder while loading
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(width: 20, height: 20)
+                    }
                 }
             }
         }
     }
     
-    /// Generate a small thumbnail asynchronously
-    private func loadThumbnail() async -> NSImage? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard let original = store.image(for: item) else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                
-                // Create a tiny thumbnail (40x40 for retina)
-                let thumbSize = NSSize(width: 40, height: 40)
-                let thumb = NSImage(size: thumbSize)
-                thumb.lockFocus()
-                original.draw(
-                    in: NSRect(origin: .zero, size: thumbSize),
-                    from: NSRect(origin: .zero, size: original.size),
-                    operation: .copy,
-                    fraction: 1.0
-                )
-                thumb.unlockFocus()
-                
-                continuation.resume(returning: thumb)
-            }
-        }
+    /// Small list thumbnail (40×40). Kept on the main actor for AppKit threading rules.
+    private func makeImageThumbnail() -> NSImage? {
+        guard let original = store.image(for: item) else { return nil }
+        let thumbSize = NSSize(width: 40, height: 40)
+        let thumb = NSImage(size: thumbSize)
+        thumb.lockFocus()
+        original.draw(
+            in: NSRect(origin: .zero, size: thumbSize),
+            from: NSRect(origin: .zero, size: original.size),
+            operation: .copy,
+            fraction: 1.0
+        )
+        thumb.unlockFocus()
+        return thumb
     }
     
     /// Parse a CSS color value from a string

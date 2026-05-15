@@ -168,22 +168,129 @@ struct HistoryContentView: View {
     // Track selection by ID so it survives list insertions
     @State private var selectedID: UUID?
     
-    private var filteredItems: [ClipboardItem] {
-        let baseItems: [ClipboardItem]
-        if searchText.isEmpty {
-            baseItems = store.items
-        } else {
-            baseItems = store.items.filter { item in
-                guard item.type == .text else { return false }
-                return item.textContent?.localizedCaseInsensitiveContains(searchText) ?? false
+    /// App filter: `nil` shows every app; non-nil is a **whitelist** (only those sources).
+    /// An empty set means “all per-app toggles OFF” — list shows no items until at least one app is enabled.
+    @State private var selectedAppFilter: Set<String>? = nil
+    
+    @State private var isFilterPopoverPresented = false
+    
+    /// One row in the app filter UI; `id` is bundle ID when known so `ForEach` stays stable even if labels collide.
+    private struct SourceAppFilterRow: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let bundleID: String?
+
+        init(name: String, bundleID: String?) {
+            self.name = name
+            self.bundleID = bundleID
+            if let bundleID = bundleID, !bundleID.isEmpty {
+                self.id = bundleID
+            } else {
+                self.id = "name:\(name)"
             }
         }
-        return baseItems.sorted { $0.isPinned && !$1.isPinned }
+    }
+
+    /// Distinct apps present in full history (for filter menu), sorted by name.
+    private var availableApps: [SourceAppFilterRow] {
+        var rows: [String: SourceAppFilterRow] = [:]
+        for item in store.items {
+            guard let name = item.effectiveSource?.appName else { continue }
+            let bundleID = item.effectiveSource?.appBundleID
+            let row = SourceAppFilterRow(name: name, bundleID: bundleID)
+            rows[row.id] = row
+        }
+        return rows.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    /// Names of apps that appear anywhere in history (menu contents).
+    private var filterMenuAppNames: Set<String> {
+        Set(availableApps.map(\.name))
+    }
+    
+    /// When `true`, no whitelist filter is applied (`selectedAppFilter == nil`).
+    private var appFilteringIsInactive: Bool {
+        selectedAppFilter == nil
+    }
+    
+    /// Binding for the master "All apps" row (matches System Settings style).
+    private var allAppsToggleBinding: Binding<Bool> {
+        Binding(
+            get: { appFilteringIsInactive },
+            set: { showAll in
+                selectedAppFilter = showAll ? nil : []
+            }
+        )
+    }
+    
+    /// Per-app inclusion: when filter is off (`nil`), every row reads as ON.
+    private func appIncludedToggleBinding(appName: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                guard let whitelist = selectedAppFilter else { return true }
+                return whitelist.contains(appName)
+            },
+            set: { isOn in
+                var next = selectedAppFilter ?? filterMenuAppNames
+                if isOn {
+                    next.insert(appName)
+                } else {
+                    next.remove(appName)
+                }
+                if next == filterMenuAppNames {
+                    selectedAppFilter = nil
+                } else {
+                    selectedAppFilter = next
+                }
+            }
+        )
+    }
+    private var filteredItems: [ClipboardItem] {
+        var items = store.items
+        if let whitelist = selectedAppFilter {
+            items = items.filter { item in
+                guard let name = item.effectiveSource?.appName else { return false }
+                return whitelist.contains(name)
+            }
+        }
+        if !searchText.isEmpty {
+            items = items.filter { item in
+                if item.type == .text,
+                   item.textContent?.localizedCaseInsensitiveContains(searchText) == true {
+                    return true
+                }
+                if let source = item.effectiveSource {
+                    if source.appName?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                    if source.domain?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                    if source.pageTitle?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                }
+                return false
+            }
+        }
+        return items.sorted { $0.isPinned && !$1.isPinned }
     }
     
     /// Get the first unpinned item, or the first pinned item if no unpinned items exist
     private var defaultSelectedItem: ClipboardItem? {
         return filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first
+    }
+
+    /// After search or app-filter changes, keep selection coherent with visible rows.
+    private func resetSelectionToMatchFilteredResults() {
+        let defaultItem = defaultSelectedItem
+        selectedID = defaultItem?.id
+        if let id = defaultItem?.id {
+            selectedIDs = [id]
+            selectionAnchor = id
+        } else {
+            selectedIDs = []
+            selectionAnchor = nil
+        }
+        if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
+            selectedIndex = index
+        } else {
+            selectedIndex = 0
+        }
     }
     
     /// Get all selected items in filtered list order
@@ -369,22 +476,10 @@ struct HistoryContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { _ in
-            // Find first unpinned item in filtered results
-            let defaultItem = defaultSelectedItem
-            selectedID = defaultItem?.id
-            if let id = defaultItem?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
-            }
-            // Calculate the correct index
-            if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
+            resetSelectionToMatchFilteredResults()
+        }
+        .onChange(of: selectedAppFilter) { _ in
+            resetSelectionToMatchFilteredResults()
         }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
@@ -567,6 +662,44 @@ struct HistoryContentView: View {
         return formattedByteCount(bytes)
     }
     
+    @ViewBuilder
+    private var filterPopoverContent: some View {
+        AppFilterPopoverShell {
+            VStack(spacing: 0) {
+                HeaderToggleRow(isOn: allAppsToggleBinding)
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+                    .padding(.horizontal, AppFilterPopoverMetrics.horizontalPadding)
+
+                if availableApps.isEmpty {
+                    Text("No apps yet")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppFilterPopoverMetrics.horizontalPadding)
+                        .padding(.vertical, 14)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(availableApps) { app in
+                                AppToggleRow(
+                                    appName: app.name,
+                                    bundleID: app.bundleID,
+                                    isOn: appIncludedToggleBinding(appName: app.name)
+                                )
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .frame(maxHeight: AppFilterPopoverMetrics.scrollMaxHeight)
+                }
+            }
+            .padding(.vertical, AppFilterPopoverMetrics.shellVerticalPadding)
+        }
+    }
+    
     private var searchBar: some View {
         HStack(spacing: 10) {
             // Search icon
@@ -586,6 +719,21 @@ struct HistoryContentView: View {
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.plain)
+            }
+            
+            Button {
+                isFilterPopoverPresented.toggle()
+            } label: {
+                Image(systemName: appFilteringIsInactive
+                      ? "line.3.horizontal.decrease.circle"
+                      : "line.3.horizontal.decrease.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(appFilteringIsInactive ? .secondary.opacity(0.7) : .accentColor)
+            }
+            .buttonStyle(.plain)
+            .help("Filter by app")
+            .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
+                filterPopoverContent
             }
             
             Spacer()
@@ -613,7 +761,7 @@ struct HistoryContentView: View {
             if filteredItems.isEmpty {
                 VStack {
                     Spacer()
-                    Text(searchText.isEmpty ? "No clipboard history" : "No matches")
+                    Text(store.items.isEmpty ? "No clipboard history" : "No matches")
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -750,6 +898,27 @@ struct HistoryContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+            
+            // Compact source metadata line: app / domain · page title.
+            if selectionCount <= 1,
+               let source = selectedItem?.effectiveSource,
+               !source.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: source.hasBrowserContext ? "globe" : "app")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    Text(source.detailLabel)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.15))
+                .help(source.tooltip)
+            }
             
             Divider()
             
