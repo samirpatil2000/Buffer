@@ -494,11 +494,6 @@ struct HistoryContentView: View {
                 }
             },
             onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
-            onBookmark: {
-                if let item = selectedItem {
-                    store.toggleBookmark(for: item)
-                }
-            },
             onPin: {
                 if let item = selectedItem {
                     store.togglePin(for: item)
@@ -729,13 +724,6 @@ struct HistoryContentView: View {
                         .buttonStyle(.plain)
                         .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
                         .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
-                        
-                        Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
-                            Image(systemName: selectedItem?.isBookmarked == true ? "star.fill" : "star")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
-                        .help(selectedItem?.isBookmarked == true ? "Remove Bookmark" : "Bookmark")
                         
                         Button(action: { if let item = selectedItem { store.delete(item) } }) {
                             Image(systemName: "trash")
@@ -1128,7 +1116,6 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onEscape: () -> Void
     let onDelete: () -> Void
     let onCopy: () -> Void
-    let onBookmark: () -> Void
     let onPin: () -> Void
     let onSaveImage: () -> Void
     
@@ -1184,12 +1171,6 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                             return event
                         }
                         onCopy()
-                        return nil
-                    }
-                    return event
-                case 11: // B (for Bookmark)
-                    if event.modifierFlags.contains(.command) {
-                        onBookmark()
                         return nil
                     }
                     return event

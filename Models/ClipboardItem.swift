@@ -17,9 +17,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For image items — filename reference (stored separately)
     let imageFilename: String?
     
-    // Bookmark state
-    var isBookmarked: Bool
-    
     // Pin state
     var isPinned: Bool = false
     
@@ -32,7 +29,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For large/extreme text items — original size in bytes (for display purposes)
     let originalSizeBytes: Int?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isBookmarked: Bool = false, isPinned: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -40,7 +37,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.textContent = textContent
         self.textFilename = textFilename
         self.imageFilename = imageFilename
-        self.isBookmarked = isBookmarked
         self.isPinned = isPinned
         self.ocrText = ocrText
         self.isTruncated = isTruncated
@@ -49,7 +45,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
-        case isBookmarked, isPinned, ocrText, isTruncated, originalSizeBytes
+        case isPinned, ocrText, isTruncated, originalSizeBytes
+    }
+    
+    private enum LegacyCodingKeys: String, CodingKey {
+        case isBookmarked
     }
     
     init(from decoder: Decoder) throws {
@@ -61,8 +61,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
         self.textFilename = try container.decodeIfPresent(String.self, forKey: .textFilename)
         self.imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
-        self.isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
-        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        // Migration: legacy isBookmarked true → isPinned true
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let legacyBookmarked = (try? legacyContainer.decodeIfPresent(Bool.self, forKey: .isBookmarked)) ?? false
+        self.isPinned = (try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false) || legacyBookmarked
         self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
         self.isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
         self.originalSizeBytes = try container.decodeIfPresent(Int.self, forKey: .originalSizeBytes)
@@ -77,7 +79,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(textContent, forKey: .textContent)
         try container.encodeIfPresent(textFilename, forKey: .textFilename)
         try container.encodeIfPresent(imageFilename, forKey: .imageFilename)
-        try container.encode(isBookmarked, forKey: .isBookmarked)
         try container.encode(isPinned, forKey: .isPinned)
         try container.encodeIfPresent(ocrText, forKey: .ocrText)
         try container.encode(isTruncated, forKey: .isTruncated)

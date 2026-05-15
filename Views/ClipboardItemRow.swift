@@ -49,13 +49,6 @@ struct ClipboardItemRow: View {
             
             Spacer(minLength: 0)
             
-            // Bookmark indicator
-            if item.isBookmarked {
-                Image(systemName: "star.fill")
-                    .foregroundColor(.yellow)
-                    .font(.system(size: 10))
-            }
-            
             // Source app badge
             if let app = item.sourceApp {
                 Text(app)
