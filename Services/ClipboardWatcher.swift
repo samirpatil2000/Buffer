@@ -80,8 +80,9 @@ class ClipboardWatcher: ObservableObject {
             return
         }
         
-        // Get current frontmost app as source
-        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
+        // Resolve structured source context (app name + optional browser domain/title)
+        // before any text/image processing, so every item factory below sees the same snapshot.
+        let source = SourceResolver.shared.resolveCurrentSource()
         
         // Check for single image file from Finder BEFORE text check
         // (Finder always writes both NSFilenamesPboardType + .string, so we must intercept first)
@@ -91,7 +92,7 @@ class ClipboardWatcher: ObservableObject {
             if isImageFile(filePath) {
                 // Read and process image file asynchronously to avoid blocking the poll timer
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    self?.processImageFile(filePath, sourceApp: sourceApp)
+                    self?.processImageFile(filePath, source: source)
                 }
                 return  // Prevent .string branch from also processing this change
             }
@@ -111,13 +112,13 @@ class ClipboardWatcher: ObservableObject {
                 
                 if textSize <= inlineTextLimit {
                     // Small text: store inline (current behavior)
-                    let item = ClipboardItem.text(text, sourceApp: sourceApp)
+                    let item = ClipboardItem.text(text, source: source)
                     store.add(item)
                 } else {
                     // Large text: save to file, store preview inline
                     let preview = String(text.prefix(previewLength))
                     if let filename = store.saveText(text) {
-                        let item = ClipboardItem.largeText(preview: preview, filename: filename, sourceApp: sourceApp)
+                        let item = ClipboardItem.largeText(preview: preview, filename: filename, source: source)
                         store.add(item)
                         print("[Buffer] Large text (\(textSize / 1024) KB) saved to file: \(filename)")
                     }
@@ -136,7 +137,7 @@ class ClipboardWatcher: ObservableObject {
                 
                 // Save image to disk
                 if let filename = store.saveImage(imageData) {
-                    let item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                    let item = ClipboardItem.image(filename: filename, source: source)
                     store.add(item)
                 }
             }
@@ -173,7 +174,7 @@ class ClipboardWatcher: ObservableObject {
     }
     
     /// Read image file from disk, convert to PNG, and store as image item
-    private func processImageFile(_ filePath: String, sourceApp: String?) {
+    private func processImageFile(_ filePath: String, source: SourceContext?) {
         do {
             // Read file bytes
             let fileURL = URL(fileURLWithPath: filePath)
@@ -197,7 +198,7 @@ class ClipboardWatcher: ObservableObject {
             
             // Save image to disk and add to store
             if let filename = store.saveImage(pngData) {
-                let item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                let item = ClipboardItem.image(filename: filename, source: source)
                 DispatchQueue.main.async { [weak self] in
                     self?.lastContentHash = hash
                     self?.store.add(item)
