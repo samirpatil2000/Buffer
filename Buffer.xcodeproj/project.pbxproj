@@ -23,6 +23,7 @@
 		AAA00014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00016 /* SettingsView.swift */; };
 		AAA00015 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00017 /* OCRService.swift */; };
 		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
+		AAA00016 /* TagChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00018 /* TagChip.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +46,7 @@
 		BBB00016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		BBB00017 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
+		BBB00018 /* TagChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagChip.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				D87736112F8ECC6B00392A0B /* ClickDetector.swift */,
+				BBB00018 /* TagChip.swift */,
 				BBB00008 /* HistoryWindow.swift */,
 				BBB00009 /* ClipboardListView.swift */,
 				BBB00010 /* ClipboardItemRow.swift */,
@@ -208,6 +211,7 @@
 				AAA00014 /* SettingsView.swift in Sources */,
 				D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */,
 				AAA00015 /* OCRService.swift in Sources */,
+				AAA00016 /* TagChip.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

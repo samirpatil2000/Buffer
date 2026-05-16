@@ -6,6 +6,7 @@ struct ClipboardItemRow: View {
     let store: ClipboardStore
     let isPrimarySelection: Bool  // True for focused row (full accent), false otherwise
     let isMultiSelected: Bool     // True if this item is part of multi-selection
+    var onTagTap: ((String) -> Void)? = nil
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
@@ -48,7 +49,25 @@ struct ClipboardItemRow: View {
                 .lineLimit(1)
             
             Spacer(minLength: 0)
-            
+
+            // Tag chips
+            if !item.tags.isEmpty {
+                TagChip(label: item.tags[0], onTap: { onTagTap?(item.tags[0]) })
+                if item.tags.count > 1 {
+                    Text("+\(item.tags.count - 1)")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(Color.primary.opacity(0.06))
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                        )
+                }
+            }
+
             // Source app badge
             if let app = item.sourceApp {
                 Text(app)

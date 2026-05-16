@@ -18,6 +18,7 @@ struct ClipboardListView: View {
     var onSelectSingle: (UUID) -> Void = { _ in }
     var onToggleSelection: (UUID) -> Void = { _ in }
     var onExtendSelectionTo: (UUID) -> Void = { _ in }
+    var onTagTap: ((String) -> Void)? = nil
     
     @State private var lastClickedItemID: UUID?
     @State private var lastClickGesture: ClickType = .single
@@ -58,7 +59,8 @@ struct ClipboardListView: View {
                             item: item,
                             store: store,
                             isPrimarySelection: item.id == selectedID,
-                            isMultiSelected: selectedIDs.contains(item.id)
+                            isMultiSelected: selectedIDs.contains(item.id),
+                            onTagTap: onTagTap
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
