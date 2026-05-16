@@ -592,6 +592,11 @@ struct HistoryContentView: View {
                     searchText = ""
                     showTagAutocomplete = false
                 }
+            },
+            onBackspace: {
+                guard isSearchFocused, searchText.isEmpty, activeTagFilter != nil else { return false }
+                activeTagFilter = nil
+                return true
             }
         ))
     }
@@ -1352,7 +1357,8 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
     let onTabComplete: () -> Void
-    
+    let onBackspace: () -> Bool
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
@@ -1386,17 +1392,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 case 53: // Escape
                     onEscape()
                     return nil
-                case 51: // Delete
-                    // Check if search field is first responder - if so, don't consume delete unless empty?
-                    // For now, let's assume Cmd+Delete or just Delete on list.
-                    // If we consume Delete always, we can't delete text in search.
-                    // So let's only consume if we are NOT editing text OR if modifier is used.
-                    // But simpler: Only trigger if search text is empty? 
-                    // Let's rely on Command+Delete for item deletion to be safe/standard
+                case 51: // Delete/Backspace
                     if event.modifierFlags.contains(.command) {
                         onDelete()
                         return nil
                     }
+                    if onBackspace() { return nil }
                     return event
                 case 8: // C (for Copy)
                     if event.modifierFlags.contains(.command) {
