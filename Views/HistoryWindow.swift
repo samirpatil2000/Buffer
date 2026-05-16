@@ -373,11 +373,6 @@ struct HistoryContentView: View {
                 tagAutocompleteBar
             }
 
-            // Active tag filter strip
-            if let tag = activeTagFilter {
-                tagFilterStrip(tag: tag)
-            }
-
             Divider()
 
             // Split pane: List + Detail
@@ -597,6 +592,11 @@ struct HistoryContentView: View {
                     searchText = ""
                     showTagAutocomplete = false
                 }
+            },
+            onBackspace: {
+                guard isSearchFocused, searchText.isEmpty, activeTagFilter != nil else { return false }
+                activeTagFilter = nil
+                return true
             }
         ))
     }
@@ -662,7 +662,27 @@ struct HistoryContentView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary.opacity(0.7))
                 .font(.system(size: 13, weight: .medium))
-            
+
+            if let tag = activeTagFilter {
+                HStack(spacing: 3) {
+                    Text("#\(tag)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(TagChip.color(for: tag))
+                    Button(action: { activeTagFilter = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(TagChip.color(for: tag).opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(TagChip.color(for: tag).opacity(0.12))
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5)
+                    .stroke(TagChip.color(for: tag).opacity(0.2), lineWidth: 0.5))
+            }
+
             TextField(store.allTags.isEmpty ? "Search clipboard…" : "Search or #tag…", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -1192,7 +1212,9 @@ struct HistoryContentView: View {
                         .font(.system(size: 11, weight: .medium))
                     Text("Paste")
                         .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
                 }
+                .fixedSize()
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
@@ -1244,89 +1266,68 @@ struct HistoryContentView: View {
         .background(Color(NSColor.controlBackgroundColor))
     }
 
-    private func tagFilterStrip(tag: String) -> some View {
-        HStack(spacing: 8) {
-            Text("Filtered by")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.7))
-            TagChip(label: tag)
-            Button(action: { activeTagFilter = nil }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-    }
-
     @ViewBuilder
     private func tagSection(for item: ClipboardItem) -> some View {
         let inputSuggestions = showTagInput ? tagInputSuggestions(excluding: item.tags) : []
-        VStack(alignment: .leading, spacing: 6) {
-            if !item.tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(item.tags, id: \.self) { tag in
-                            TagChip(label: tag, onRemove: {
-                                store.removeTag(tag, from: item)
-                            })
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(item.tags, id: \.self) { tag in
+                        TagChip(label: tag, onRemove: {
+                            store.removeTag(tag, from: item)
+                        })
+                    }
+                    if showTagInput {
+                        HStack(spacing: 6) {
+                            TextField("tag name", text: $tagInputText)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 11))
+                                .focused($isTagInputFocused)
+                                .frame(minWidth: 60)
+                            Button("Cancel") {
+                                tagInputText = ""
+                                showTagInput = false
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                         }
+                    } else {
+                        Button(action: { showTagInput = true }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("Add tag")
+                                    .font(.system(size: 11))
+                                Text("⌘T")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.3))
+                            }
+                            .foregroundColor(.secondary.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-
-            if showTagInput {
-                HStack(spacing: 6) {
-                    TextField("tag name", text: $tagInputText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .focused($isTagInputFocused)
-                    Button("Cancel") {
-                        tagInputText = ""
-                        showTagInput = false
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                }
-                if !inputSuggestions.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(inputSuggestions, id: \.self) { suggestion in
-                                Button(suggestion) {
-                                    store.addTag(suggestion, to: item)
-                                    tagInputText = ""
-                                    showTagInput = false
-                                }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 10))
-                                .foregroundColor(TagChip.color(for: suggestion))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(TagChip.color(for: suggestion).opacity(0.10))
-                                .cornerRadius(4)
+            if !inputSuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(inputSuggestions, id: \.self) { suggestion in
+                            Button(suggestion) {
+                                store.addTag(suggestion, to: item)
+                                tagInputText = ""
+                                showTagInput = false
                             }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10))
+                            .foregroundColor(TagChip.color(for: suggestion))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(TagChip.color(for: suggestion).opacity(0.10))
+                            .cornerRadius(4)
                         }
                     }
                 }
-            } else {
-                Button(action: { showTagInput = true }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("Add tag")
-                            .font(.system(size: 11))
-                        Text("⌘T")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.3))
-                    }
-                    .foregroundColor(.secondary.opacity(0.7))
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
@@ -1356,7 +1357,8 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
     let onTabComplete: () -> Void
-    
+    let onBackspace: () -> Bool
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
@@ -1390,17 +1392,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 case 53: // Escape
                     onEscape()
                     return nil
-                case 51: // Delete
-                    // Check if search field is first responder - if so, don't consume delete unless empty?
-                    // For now, let's assume Cmd+Delete or just Delete on list.
-                    // If we consume Delete always, we can't delete text in search.
-                    // So let's only consume if we are NOT editing text OR if modifier is used.
-                    // But simpler: Only trigger if search text is empty? 
-                    // Let's rely on Command+Delete for item deletion to be safe/standard
+                case 51: // Delete/Backspace
                     if event.modifierFlags.contains(.command) {
                         onDelete()
                         return nil
                     }
+                    if onBackspace() { return nil }
                     return event
                 case 8: // C (for Copy)
                     if event.modifierFlags.contains(.command) {
