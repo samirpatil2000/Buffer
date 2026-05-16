@@ -565,6 +565,11 @@ struct HistoryContentView: View {
                     store.togglePin(for: item)
                 }
             },
+            onBookmark: {
+                if let item = selectedItem {
+                    store.toggleBookmark(for: item)
+                }
+            },
             onSaveImage: {
                 if selectedItem?.type == .image, let img = previewImage {
                     PasteController.saveImageToDisk(img)
@@ -804,7 +809,14 @@ struct HistoryContentView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
-                        .help(selectedItem?.isPinned == true ? "Unpin" : "Pin")
+                        .help(selectedItem?.isPinned == true ? "Unpin (⌘P)" : "Pin to top (⌘P)")
+
+                        Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
+                            Image(systemName: selectedItem?.isBookmarked == true ? "bookmark.fill" : "bookmark")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
+                        .help(selectedItem?.isBookmarked == true ? "Remove bookmark (⌘B)" : "Bookmark — protect from deletion (⌘B)")
                         
                         Button(action: { if let item = selectedItem { store.delete(item) } }) {
                             Image(systemName: "trash")
@@ -1132,6 +1144,15 @@ struct HistoryContentView: View {
             }
             .foregroundColor(.secondary.opacity(0.6))
             .padding(.leading, 8)
+
+            HStack(spacing: 4) {
+                Text("⌘B")
+                    .font(.system(size: 10))
+                Text("save")
+                    .font(.system(size: 11))
+            }
+            .foregroundColor(.secondary.opacity(0.6))
+            .padding(.leading, 4)
             
             if selectedItem?.type == .image {
                 HStack(spacing: 4) {
@@ -1322,6 +1343,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onDelete: () -> Void
     let onCopy: () -> Void
     let onPin: () -> Void
+    let onBookmark: () -> Void
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
     let onTabComplete: () -> Void
@@ -1384,6 +1406,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 case 35: // Cmd+P (P is 35)
                     if event.modifierFlags.contains(.command) {
                         onPin()
+                        return nil
+                    }
+                    return event
+                case 11: // Cmd+B (B is 11)
+                    if event.modifierFlags.contains(.command) {
+                        onBookmark()
                         return nil
                     }
                     return event

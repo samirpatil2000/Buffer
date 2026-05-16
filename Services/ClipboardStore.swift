@@ -41,14 +41,13 @@ class ClipboardStore: ObservableObject {
     
     @objc private func handleLimitChanged() {
         guard items.count > maxItems else { return }
-        // Trim from tail, pinned items survive
         var trimmed = items
         while trimmed.count > maxItems {
-            if let idx = trimmed.lastIndex(where: { !$0.isPinned }) {
+            if let idx = trimmed.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
                 deleteAssociatedFiles(for: trimmed[idx])
                 trimmed.remove(at: idx)
             } else {
-                break // All remaining are pinned — respect them
+                break
             }
         }
         items = trimmed
@@ -74,13 +73,13 @@ class ClipboardStore: ObservableObject {
         // Insert at beginning (newest first)
         items.insert(item, at: 0)
         
-        // Evict oldest unpinned item if over limit
+        // Evict oldest unprotected item if over limit
         if items.count > maxItems {
-            if let indexToRemove = items.lastIndex(where: { !$0.isPinned }) {
+            if let indexToRemove = items.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
                 let removed = items.remove(at: indexToRemove)
                 deleteAssociatedFiles(for: removed)
             } else {
-                // If all are pinned (rare), just remove the oldest one
+                // All items are protected — remove the oldest one anyway
                 let removed = items.removeLast()
                 deleteAssociatedFiles(for: removed)
             }
@@ -108,13 +107,17 @@ class ClipboardStore: ObservableObject {
     /// Toggle pin state for an item
     func togglePin(for item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        
         items[index].isPinned.toggle()
-        
         let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
-        }
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+    }
+
+    /// Toggle bookmark state for an item (protected from eviction, stays in place)
+    func toggleBookmark(for item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].isBookmarked.toggle()
+        let itemsToSave = items
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
     }
     
     var allTags: [String] {

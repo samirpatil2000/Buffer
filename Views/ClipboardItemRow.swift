@@ -81,6 +81,13 @@ struct ClipboardItemRow: View {
                     .fill(Color(red: 112/255.0, green: 104/255.0, blue: 196/255.0).opacity(0.7))
                     .frame(width: 5, height: 5)
             }
+
+            // Bookmark indicator (only when not also pinned, to avoid double badge)
+            if item.isBookmarked && !item.isPinned {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.yellow.opacity(0.8))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

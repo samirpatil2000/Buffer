@@ -17,8 +17,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For image items — filename reference (stored separately)
     let imageFilename: String?
     
-    // Pin state
+    // Pin state (protected + floats to top)
     var isPinned: Bool = false
+
+    // Bookmark state (protected, stays in chronological position)
+    var isBookmarked: Bool = false
 
     // User-defined tags
     var tags: [String] = []
@@ -32,7 +35,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // For large/extreme text items — original size in bytes (for display purposes)
     let originalSizeBytes: Int?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -41,6 +44,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.textFilename = textFilename
         self.imageFilename = imageFilename
         self.isPinned = isPinned
+        self.isBookmarked = isBookmarked
         self.tags = tags
         self.ocrText = ocrText
         self.isTruncated = isTruncated
@@ -49,13 +53,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
-        case isPinned, tags, ocrText, isTruncated, originalSizeBytes
+        case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
     }
-    
-    private enum LegacyCodingKeys: String, CodingKey {
-        case isBookmarked
-    }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
@@ -65,10 +65,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
         self.textFilename = try container.decodeIfPresent(String.self, forKey: .textFilename)
         self.imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
-        // Migration: legacy isBookmarked true → isPinned true
-        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
-        let legacyBookmarked = (try? legacyContainer.decodeIfPresent(Bool.self, forKey: .isBookmarked)) ?? false
-        self.isPinned = (try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false) || legacyBookmarked
+        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        self.isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
         self.tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
         self.isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
@@ -85,6 +83,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(textFilename, forKey: .textFilename)
         try container.encodeIfPresent(imageFilename, forKey: .imageFilename)
         try container.encode(isPinned, forKey: .isPinned)
+        try container.encode(isBookmarked, forKey: .isBookmarked)
         try container.encode(tags, forKey: .tags)
         try container.encodeIfPresent(ocrText, forKey: .ocrText)
         try container.encode(isTruncated, forKey: .isTruncated)
