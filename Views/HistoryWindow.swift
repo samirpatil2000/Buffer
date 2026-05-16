@@ -573,6 +573,16 @@ struct HistoryContentView: View {
             onAddTag: {
                 guard selectedItem != nil else { return }
                 showTagInput = true
+            },
+            onTabComplete: {
+                guard showTagInput, !tagInputText.isEmpty, let item = selectedItem else { return }
+                let suggestions = store.allTags.filter {
+                    $0.hasPrefix(tagInputText.lowercased()) && !item.tags.contains($0)
+                }
+                guard let first = suggestions.first else { return }
+                store.addTag(first, to: item)
+                tagInputText = ""
+                showTagInput = false
             }
         ))
     }
@@ -1314,6 +1324,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onPin: () -> Void
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
+    let onTabComplete: () -> Void
     
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -1388,6 +1399,9 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                         return nil
                     }
                     return event
+                case 48: // Tab
+                    onTabComplete()
+                    return nil
                 default:
                     return event
                 }
