@@ -170,6 +170,7 @@ struct HistoryContentView: View {
     @State private var showTagAutocomplete: Bool = false
     @State private var showTagInput: Bool = false
     @State private var tagInputText: String = ""
+    @FocusState private var isTagInputFocused: Bool
 
     // Track selection by ID so it survives list insertions
     @State private var selectedID: UUID?
@@ -418,6 +419,14 @@ struct HistoryContentView: View {
                 selectedIndex = 0
             }
         }
+        .onChange(of: showTagInput) { newValue in
+            if newValue {
+                // Defer by one run loop so the TextField is in the hierarchy before focusing
+                DispatchQueue.main.async { isTagInputFocused = true }
+            } else {
+                isTagInputFocused = false
+            }
+        }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
         }
@@ -560,6 +569,10 @@ struct HistoryContentView: View {
                 if selectedItem?.type == .image, let img = previewImage {
                     PasteController.saveImageToDisk(img)
                 }
+            },
+            onAddTag: {
+                guard selectedItem != nil else { return }
+                showTagInput = true
             }
         ))
     }
@@ -1231,6 +1244,7 @@ struct HistoryContentView: View {
                     TextField("tag name", text: $tagInputText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11))
+                        .focused($isTagInputFocused)
                     Button("Cancel") {
                         tagInputText = ""
                         showTagInput = false
@@ -1261,11 +1275,14 @@ struct HistoryContentView: View {
                 }
             } else {
                 Button(action: { showTagInput = true }) {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 5) {
                         Image(systemName: "plus")
                             .font(.system(size: 9, weight: .bold))
                         Text("Add tag")
                             .font(.system(size: 11))
+                        Text("⌘T")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.3))
                     }
                     .foregroundColor(.secondary.opacity(0.7))
                 }
@@ -1296,6 +1313,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onCopy: () -> Void
     let onPin: () -> Void
     let onSaveImage: () -> Void
+    let onAddTag: () -> Void
     
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -1361,6 +1379,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 case 1: // Cmd+S (S is 1)
                     if event.modifierFlags.contains(.command) {
                         onSaveImage()
+                        return nil
+                    }
+                    return event
+                case 17: // Cmd+T (T is 17)
+                    if event.modifierFlags.contains(.command) {
+                        onAddTag()
                         return nil
                     }
                     return event
