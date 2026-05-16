@@ -1266,67 +1266,65 @@ struct HistoryContentView: View {
     @ViewBuilder
     private func tagSection(for item: ClipboardItem) -> some View {
         let inputSuggestions = showTagInput ? tagInputSuggestions(excluding: item.tags) : []
-        VStack(alignment: .leading, spacing: 6) {
-            if !item.tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(item.tags, id: \.self) { tag in
-                            TagChip(label: tag, onRemove: {
-                                store.removeTag(tag, from: item)
-                            })
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(item.tags, id: \.self) { tag in
+                        TagChip(label: tag, onRemove: {
+                            store.removeTag(tag, from: item)
+                        })
+                    }
+                    if showTagInput {
+                        HStack(spacing: 6) {
+                            TextField("tag name", text: $tagInputText)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 11))
+                                .focused($isTagInputFocused)
+                                .frame(minWidth: 60)
+                            Button("Cancel") {
+                                tagInputText = ""
+                                showTagInput = false
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                         }
+                    } else {
+                        Button(action: { showTagInput = true }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("Add tag")
+                                    .font(.system(size: 11))
+                                Text("⌘T")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.3))
+                            }
+                            .foregroundColor(.secondary.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-
-            if showTagInput {
-                HStack(spacing: 6) {
-                    TextField("tag name", text: $tagInputText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .focused($isTagInputFocused)
-                    Button("Cancel") {
-                        tagInputText = ""
-                        showTagInput = false
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                }
-                if !inputSuggestions.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(inputSuggestions, id: \.self) { suggestion in
-                                Button(suggestion) {
-                                    store.addTag(suggestion, to: item)
-                                    tagInputText = ""
-                                    showTagInput = false
-                                }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 10))
-                                .foregroundColor(TagChip.color(for: suggestion))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(TagChip.color(for: suggestion).opacity(0.10))
-                                .cornerRadius(4)
+            if !inputSuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(inputSuggestions, id: \.self) { suggestion in
+                            Button(suggestion) {
+                                store.addTag(suggestion, to: item)
+                                tagInputText = ""
+                                showTagInput = false
                             }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10))
+                            .foregroundColor(TagChip.color(for: suggestion))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(TagChip.color(for: suggestion).opacity(0.10))
+                            .cornerRadius(4)
                         }
                     }
                 }
-            } else {
-                Button(action: { showTagInput = true }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("Add tag")
-                            .font(.system(size: 11))
-                        Text("⌘T")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.3))
-                    }
-                    .foregroundColor(.secondary.opacity(0.7))
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12)
