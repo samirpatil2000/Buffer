@@ -649,7 +649,7 @@ struct HistoryContentView: View {
                 .foregroundColor(.secondary.opacity(0.7))
                 .font(.system(size: 13, weight: .medium))
             
-            TextField("Search clipboard...", text: $searchText)
+            TextField(store.allTags.isEmpty ? "Search clipboard…" : "Search or #tag…", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($isSearchFocused)
