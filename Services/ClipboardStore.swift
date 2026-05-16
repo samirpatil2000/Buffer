@@ -117,6 +117,25 @@ class ClipboardStore: ObservableObject {
         }
     }
     
+    var allTags: [String] {
+        Array(Set(items.flatMap { $0.tags })).sorted()
+    }
+
+    func addTag(_ tag: String, to item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard !items[index].tags.contains(tag) else { return }
+        items[index].tags.append(tag)
+        let itemsToSave = items
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+    }
+
+    func removeTag(_ tag: String, from item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].tags.removeAll { $0 == tag }
+        let itemsToSave = items
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+    }
+
     /// Save extracted OCR text for an image item
     func setOCRText(_ text: String, for item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
