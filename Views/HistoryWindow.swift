@@ -1192,7 +1192,9 @@ struct HistoryContentView: View {
                         .font(.system(size: 11, weight: .medium))
                     Text("Paste")
                         .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
                 }
+                .fixedSize()
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
