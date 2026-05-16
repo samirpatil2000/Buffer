@@ -580,14 +580,23 @@ struct HistoryContentView: View {
                 showTagInput = true
             },
             onTabComplete: {
-                guard showTagInput, !tagInputText.isEmpty, let item = selectedItem else { return }
-                let suggestions = store.allTags.filter {
-                    $0.hasPrefix(tagInputText.lowercased()) && !item.tags.contains($0)
+                if showTagInput {
+                    guard !tagInputText.isEmpty, let item = selectedItem else { return }
+                    let suggestions = store.allTags.filter {
+                        $0.hasPrefix(tagInputText.lowercased()) && !item.tags.contains($0)
+                    }
+                    guard let first = suggestions.first else { return }
+                    store.addTag(first, to: item)
+                    tagInputText = ""
+                    showTagInput = false
+                } else if searchText.hasPrefix("#") {
+                    let tagQuery = String(searchText.dropFirst()).lowercased()
+                    let suggestions = store.allTags.filter { tagQuery.isEmpty || $0.hasPrefix(tagQuery) }
+                    guard let first = suggestions.first else { return }
+                    activeTagFilter = first
+                    searchText = ""
+                    showTagAutocomplete = false
                 }
-                guard let first = suggestions.first else { return }
-                store.addTag(first, to: item)
-                tagInputText = ""
-                showTagInput = false
             }
         ))
     }
