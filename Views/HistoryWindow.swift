@@ -373,11 +373,6 @@ struct HistoryContentView: View {
                 tagAutocompleteBar
             }
 
-            // Active tag filter strip
-            if let tag = activeTagFilter {
-                tagFilterStrip(tag: tag)
-            }
-
             Divider()
 
             // Split pane: List + Detail
@@ -662,7 +657,27 @@ struct HistoryContentView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary.opacity(0.7))
                 .font(.system(size: 13, weight: .medium))
-            
+
+            if let tag = activeTagFilter {
+                HStack(spacing: 3) {
+                    Text("#\(tag)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(TagChip.color(for: tag))
+                    Button(action: { activeTagFilter = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(TagChip.color(for: tag).opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(TagChip.color(for: tag).opacity(0.12))
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5)
+                    .stroke(TagChip.color(for: tag).opacity(0.2), lineWidth: 0.5))
+            }
+
             TextField(store.allTags.isEmpty ? "Search clipboard…" : "Search or #tag…", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -1244,25 +1259,6 @@ struct HistoryContentView: View {
             .padding(.vertical, 6)
         }
         .background(Color(NSColor.controlBackgroundColor))
-    }
-
-    private func tagFilterStrip(tag: String) -> some View {
-        HStack(spacing: 8) {
-            Text("Filtered by")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.7))
-            TagChip(label: tag)
-            Button(action: { activeTagFilter = nil }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
     }
 
     @ViewBuilder
