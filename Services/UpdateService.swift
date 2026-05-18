@@ -211,19 +211,59 @@ class UpdateService {
 
     private func showProgressWindow() {
         DispatchQueue.main.async {
+            let w: CGFloat = 260
+            let h: CGFloat = 168
+
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 220, height: 80),
-                styleMask: [.titled],
+                contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Updating Buffer..."
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.level = .floating
             window.center()
 
-            let spinner = NSProgressIndicator(frame: NSRect(x: 90, y: 20, width: 40, height: 40))
+            // Blurred HUD background with rounded corners
+            let blur = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+            blur.blendingMode = .behindWindow
+            blur.material = .hudWindow
+            blur.state = .active
+            blur.wantsLayer = true
+            blur.layer?.cornerRadius = 18
+            blur.layer?.masksToBounds = true
+            window.contentView = blur
+
+            // App icon
+            let iconSize: CGFloat = 52
+            let iconView = NSImageView(frame: NSRect(x: (w - iconSize) / 2, y: 100, width: iconSize, height: iconSize))
+            iconView.image = NSApp.applicationIconImage
+            iconView.imageScaling = .scaleProportionallyDown
+            blur.addSubview(iconView)
+
+            // Title
+            let title = NSTextField(labelWithString: "Updating Buffer...")
+            title.font = .boldSystemFont(ofSize: 13)
+            title.textColor = .white
+            title.alignment = .center
+            title.frame = NSRect(x: 0, y: 72, width: w, height: 20)
+            blur.addSubview(title)
+
+            // Subtitle
+            let subtitle = NSTextField(labelWithString: "Downloading, please wait...")
+            subtitle.font = .systemFont(ofSize: 11)
+            subtitle.textColor = NSColor.white.withAlphaComponent(0.55)
+            subtitle.alignment = .center
+            subtitle.frame = NSRect(x: 0, y: 52, width: w, height: 16)
+            blur.addSubview(subtitle)
+
+            // Spinner
+            let spinner = NSProgressIndicator(frame: NSRect(x: (w - 20) / 2, y: 20, width: 20, height: 20))
             spinner.style = .spinning
+            spinner.controlSize = .small
             spinner.startAnimation(nil)
-            window.contentView?.addSubview(spinner)
+            blur.addSubview(spinner)
 
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
