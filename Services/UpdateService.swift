@@ -47,9 +47,9 @@ class UpdateService {
     }
 
     private func handleReleases(_ releases: [[String: Any]], silent: Bool) {
-        let sorted = releases.sorted {
-            (($0["published_at"] as? String) ?? "") > (($1["published_at"] as? String) ?? "")
-        }
+        let sorted = releases
+            // .filter { ($0["prerelease"] as? Bool) != true }
+            .sorted { (($0["published_at"] as? String) ?? "") > (($1["published_at"] as? String) ?? "") }
 
         #if arch(arm64)
         let archKeyword = "Silicon"
@@ -122,6 +122,7 @@ class UpdateService {
     private func showUpdateAlert(version: String, downloadURL: String) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
+        alert.icon = NSApp.applicationIconImage
         alert.messageText = "Buffer \(version) is available"
         alert.informativeText = "A new version of Buffer is ready to download and install."
         alert.addButton(withTitle: "Update Now")
@@ -136,6 +137,7 @@ class UpdateService {
     private func showUpToDateAlert() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
+        alert.icon = NSApp.applicationIconImage
         alert.messageText = "You're up to date"
         alert.informativeText = "Buffer is already on the latest version."
         alert.addButton(withTitle: "OK")
