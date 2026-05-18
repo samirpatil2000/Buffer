@@ -52,6 +52,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .bufferHotkeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.hotkeyManager?.reregister()
         }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UpdateService.shared.checkOnLaunchIfNeeded()
+        }
     }
     
     func applicationWillTerminate(_ notification: Notification) {
