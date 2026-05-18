@@ -5,7 +5,7 @@ class UpdateService {
     static let shared = UpdateService()
     private init() {}
 
-    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/release-test/releases")!
+    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/Buffer/releases")!
     private let lastCheckKey = "lastUpdateCheckDate"
     private var progressWindow: NSWindow?
 
