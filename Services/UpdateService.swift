@@ -5,7 +5,7 @@ class UpdateService {
     static let shared = UpdateService()
     private init() {}
 
-    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/Buffer/releases")!
+    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/release-test/releases")!
     private let lastCheckKey = "lastUpdateCheckDate"
     private var progressWindow: NSWindow?
 
@@ -48,7 +48,7 @@ class UpdateService {
 
     private func handleReleases(_ releases: [[String: Any]], silent: Bool) {
         let sorted = releases
-            // .filter { ($0["prerelease"] as? Bool) != true }
+            .filter { ($0["prerelease"] as? Bool) != true }
             .sorted { (($0["published_at"] as? String) ?? "") > (($1["published_at"] as? String) ?? "") }
 
         #if arch(arm64)
