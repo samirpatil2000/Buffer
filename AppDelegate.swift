@@ -63,6 +63,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         clipboardWatcher?.stopWatching()
         hotkeyManager?.unregister()
+        print("[AppDelegate] applicationWillTerminate — call stack:")
+        Thread.callStackSymbols.forEach { print($0) }
     }
     
     private func toggleHistoryWindow() {

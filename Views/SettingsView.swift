@@ -160,6 +160,16 @@ struct SettingsView: View {
                 }
             }
             
+            Divider()
+
+            // Version
+            HStack {
+                Spacer()
+                Text("Buffer \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary.opacity(0.6))
+                Spacer()
+            }
         }
         .padding(24)
         .frame(width: 380)
