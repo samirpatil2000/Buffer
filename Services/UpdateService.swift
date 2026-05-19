@@ -5,7 +5,7 @@ class UpdateService {
     static let shared = UpdateService()
     private init() {}
 
-    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/Buffer/releases")!
+    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/release-test/releases")!
     private let lastCheckKey = "lastUpdateCheckDate"
     private var progressWindow: NSWindow?
 
@@ -154,51 +154,107 @@ class UpdateService {
 
         URLSession.shared.downloadTask(with: downloadURL) { [weak self] localURL, _, error in
             guard let self else { return }
-            if let error {
-                print("[UpdateService] Download error: \(error.localizedDescription)")
+
+            func fail(_ reason: String) {
+                print("[UpdateService] \(reason)")
                 DispatchQueue.main.async { self.hideProgressWindow() }
-                return
+            }
+
+            if let error {
+                return fail("Download error: \(error.localizedDescription)")
             }
             guard let localURL else {
-                print("[UpdateService] Download returned no file")
-                DispatchQueue.main.async { self.hideProgressWindow() }
-                return
+                return fail("Download returned no file")
             }
             print("[UpdateService] Download complete: \(localURL.path)")
 
-            let tmp = NSTemporaryDirectory()
-            let zipPath = tmp + "BufferUpdate.zip"
-            let extractDir = tmp + "BufferUpdateExtracted"
-            let scriptPath = tmp + "buffer_update.sh"
+            // 1. UUID-based temp dir — not guessable by other processes
+            let fm = FileManager.default
+            let tmpBase = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("BufferUpdate_\(UUID().uuidString)")
+            let zipURL    = tmpBase.appendingPathComponent("update.zip")
+            let extractURL = tmpBase.appendingPathComponent("extracted")
+            let newAppURL  = extractURL.appendingPathComponent("Buffer.app")
+            let scriptURL  = tmpBase.appendingPathComponent("install.sh")
 
-            try? FileManager.default.removeItem(atPath: zipPath)
-            try? FileManager.default.moveItem(at: localURL, to: URL(fileURLWithPath: zipPath))
-            print("[UpdateService] Zip moved to: \(zipPath)")
+            do {
+                try fm.createDirectory(at: tmpBase, withIntermediateDirectories: true,
+                                       attributes: [.posixPermissions: 0o700])
+                try fm.moveItem(at: localURL, to: zipURL)
+                print("[UpdateService] Zip at: \(zipURL.path)")
+            } catch {
+                return fail("Failed to prepare temp dir: \(error)")
+            }
 
+            // 2. Extract zip in Swift so we can inspect it before touching /Applications
+            let ditto = Process()
+            ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            ditto.arguments = ["-xk", zipURL.path, extractURL.path]
+            do {
+                try ditto.run(); ditto.waitUntilExit()
+                guard ditto.terminationStatus == 0 else {
+                    return fail("ditto extraction failed (exit \(ditto.terminationStatus))")
+                }
+                print("[UpdateService] Extraction OK")
+            } catch {
+                return fail("Failed to run ditto: \(error)")
+            }
+
+            // 3. Confirm Buffer.app is actually present after extraction
+            guard fm.fileExists(atPath: newAppURL.path) else {
+                return fail("Buffer.app not found in extracted zip at \(newAppURL.path)")
+            }
+
+            // 4. Verify code signature before replacing anything
+            let codesign = Process()
+            codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            codesign.arguments = ["--verify", "--deep", "--strict", newAppURL.path]
+            do {
+                try codesign.run(); codesign.waitUntilExit()
+                guard codesign.terminationStatus == 0 else {
+                    return fail("Code signature verification failed (exit \(codesign.terminationStatus))")
+                }
+                print("[UpdateService] Code signature verified OK")
+            } catch {
+                return fail("Failed to run codesign: \(error)")
+            }
+
+            // 5. Write install script — extraction already done, script only copies + opens
             let script = """
             #!/bin/bash
+            set -e
             sleep 1.5
-            rm -rf "\(extractDir)"
-            mkdir -p "\(extractDir)"
-            ditto -xk "\(zipPath)" "\(extractDir)"
             rm -rf "/Applications/Buffer.app"
-            cp -R "\(extractDir)/Buffer.app" "/Applications/Buffer.app"
+            cp -R "\(newAppURL.path)" "/Applications/Buffer.app"
             open "/Applications/Buffer.app"
             """
-            try? script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
-            print("[UpdateService] Install script written to: \(scriptPath)")
+            do {
+                try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+                print("[UpdateService] Install script written to: \(scriptURL.path)")
+            } catch {
+                return fail("Failed to write install script: \(error)")
+            }
 
+            // 6. chmod 755
             let chmod = Process()
             chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
-            chmod.arguments = ["755", scriptPath]
-            try? chmod.run()
-            chmod.waitUntilExit()
+            chmod.arguments = ["755", scriptURL.path]
+            do {
+                try chmod.run(); chmod.waitUntilExit()
+            } catch {
+                return fail("Failed to chmod script: \(error)")
+            }
 
-            print("[UpdateService] Launching install script and terminating app")
+            // 7. Launch script — only terminate if this succeeds
             let launcher = Process()
             launcher.executableURL = URL(fileURLWithPath: "/bin/bash")
-            launcher.arguments = [scriptPath]
-            try? launcher.run()
+            launcher.arguments = [scriptURL.path]
+            do {
+                try launcher.run()
+                print("[UpdateService] Install script launched, terminating app")
+            } catch {
+                return fail("Failed to launch install script: \(error)")
+            }
 
             DispatchQueue.main.async {
                 self.hideProgressWindow()
