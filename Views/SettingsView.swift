@@ -162,14 +162,31 @@ struct SettingsView: View {
             
             Divider()
 
-            // Version
-            HStack {
-                Spacer()
-                Text("Buffer \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.6))
-                Spacer()
+            // About
+            VStack(spacing: 6) {
+                Text("Designed to disappear. Built to remember.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .italic()
+
+                Text("Buffer \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · by @samirpatil2000")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.4))
+
+                HStack(spacing: 8) {
+                    Link("⭐ Star on GitHub", destination: URL(string: "https://github.com/samirpatil2000/Buffer")!)
+                        .font(.system(size: 10, weight: .medium))
+
+                    Text("·")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.4))
+
+                    Link("Report an Issue", destination: URL(string: "https://github.com/samirpatil2000/Buffer/issues/new")!)
+                        .font(.system(size: 10, weight: .medium))
+                }
             }
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
         }
         .padding(24)
         .frame(width: 380)
