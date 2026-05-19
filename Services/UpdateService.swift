@@ -10,7 +10,7 @@ class UpdateService {
     private let repoBaseURL = "https://github.com/samirpatil2000/Buffer"
     private var progressWindow: NSWindow?
     private var toastWindow: NSWindow?
-    private var pendingStarURL: URL?
+    private var pendingReleaseURL: URL?
 
     func checkOnLaunchIfNeeded() {
         if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date,
@@ -161,7 +161,7 @@ class UpdateService {
 
     private func showSuccessToast(version: String, tag: String) {
         let w: CGFloat = 270
-        let h: CGFloat = 220
+        let h: CGFloat = 190
 
         // NSPanel with .nonactivatingPanel never touches app activation state
         // so closing it cannot trigger AppKit's "accessory app with no windows" termination
@@ -192,43 +192,36 @@ class UpdateService {
         let iconSize: CGFloat = 48
         let iconConfig = NSImage.SymbolConfiguration(pointSize: iconSize * 0.8, weight: .medium)
             .applying(.init(paletteColors: [.white, NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1)]))
-        let iconView = NSImageView(frame: NSRect(x: (w - iconSize) / 2, y: 154, width: iconSize, height: iconSize))
+        let iconView = NSImageView(frame: NSRect(x: (w - iconSize) / 2, y: 124, width: iconSize, height: iconSize))
         iconView.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(iconConfig)
         blur.addSubview(iconView)
 
-        let title = NSTextField(labelWithString: "Updated Successfully")
+        let titleString = version.isEmpty ? "Buffer" : "Buffer \(version)"
+        let title = NSTextField(labelWithString: titleString)
         title.font = .boldSystemFont(ofSize: 13)
         title.textColor = .white
         title.alignment = .center
-        title.frame = NSRect(x: 0, y: 128, width: w, height: 20)
+        title.frame = NSRect(x: 0, y: 98, width: w, height: 20)
         blur.addSubview(title)
 
-        let sub = version.isEmpty ? "Buffer is up to date." : "You're now on version \(version)."
-        let subtitle = NSTextField(labelWithString: sub)
+        let subtitle = NSTextField(labelWithString: "The best Buffer yet.")
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = NSColor.white.withAlphaComponent(0.55)
         subtitle.alignment = .center
-        subtitle.frame = NSRect(x: 0, y: 108, width: w, height: 16)
+        subtitle.frame = NSRect(x: 0, y: 78, width: w, height: 16)
         blur.addSubview(subtitle)
 
-        let prompt = NSTextField(labelWithString: "Enjoying Buffer? Please ⭐ star the repo!")
-        prompt.font = .systemFont(ofSize: 11)
-        prompt.textColor = NSColor.white.withAlphaComponent(0.55)
-        prompt.alignment = .center
-        prompt.frame = NSRect(x: 0, y: 80, width: w, height: 16)
-        blur.addSubview(prompt)
-
-        // Star button
+        // What's New button
         let releaseURLString = tag.isEmpty
-            ? repoBaseURL
+            ? "\(repoBaseURL)/releases"
             : "\(repoBaseURL)/releases/tag/\(tag)"
-        pendingStarURL = URL(string: releaseURLString)
+        pendingReleaseURL = URL(string: releaseURLString)
 
-        let btn = NSButton(title: "⭐  Star on GitHub", target: self, action: #selector(starButtonTapped))
+        let btn = NSButton(title: "What's New →", target: self, action: #selector(whatsNewButtonTapped))
         btn.bezelStyle = .rounded
         btn.font = .boldSystemFont(ofSize: 12)
-        let btnW: CGFloat = 160
+        let btnW: CGFloat = 150
         btn.frame = NSRect(x: (w - btnW) / 2, y: 18, width: btnW, height: 30)
         blur.addSubview(btn)
 
@@ -245,8 +238,8 @@ class UpdateService {
         }
     }
 
-    @objc private func starButtonTapped() {
-        if let url = pendingStarURL {
+    @objc private func whatsNewButtonTapped() {
+        if let url = pendingReleaseURL {
             NSWorkspace.shared.open(url)
         }
         dismissToast()
