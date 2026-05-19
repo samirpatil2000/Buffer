@@ -144,6 +144,85 @@ class UpdateService {
         alert.runModal()
     }
 
+    func checkIfJustUpdated() {
+        guard UserDefaults.standard.bool(forKey: "bufferJustUpdated") else { return }
+        UserDefaults.standard.removeObject(forKey: "bufferJustUpdated")
+        let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? ""
+        print("[UpdateService] Detected post-update launch, version: \(version)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            self.showSuccessToast(version: version)
+        }
+    }
+
+    private func showSuccessToast(version: String) {
+        let w: CGFloat = 260
+        let h: CGFloat = 168
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .floating
+        window.center()
+        window.alphaValue = 0
+
+        let blur = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        blur.blendingMode = .behindWindow
+        blur.material = .hudWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = 18
+        blur.layer?.masksToBounds = true
+        window.contentView = blur
+
+        // Checkmark icon
+        let iconSize: CGFloat = 52
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: iconSize * 0.8, weight: .medium)
+            .applying(.init(paletteColors: [.white, NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1)]))
+        let iconView = NSImageView(frame: NSRect(x: (w - iconSize) / 2, y: 100, width: iconSize, height: iconSize))
+        iconView.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconConfig)
+        blur.addSubview(iconView)
+
+        let title = NSTextField(labelWithString: "Updated Successfully")
+        title.font = .boldSystemFont(ofSize: 13)
+        title.textColor = .white
+        title.alignment = .center
+        title.frame = NSRect(x: 0, y: 72, width: w, height: 20)
+        blur.addSubview(title)
+
+        let sub = version.isEmpty ? "Buffer is up to date." : "You're now on version \(version)."
+        let subtitle = NSTextField(labelWithString: sub)
+        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.textColor = NSColor.white.withAlphaComponent(0.55)
+        subtitle.alignment = .center
+        subtitle.frame = NSRect(x: 0, y: 52, width: w, height: 16)
+        blur.addSubview(subtitle)
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Fade in
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.3
+            window.animator().alphaValue = 1
+        }
+
+        // Auto-dismiss after 2.5 s with fade out
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.4
+                window.animator().alphaValue = 0
+            }, completionHandler: {
+                window.close()
+            })
+        }
+    }
+
     private func downloadAndInstall(url: String) {
         guard let downloadURL = URL(string: url) else {
             print("[UpdateService] Invalid download URL: \(url)")
@@ -255,6 +334,9 @@ class UpdateService {
             } catch {
                 return fail("Failed to launch install script: \(error)")
             }
+
+            // Flag for the new app to show a success toast on first launch
+            UserDefaults.standard.set(true, forKey: "bufferJustUpdated")
 
             DispatchQueue.main.async {
                 self.hideProgressWindow()

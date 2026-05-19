@@ -53,6 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeyManager?.reregister()
         }
 
+        UpdateService.shared.checkIfJustUpdated()
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             UpdateService.shared.checkOnLaunchIfNeeded()
         }
