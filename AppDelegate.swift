@@ -52,11 +52,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .bufferHotkeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.hotkeyManager?.reregister()
         }
+
+        UpdateService.shared.checkIfJustUpdated()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UpdateService.shared.checkOnLaunchIfNeeded()
+        }
     }
     
     func applicationWillTerminate(_ notification: Notification) {
         clipboardWatcher?.stopWatching()
         hotkeyManager?.unregister()
+        print("[AppDelegate] applicationWillTerminate — call stack:")
+        Thread.callStackSymbols.forEach { print($0) }
     }
     
     private func toggleHistoryWindow() {

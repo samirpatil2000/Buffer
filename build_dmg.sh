@@ -9,7 +9,7 @@ set +a
 BUILD_DIR="build"
 
 echo "🧹 Cleaning..."
-rm -rf build dmg_* ${APP_NAME}_*.dmg
+rm -rf build dmg_* ${APP_NAME}_*.dmg ${APP_NAME}_*.zip
 
 mkdir -p ${BUILD_DIR}
 
@@ -74,9 +74,9 @@ package_app() {
 <key>CFBundlePackageType</key>
 <string>APPL</string>
 <key>CFBundleShortVersionString</key>
-<string>1.0</string>
+<string>2.0.0</string>
 <key>CFBundleVersion</key>
-<string>1</string>
+<string>2</string>
 <key>LSMinimumSystemVersion</key>
 <string>${DEPLOY_TARGET}</string>
 <key>LSUIElement</key>
@@ -99,17 +99,34 @@ EOF
     echo "APPL????" > ${APP_DIR}/Contents/PkgInfo
 
     echo "🔏 Signing..."
-    codesign \
-    --force \
-    --deep \
-    --timestamp \
-    --options runtime \
-    --sign "${SIGN_IDENTITY}" \
-    --entitlements Buffer.entitlements \
-    ${APP_DIR}
+    SIGN_OK=false
+    for attempt in 1 2 3; do
+        if codesign \
+            --force \
+            --deep \
+            --timestamp \
+            --options runtime \
+            --sign "${SIGN_IDENTITY}" \
+            --entitlements Buffer.entitlements \
+            ${APP_DIR}; then
+            SIGN_OK=true
+            break
+        fi
+        echo "⚠️  Signing attempt ${attempt} failed (timestamp server unreachable?), retrying in 3s..."
+        sleep 3
+    done
+    if [ "$SIGN_OK" = false ]; then
+        echo "❌ Signing failed after 3 attempts. Check internet connectivity to timestamp.apple.com"
+        exit 1
+    fi
 
     echo "🔍 Verifying..."
     codesign --verify --deep --strict ${APP_DIR}
+
+    echo "🗜️ Creating ZIP..."
+    local ZIP_NAME="${APP_NAME}_${SUFFIX}.zip"
+    ditto -ck --rsrc --sequesterRsrc --keepParent ${APP_DIR} ${ZIP_NAME}
+    echo "✅ ZIP: ${ZIP_NAME}"
 
     echo "📂 Preparing DMG..."
     mkdir -p ${DMG_DIR}

@@ -68,7 +68,11 @@ class StatusBarController {
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
-        
+
+        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
+
         menu.addItem(NSMenuItem.separator())
         
         // Pause/Resume
@@ -96,6 +100,10 @@ class StatusBarController {
         statusItem.menu = nil  // Reset so left click works
     }
     
+    @objc private func checkForUpdates() {
+        UpdateService.shared.checkForUpdates(silent: false)
+    }
+
     @objc private func showSettings() {
         if let controller = settingsWindowController, let window = controller.window {
             window.makeKeyAndOrderFront(nil)
