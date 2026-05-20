@@ -82,6 +82,12 @@
 
 <img width="800" height="525" alt="buffer-26-apr-v2-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/5dd61f35-9b16-413d-aec9-8e89fff4f7f8" />
 
+
+#### Tags 
+
+<img width="709" height="486" alt="image" src="https://github.com/user-attachments/assets/6b1ac775-b75f-43db-8438-4170336c25cc" />
+
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
