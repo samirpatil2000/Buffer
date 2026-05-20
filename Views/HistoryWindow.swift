@@ -37,7 +37,7 @@ class HistoryWindowController: NSWindowController {
     /// Reset search if window was closed more than 10 minutes ago (or never opened)
     private var shouldResetSearch: Bool {
         guard let lastClosed = lastClosedAt else { return true }
-        return Date().timeIntervalSince(lastClosed) > 600
+        return Date().timeIntervalSince(lastClosed) > 120
     }
 
     init(store: ClipboardStore) {
