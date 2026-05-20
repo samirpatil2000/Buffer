@@ -29,8 +29,10 @@
 - **Pins & Smart History** — Pin favorites, keep them anchored, and cycle history while prioritizing unpinned items  
 - **Multi-select & multi‑paste** — Select multiple items in history with clear on-screen instructions and paste them together 
 - **Bookmarks** — Star important items with Cmd+B for quick reuse  
+- **Tags & Filtering** — Categorize history items with custom, color-coded tags. Quick tag items with `Cmd+T` and filter using `#` autocomplete in the search bar  
 - **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
 - **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app  
+- **Seamless Updates** — Built-in secure auto-updater with code signature verification and a native post-update HUD with a "What's New" link  
 - **Open Source** — MIT license, actively maintained  
 
 ---
@@ -88,7 +90,14 @@
 |----------|--------|
 | `⇧⌘V` | Open clipboard history |
 | `↑` / `↓` | Navigate items |
+| `⇧↑` / `⇧↓` | Expand selection (Multi-select) |
 | `↵` Enter | Paste selected item |
+| `⌘C` | Copy selected item text to clipboard |
+| `⌘P` | Pin / unpin selected item |
+| `⌘B` | Bookmark / unbookmark selected item |
+| `⌘T` | Add tag to selected item |
+| `⌘S` | Save image to disk (for image items) |
+| `⌘⌫` | Delete selected item |
 | `⎋` Esc | Close history window |
 
 ---
