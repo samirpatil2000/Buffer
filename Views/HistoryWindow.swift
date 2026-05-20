@@ -28,7 +28,18 @@ private struct ChunkedTextState {
 class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
     private var previousApp: NSRunningApplication?
-    
+
+    /// Timestamp of the last close — used to decide whether to persist search state
+    private var lastClosedAt: Date?
+    /// Shared flag: true if the content view should reset search on the next open
+    var shouldResetOnOpen: Bool = true
+
+    /// Reset search if window was closed more than 10 minutes ago (or never opened)
+    private var shouldResetSearch: Bool {
+        guard let lastClosed = lastClosedAt else { return true }
+        return Date().timeIntervalSince(lastClosed) > 120
+    }
+
     init(store: ClipboardStore) {
         self.store = store
         
@@ -48,6 +59,11 @@ class HistoryWindowController: NSWindowController {
         
         setupPanel(panel)
         setupContent()
+    }
+
+    override func close() {
+        lastClosedAt = Date()
+        super.close()
     }
     
     required init?(coder: NSCoder) {
@@ -89,6 +105,10 @@ class HistoryWindowController: NSWindowController {
     private func setupContent() {
         let contentView = HistoryContentView(
             store: store,
+            shouldResetOnOpen: Binding(
+                get: { [weak self] in self?.shouldResetOnOpen ?? true },
+                set: { [weak self] newValue in self?.shouldResetOnOpen = newValue }
+            ),
             onCopyToClipboard: { [weak self] item in
                 self?.copyToClipboard(item)
             },
@@ -127,6 +147,9 @@ class HistoryWindowController: NSWindowController {
     
     override func showWindow(_ sender: Any?) {
         previousApp = NSWorkspace.shared.frontmostApplication
+        // Compute reset decision *before* super.showWindow fires didBecomeKeyNotification
+        // → bufferWindowDidOpen, so the content view onReceive handler sees the right value.
+        shouldResetOnOpen = shouldResetSearch
         window?.center()
         super.showWindow(sender)
         NSApp.activate(ignoringOtherApps: true)
@@ -145,6 +168,10 @@ extension Notification.Name {
 /// Main content view - Split pane with list and detail
 struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
+    /// Set to true by HistoryWindowController when the window has been closed for more than
+    /// 10 minutes (or on the very first open). The view resets search/tag state only when this
+    /// is true, then writes false back so a second notification in the same session is a no-op.
+    @Binding var shouldResetOnOpen: Bool
     let onCopyToClipboard: (ClipboardItem) -> Void
     let onPaste: (ClipboardItem) -> Void
     let onPasteMultiple: ([ClipboardItem]) -> Void
@@ -452,13 +479,20 @@ struct HistoryContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
-            searchText = ""
-            activeTagFilter = nil
+            // Only reset persistent search state if the window was closed long enough ago
+            // (or this is the first open). shouldResetOnOpen is set by the controller in
+            // showWindow(_:) before the notification fires.
+            if shouldResetOnOpen {
+                searchText = ""
+                activeTagFilter = nil
+            }
+            // Transient UI state always resets
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
-            // Select first unpinned item, or first item if all are pinned
-            let firstUnpinned = store.items.first(where: { !$0.isPinned }) ?? store.items.first
+            // Snap selection to first unpinned item (unconditional — works correctly whether
+            // search was preserved or cleared, because filteredItems reflects current searchText)
+            let firstUnpinned = filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first
             selectedID = firstUnpinned?.id
             if let id = firstUnpinned?.id {
                 selectedIDs = [id]
