@@ -33,6 +33,8 @@ class HistoryWindowController: NSWindowController {
     private var lastClosedAt: Date?
     /// Shared flag: true if the content view should reset search on the next open
     var shouldResetOnOpen: Bool = true
+    /// Last selected item UUID — restored when reopening within the threshold
+    var savedSelectedID: UUID?
 
     /// Reset search if window was closed more than 10 minutes ago (or never opened)
     private var shouldResetSearch: Bool {
@@ -109,6 +111,10 @@ class HistoryWindowController: NSWindowController {
                 get: { [weak self] in self?.shouldResetOnOpen ?? true },
                 set: { [weak self] newValue in self?.shouldResetOnOpen = newValue }
             ),
+            savedSelectedID: Binding(
+                get: { [weak self] in self?.savedSelectedID },
+                set: { [weak self] newValue in self?.savedSelectedID = newValue }
+            ),
             onCopyToClipboard: { [weak self] item in
                 self?.copyToClipboard(item)
             },
@@ -172,6 +178,9 @@ struct HistoryContentView: View {
     /// 10 minutes (or on the very first open). The view resets search/tag state only when this
     /// is true, then writes false back so a second notification in the same session is a no-op.
     @Binding var shouldResetOnOpen: Bool
+    /// Last selected item UUID, kept in sync with selectedID and restored on reopen within
+    /// the threshold. Stored on the controller so it survives SwiftUI state resets.
+    @Binding var savedSelectedID: UUID?
     let onCopyToClipboard: (ClipboardItem) -> Void
     let onPaste: (ClipboardItem) -> Void
     let onPasteMultiple: ([ClipboardItem]) -> Void
@@ -452,6 +461,10 @@ struct HistoryContentView: View {
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
         }
+        .onChange(of: selectedID) { newValue in
+            // Keep savedSelectedID in sync so the controller can restore it on next open
+            savedSelectedID = newValue
+        }
         .onChange(of: store.items) { _ in
             // Remove deleted items from selection set
             selectedIDs = selectedIDs.filter { id in
@@ -490,23 +503,32 @@ struct HistoryContentView: View {
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
-            // Snap selection to first unpinned item (unconditional — works correctly whether
-            // search was preserved or cleared, because filteredItems reflects current searchText)
-            let firstUnpinned = filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first
-            selectedID = firstUnpinned?.id
-            if let id = firstUnpinned?.id {
+            // Determine target selection:
+            // • Within threshold + saved UUID still in filtered list → restore it
+            // • Otherwise → first unpinned item (or first if all pinned)
+            let targetID: UUID?
+            if !shouldResetOnOpen,
+               let saved = savedSelectedID,
+               filteredItems.contains(where: { $0.id == saved }) {
+                targetID = saved
+            } else {
+                targetID = (filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first)?.id
+            }
+            selectedID = targetID
+            if let id = targetID {
                 selectedIDs = [id]
                 selectionAnchor = id
             } else {
                 selectedIDs = []
                 selectionAnchor = nil
             }
-            // Find the correct index in the filtered (sorted) items
-            if let index = filteredItems.firstIndex(where: { $0.id == firstUnpinned?.id }) {
+            if let index = filteredItems.firstIndex(where: { $0.id == targetID }) {
                 selectedIndex = index
             } else {
                 selectedIndex = 0
             }
+            // Trigger scroll so ClipboardListView brings the selected row into view
+            scrollTrigger = true
             // Delay needed for NSHostingView to have settled as key window
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isSearchFocused = true

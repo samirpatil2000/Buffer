@@ -113,9 +113,10 @@ struct ClipboardListView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
-                // Always snap to the top when the window is reopened
-                if let firstId = items.first?.id {
-                    proxy.scrollTo(firstId, anchor: .top)
+                // Scroll to the selected item (restored or newly snapped) when the window reopens
+                let scrollTarget = selectedID ?? items.first?.id
+                if let id = scrollTarget {
+                    proxy.scrollTo(id, anchor: .center)
                 }
             }
         }
