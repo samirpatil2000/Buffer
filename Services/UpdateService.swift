@@ -50,8 +50,9 @@ class UpdateService {
     }
 
     private func handleReleases(_ releases: [[String: Any]], silent: Bool) {
+        let includePrereleases = UserDefaults.standard.bool(forKey: "includePrereleases")
         let sorted = releases
-            .filter { ($0["prerelease"] as? Bool) != true }
+            .filter { includePrereleases || ($0["prerelease"] as? Bool) != true }
             .sorted { (($0["published_at"] as? String) ?? "") > (($1["published_at"] as? String) ?? "") }
 
         #if arch(arm64)

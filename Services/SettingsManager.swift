@@ -39,6 +39,7 @@ class SettingsManager: ObservableObject {
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool = false
     @Published var historyLimit: HistoryLimit = .essential
+    @Published var includePrereleases: Bool = false
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -64,12 +65,16 @@ class SettingsManager: ObservableObject {
         // Load history limit
         let rawLimit = defaults.integer(forKey: "historyLimit")
         self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
+        
+        // Load pre-release updates toggle
+        self.includePrereleases = defaults.bool(forKey: "includePrereleases")
     }
     
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
+        defaults.set(includePrereleases, forKey: "includePrereleases")
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {

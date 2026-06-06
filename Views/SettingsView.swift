@@ -103,6 +103,21 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                 }
                 
+                HStack {
+                    Text("Include Pre-release Updates")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.includePrereleases)
+                        .labelsHidden()
+                        .onChange(of: settings.includePrereleases) { newValue in
+                            settings.save()
+                            if newValue {
+                                UpdateService.shared.checkForUpdates(silent: true)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                }
+                
                 // History Size Section
                 Divider()
                     .padding(.vertical, 4)
@@ -297,6 +312,7 @@ class SettingsViewModel: ObservableObject {
     @Published var hotkeyKeyCode: UInt16
     @Published var launchAtLogin: Bool
     @Published var historyLimit: HistoryLimit
+    @Published var includePrereleases: Bool
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -320,16 +336,21 @@ class SettingsViewModel: ObservableObject {
         // Load history limit
         let rawLimit = defaults.integer(forKey: "historyLimit")
         self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
+        
+        // Load pre-release updates toggle
+        self.includePrereleases = defaults.bool(forKey: "includePrereleases")
     }
     
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
+        defaults.set(includePrereleases, forKey: "includePrereleases")
         
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
         SettingsManager.shared.historyLimit = historyLimit
+        SettingsManager.shared.includePrereleases = includePrereleases
         SettingsManager.shared.save()
         
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
