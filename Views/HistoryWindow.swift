@@ -197,6 +197,8 @@ struct HistoryContentView: View {
     // Multi-select state
     @State private var selectedIDs: Set<UUID> = []
     @State private var selectionAnchor: UUID?
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleteHovered = false
     
     // OCR state
     @State private var isExtractingText = false
@@ -1029,6 +1031,77 @@ struct HistoryContentView: View {
                         .lineLimit(4)
                         .truncationMode(.tail)
                 }
+            }
+            
+            Divider()
+            
+            if showDeleteConfirmation {
+                // Inline confirmation — avoids NSPanel key-resign issue with .alert
+                VStack(spacing: 8) {
+                    Text("Delete \(selectionCount) items permanently?")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary.opacity(0.85))
+                    
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                showDeleteConfirmation = false
+                            }
+                        }) {
+                            Text("Cancel")
+                                .font(.system(size: 11, weight: .medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color(NSColor.controlBackgroundColor))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.primary)
+                        
+                        Button(action: {
+                            store.delete(selectedItems)
+                            showDeleteConfirmation = false
+                        }) {
+                            Text("Delete")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color.red.opacity(0.85))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.white)
+                    }
+                }
+                .padding(.vertical, 4)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            } else {
+                Button(action: {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        showDeleteConfirmation = true
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                        Text("Delete \(selectionCount) Items...")
+                    }
+                    .foregroundColor(isDeleteHovered ? .red : .secondary.opacity(0.7))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .onHover { hovering in
+                    isDeleteHovered = hovering
+                }
+                .transition(.opacity)
             }
         }
     }

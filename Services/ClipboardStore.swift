@@ -104,6 +104,20 @@ class ClipboardStore: ObservableObject {
         }
     }
     
+    /// Delete multiple items in a single batch operation
+    func delete(_ itemsToDelete: [ClipboardItem]) {
+        let ids = Set(itemsToDelete.map { $0.id })
+        items.removeAll { ids.contains($0.id) }
+        for item in itemsToDelete {
+            deleteAssociatedFiles(for: item)
+        }
+        
+        let itemsToSave = items
+        saveQueue.async { [weak self] in
+            self?.saveHistoryToDisk(itemsToSave)
+        }
+    }
+    
     /// Toggle pin state for an item
     func togglePin(for item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }

@@ -27,7 +27,7 @@
 - **Great for developers** — Handles large text snippets, JSON payloads, logs, and other verbose content with ease  
 - **Large-content friendly** — Lazy, chunked previews and disk-backed storage for multi‑MB text, with size indicators  
 - **Pins & Smart History** — Pin favorites, keep them anchored, and cycle history while prioritizing unpinned items  
-- **Multi-select & multi‑paste** — Select multiple items in history with clear on-screen instructions and paste them together 
+- **Multi-select & multi‑paste** — Select multiple items in history with clear on-screen instructions, paste them together, or bulk-delete with inline confirmation 
 - **Bookmarks** — Star important items with Cmd+B for quick reuse  
 - **Tags & Filtering** — Categorize history items with custom, color-coded tags. Quick tag items with `Cmd+T` and filter using `#` autocomplete in the search bar  
 - **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
