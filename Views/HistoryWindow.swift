@@ -36,10 +36,10 @@ class HistoryWindowController: NSWindowController {
     /// Last selected item UUID — restored when reopening within the threshold
     var savedSelectedID: UUID?
 
-    /// Reset search if window was closed more than 10 minutes ago (or never opened)
+    /// Reset search if window was closed more than 1.5 minutes ago (or never opened)
     private var shouldResetSearch: Bool {
         guard let lastClosed = lastClosedAt else { return true }
-        return Date().timeIntervalSince(lastClosed) > 120
+        return Date().timeIntervalSince(lastClosed) > 90
     }
 
     init(store: ClipboardStore) {
@@ -175,7 +175,7 @@ extension Notification.Name {
 struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
     /// Set to true by HistoryWindowController when the window has been closed for more than
-    /// 10 minutes (or on the very first open). The view resets search/tag state only when this
+    /// 1.5 minutes (or on the very first open). The view resets search/tag state only when this
     /// is true, then writes false back so a second notification in the same session is a no-op.
     @Binding var shouldResetOnOpen: Bool
     /// Last selected item UUID, kept in sync with selectedID and restored on reopen within
