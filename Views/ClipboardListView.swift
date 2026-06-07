@@ -49,7 +49,7 @@ struct ClipboardListView: View {
                         // Thin separator between pinned and recent items
                         if !item.isPinned && index > 0 && items[index - 1].isPinned {
                             Rectangle()
-                                .fill(Color.primary.opacity(0.06))
+                                .fill(Color.primary.opacity(0.15))
                                 .frame(height: 0.5)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 4)

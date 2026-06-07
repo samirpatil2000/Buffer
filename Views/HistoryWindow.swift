@@ -769,7 +769,7 @@ struct HistoryContentView: View {
                 .overlay(
                     Rectangle()
                         .frame(height: 0.5)
-                        .foregroundColor(Color.primary.opacity(0.06)),
+                        .foregroundColor(Color.primary.opacity(0.15)),
                     alignment: .bottom
                 )
         )
@@ -1151,7 +1151,7 @@ struct HistoryContentView: View {
                 } else if let ocrText = item.ocrText {
                     VStack(alignment: .leading, spacing: 0) {
                         Rectangle()
-                            .fill(Color.primary.opacity(0.06))
+                            .fill(Color.primary.opacity(0.15))
                             .frame(height: 0.5)
                         
                         HStack(alignment: .top) {
@@ -1361,7 +1361,7 @@ struct HistoryContentView: View {
                 .overlay(
                     Rectangle()
                         .frame(height: 0.5)
-                        .foregroundColor(Color.primary.opacity(0.06)),
+                        .foregroundColor(Color.primary.opacity(0.15)),
                     alignment: .top
                 )
         )
