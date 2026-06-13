@@ -216,7 +216,6 @@ struct HistoryContentView: View {
     // Editing state
     @State private var isEditing = false
     @State private var editText = ""
-    @State private var editDebounceTask: Task<Void, Never>? = nil
     @FocusState private var isTextEditorFocused: Bool
     
     private var filteredItems: [ClipboardItem] {
@@ -1188,9 +1187,6 @@ struct HistoryContentView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .frame(minHeight: 200, maxHeight: .infinity)
                     .focused($isTextEditorFocused)
-                    .onChange(of: editText) { newValue in
-                        handleEditChange(newValue, item: item)
-                    }
             } else {
                 Text(item.textContent ?? "")
                     .font(.system(size: 13, design: .monospaced))
@@ -1284,29 +1280,17 @@ struct HistoryContentView: View {
     }
     
     private func exitEditMode() {
-        editDebounceTask?.cancel()
-        editDebounceTask = nil
+        // Commit edit to store and pasteboard on exit
+        if let item = selectedItem {
+            store.updateText(editText, for: item)
+            
+            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(editText, forType: .string)
+        }
         isEditing = false
         isTextEditorFocused = false
-    }
-    
-    private func handleEditChange(_ text: String, item: ClipboardItem) {
-        editDebounceTask?.cancel()
-        editDebounceTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            
-            await MainActor.run {
-                guard !Task.isCancelled else { return }
-                store.updateText(text, for: item)
-                
-                // Write to pasteboard with ignore notification
-                NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                pasteboard.setString(text, forType: .string)
-            }
-        }
     }
 
     private func navigateUp() {
