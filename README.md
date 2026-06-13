@@ -33,6 +33,7 @@
 - **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
 - **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app  
 - **Seamless Updates** — Built-in secure auto-updater with code signature verification and a native post-update HUD with a "What's New" link  
+- **Inline Text Editing** — Edit any text or code snippet directly within the clipboard history window with auto-save and macOS pasteboard sync
 - **Open Source** — MIT license, actively maintained  
 
 ---
@@ -58,8 +59,7 @@
 
 ### 🛣️ Coming Next
 
-- Multi‑paste support for quickly pasting multiple items in sequence  
-- Content Editing
+- Multi‑paste support for quickly pasting multiple items in sequence
 
 ## 🚀 Getting Started
 
@@ -92,6 +92,10 @@
 <img width="709" height="486" alt="image" src="https://github.com/user-attachments/assets/6b1ac775-b75f-43db-8438-4170336c25cc" />
 
 
+#### Inline Text Editing
+
+Click the **Pencil icon** in the preview/detail pane to open an inline text editor and modify any text item directly. While editing, global keyboard shortcuts are **temporarily bypassed** so you can type normally. Press **Escape**, click the pencil icon again, or select a different item to **auto-save** your changes and sync them to the system pasteboard.
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
@@ -109,6 +113,13 @@
 | `⌘S` | Save image to disk (for image items) |
 | `⌘⌫` | Delete selected item |
 | `⎋` Esc | Close history window |
+
+### 📝 Inline Text Editing
+
+Text items can be edited directly within Buffer by clicking the **Pencil icon** in the preview/detail pane, which opens an inline text editor. While editing:
+
+- **Global keyboard shortcuts are temporarily bypassed** so you can type normally without triggering shortcuts.
+- Press **Escape**, click the **pencil icon** again, or **select a different item** in the list to **auto-save** your changes and sync them to the macOS pasteboard.
 
 ---
 
