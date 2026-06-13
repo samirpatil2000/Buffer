@@ -9,7 +9,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     let sourceApp: String?
     
     // For text items — inline content (nil for file-backed large text)
-    let textContent: String?
+    var textContent: String?
     
     // For large text items — filename reference (stored separately, like images)
     let textFilename: String?
@@ -132,6 +132,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Whether this item's full text is stored in a separate file
     var isFileBacked: Bool {
         textFilename != nil
+    }
+    
+    /// Whether this item is editable inline
+    var isEditable: Bool {
+        type == .text && !isFileBacked && !isTruncated
     }
     
     /// Preview text for display (truncated for long content)

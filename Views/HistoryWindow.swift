@@ -213,6 +213,12 @@ struct HistoryContentView: View {
     // Track selection by ID so it survives list insertions
     @State private var selectedID: UUID?
     
+    // Editing state
+    @State private var isEditing = false
+    @State private var editText = ""
+    @State private var editDebounceTask: Task<Void, Never>? = nil
+    @FocusState private var isTextEditorFocused: Bool
+    
     private var filteredItems: [ClipboardItem] {
         var base = store.items
         if let tag = activeTagFilter {
@@ -467,6 +473,11 @@ struct HistoryContentView: View {
             // Keep savedSelectedID in sync so the controller can restore it on next open
             savedSelectedID = newValue
         }
+        .onChange(of: selectedItem?.id) { _ in
+            if isEditing {
+                exitEditMode()
+            }
+        }
         .onChange(of: store.items) { _ in
             // Remove deleted items from selection set
             selectedIDs = selectedIDs.filter { id in
@@ -505,6 +516,7 @@ struct HistoryContentView: View {
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
+            isEditing = false
             // Determine target selection:
             // • Within threshold + saved UUID still in filtered list → restore it
             // • Otherwise → first unpinned item (or first if all pinned)
@@ -562,23 +574,29 @@ struct HistoryContentView: View {
             }
         }
         .background(GlobalKeyMonitor(
+            isEditing: isEditing,
             onUp: {
+                guard !isEditing else { return }
                 scrollTrigger = true
                 navigateUp()
             },
             onDown: {
+                guard !isEditing else { return }
                 scrollTrigger = true
                 navigateDown()
             },
             onExtendUp: {
+                guard !isEditing else { return }
                 scrollTrigger = true
                 extendSelectionUp()
             },
             onExtendDown: {
+                guard !isEditing else { return }
                 scrollTrigger = true
                 extendSelectionDown()
             },
             onEnter: {
+                if isEditing { return }
                 if showTagInput {
                     if let item = selectedItem {
                         let normalized = TagChip.normalize(tagInputText)
@@ -600,6 +618,10 @@ struct HistoryContentView: View {
                 }
             },
             onEscape: {
+                if isEditing {
+                    exitEditMode()
+                    return
+                }
                 if showTagInput {
                     showTagInput = false
                     tagInputText = ""
@@ -608,31 +630,40 @@ struct HistoryContentView: View {
                 }
             },
             onDelete: {
+                guard !isEditing else { return }
                 if let item = selectedItem {
                     store.delete(item)
                 }
             },
-            onCopy: { if let item = selectedItem { onCopyToClipboard(item) } },
+            onCopy: {
+                guard !isEditing else { return }
+                if let item = selectedItem { onCopyToClipboard(item) }
+            },
             onPin: {
+                guard !isEditing else { return }
                 if let item = selectedItem {
                     store.togglePin(for: item)
                 }
             },
             onBookmark: {
+                guard !isEditing else { return }
                 if let item = selectedItem {
                     store.toggleBookmark(for: item)
                 }
             },
             onSaveImage: {
+                guard !isEditing else { return }
                 if selectedItem?.type == .image, let img = previewImage {
                     PasteController.saveImageToDisk(img)
                 }
             },
             onAddTag: {
+                guard !isEditing else { return }
                 guard selectedItem != nil else { return }
                 showTagInput = true
             },
             onTabComplete: {
+                guard !isEditing else { return }
                 if showTagInput {
                     guard !tagInputText.isEmpty, let item = selectedItem else { return }
                     let suggestions = store.allTags.filter {
@@ -652,6 +683,7 @@ struct HistoryContentView: View {
                 }
             },
             onBackspace: {
+                guard !isEditing else { return false }
                 guard isSearchFocused, searchText.isEmpty, activeTagFilter != nil else { return false }
                 activeTagFilter = nil
                 return true
@@ -825,30 +857,42 @@ struct HistoryContentView: View {
                     .cornerRadius(4)
                 } else if let item = selectedItem {
                     // Single selection header
-                    HStack(spacing: 6) {
-                        Text(item.type == .text ? "Text" : "Image")
-                        
-                        if item.isFileBacked {
-                            Text("Large")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.8))
-                                .cornerRadius(4)
+                    if isEditing {
+                        HStack(spacing: 6) {
+                            Text("Editing")
                         }
-                        
-                        if let size = itemSize, size > 0 {
-                            Text(formattedByteCount(size))
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary.opacity(0.5))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .cornerRadius(4)
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(item.type == .text ? "Text" : "Image")
+                            
+                            if item.isFileBacked {
+                                Text("Large")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.8))
+                                    .cornerRadius(4)
+                            }
+                            
+                            if let size = itemSize, size > 0 {
+                                Text(formattedByteCount(size))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.5))
+                            }
                         }
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.2))
+                        .cornerRadius(4)
                     }
-                    .font(.system(size: 11, weight: .medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.2))
-                    .cornerRadius(4)
                 }
                 
                 Spacer()
@@ -856,6 +900,21 @@ struct HistoryContentView: View {
                 // Action buttons - only show for single selection or hide for multi
                 if selectionCount <= 1 {
                     HStack(spacing: 12) {
+                        if let item = selectedItem, item.isEditable {
+                            Button(action: {
+                                if isEditing {
+                                    exitEditMode()
+                                } else {
+                                    enterEditMode()
+                                }
+                            }) {
+                                Image(systemName: isEditing ? "checkmark" : "square.and.pencil")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(isEditing ? .blue : .primary)
+                            .help(isEditing ? "Finish editing" : "Edit item")
+                        }
+
                         Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
                             Image(systemName: "doc.on.doc")
                         }
@@ -1124,6 +1183,14 @@ struct HistoryContentView: View {
                 }
             } else if item.isFileBacked {
                 textContent(item)
+            } else if isEditing {
+                TextEditor(text: $editText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .frame(minHeight: 200, maxHeight: .infinity)
+                    .focused($isTextEditorFocused)
+                    .onChange(of: editText) { newValue in
+                        handleEditChange(newValue, item: item)
+                    }
             } else {
                 Text(item.textContent ?? "")
                     .font(.system(size: 13, design: .monospaced))
@@ -1207,6 +1274,41 @@ struct HistoryContentView: View {
         }
     }
     
+    private func enterEditMode() {
+        guard let item = selectedItem, item.isEditable else { return }
+        editText = item.textContent ?? ""
+        isEditing = true
+        DispatchQueue.main.async {
+            isTextEditorFocused = true
+        }
+    }
+    
+    private func exitEditMode() {
+        editDebounceTask?.cancel()
+        editDebounceTask = nil
+        isEditing = false
+        isTextEditorFocused = false
+    }
+    
+    private func handleEditChange(_ text: String, item: ClipboardItem) {
+        editDebounceTask?.cancel()
+        editDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                store.updateText(text, for: item)
+                
+                // Write to pasteboard with ignore notification
+                NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(text, forType: .string)
+            }
+        }
+    }
+
     private func navigateUp() {
         if selectedIndex > 0 {
             selectedIndex -= 1
@@ -1473,6 +1575,7 @@ extension Array {
 
 /// Monitors global key events for the window
 struct GlobalKeyMonitor: NSViewRepresentable {
+    let isEditing: Bool
     let onUp: () -> Void
     let onDown: () -> Void
     let onExtendUp: () -> Void
@@ -1494,95 +1597,115 @@ struct GlobalKeyMonitor: NSViewRepresentable {
             // Add local monitor to window
             guard let window = view.window else { return }
             
-            // We use a property on the window or controller to store the monitor
-            // But for simplicity in SwiftUI, we'll use a weak ref approach here
-            // or just rely on the view traversing up. 
-            // Actually, best way is to add monitor to the window.
-            
             let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                let isEditing = context.coordinator.isEditing
                 switch event.keyCode {
                 case 126: // Up
+                    if isEditing { return event }
                     if event.modifierFlags.contains(.shift) {
-                        onExtendUp()
+                        context.coordinator.onExtendUp?()
                     } else {
-                        onUp()
+                        context.coordinator.onUp?()
                     }
                     return nil // Consume event
                 case 125: // Down
+                    if isEditing { return event }
                     if event.modifierFlags.contains(.shift) {
-                        onExtendDown()
+                        context.coordinator.onExtendDown?()
                     } else {
-                        onDown()
+                        context.coordinator.onDown?()
                     }
                     return nil // Consume event
                 case 36: // Enter
-                    onEnter()
+                    if isEditing { return event }
+                    context.coordinator.onEnter?()
                     return nil
                 case 53: // Escape
-                    onEscape()
+                    context.coordinator.onEscape?()
                     return nil
                 case 51: // Delete/Backspace
+                    if isEditing {
+                        if event.modifierFlags.contains(.command) {
+                            return nil // ⌘Delete is no-op
+                        }
+                        return event
+                    }
                     if event.modifierFlags.contains(.command) {
-                        onDelete()
+                        context.coordinator.onDelete?()
                         return nil
                     }
-                    if onBackspace() { return nil }
+                    if context.coordinator.onBackspace?() == true { return nil }
                     return event
                 case 8: // C (for Copy)
                     if event.modifierFlags.contains(.command) {
+                        if isEditing { return event }
                         // If text is selected in a text view, let the system handle native copy
                         if let responder = view.window?.firstResponder, responder is NSTextView {
                             return event
                         }
-                        onCopy()
+                        context.coordinator.onCopy?()
                         return nil
                     }
                     return event
                 case 35: // Cmd+P (P is 35)
                     if event.modifierFlags.contains(.command) {
-                        onPin()
+                        if isEditing { return nil }
+                        context.coordinator.onPin?()
                         return nil
                     }
                     return event
                 case 11: // Cmd+B (B is 11)
                     if event.modifierFlags.contains(.command) {
-                        onBookmark()
+                        if isEditing { return nil }
+                        context.coordinator.onBookmark?()
                         return nil
                     }
                     return event
                 case 1: // Cmd+S (S is 1)
                     if event.modifierFlags.contains(.command) {
-                        onSaveImage()
+                        if isEditing { return event }
+                        context.coordinator.onSaveImage?()
                         return nil
                     }
                     return event
                 case 17: // Cmd+T (T is 17)
                     if event.modifierFlags.contains(.command) {
-                        onAddTag()
+                        if isEditing { return nil }
+                        context.coordinator.onAddTag?()
                         return nil
                     }
                     return event
                 case 48: // Tab
-                    onTabComplete()
+                    if isEditing { return event }
+                    context.coordinator.onTabComplete?()
                     return nil
                 default:
                     return event
                 }
             }
             
-            // Store monitor to remove later? 
-            // In a real app we need to clean up. For this snippet, 
-            // the monitor lasts as long as the window is open.
-            // Since the window is closed/released, the monitor should be cleaned up 
-            // if we attached it to the window properly or if we remove it on dismantle.
-            // However, NSEvent.addLocalMonitorForEvents returns an object that must be removed.
-            
             context.coordinator.monitor = monitor
         }
         return view
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isEditing = isEditing
+        context.coordinator.onUp = onUp
+        context.coordinator.onDown = onDown
+        context.coordinator.onExtendUp = onExtendUp
+        context.coordinator.onExtendDown = onExtendDown
+        context.coordinator.onEnter = onEnter
+        context.coordinator.onEscape = onEscape
+        context.coordinator.onDelete = onDelete
+        context.coordinator.onCopy = onCopy
+        context.coordinator.onPin = onPin
+        context.coordinator.onBookmark = onBookmark
+        context.coordinator.onSaveImage = onSaveImage
+        context.coordinator.onAddTag = onAddTag
+        context.coordinator.onTabComplete = onTabComplete
+        context.coordinator.onBackspace = onBackspace
+    }
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -1590,6 +1713,21 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     
     class Coordinator {
         var monitor: Any?
+        var isEditing: Bool = false
+        var onUp: (() -> Void)?
+        var onDown: (() -> Void)?
+        var onExtendUp: (() -> Void)?
+        var onExtendDown: (() -> Void)?
+        var onEnter: (() -> Void)?
+        var onEscape: (() -> Void)?
+        var onDelete: (() -> Void)?
+        var onCopy: (() -> Void)?
+        var onPin: (() -> Void)?
+        var onBookmark: (() -> Void)?
+        var onSaveImage: (() -> Void)?
+        var onAddTag: (() -> Void)?
+        var onTabComplete: (() -> Void)?
+        var onBackspace: (() -> Bool)?
         
         deinit {
             if let monitor = monitor {
