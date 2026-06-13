@@ -216,6 +216,7 @@ struct HistoryContentView: View {
     // Editing state
     @State private var isEditing = false
     @State private var editText = ""
+    @State private var editingItemID: UUID?
     @FocusState private var isTextEditorFocused: Bool
     
     private var filteredItems: [ClipboardItem] {
@@ -907,11 +908,11 @@ struct HistoryContentView: View {
                                     enterEditMode()
                                 }
                             }) {
-                                Image(systemName: isEditing ? "checkmark" : "square.and.pencil")
+                                Image(systemName: "square.and.pencil")
                             }
                             .buttonStyle(.plain)
                             .foregroundColor(isEditing ? .blue : .primary)
-                            .help(isEditing ? "Finish editing" : "Edit item")
+                            .help(isEditing ? "Stop editing (auto-saved)" : "Edit item")
                         }
 
                         Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
@@ -1272,6 +1273,7 @@ struct HistoryContentView: View {
     
     private func enterEditMode() {
         guard let item = selectedItem, item.isEditable else { return }
+        editingItemID = item.id
         editText = item.textContent ?? ""
         isEditing = true
         DispatchQueue.main.async {
@@ -1280,8 +1282,9 @@ struct HistoryContentView: View {
     }
     
     private func exitEditMode() {
-        // Commit edit to store and pasteboard on exit
-        if let item = selectedItem {
+        // Commit edit to the original item (not selectedItem, which may have changed)
+        if let itemID = editingItemID,
+           let item = store.items.first(where: { $0.id == itemID }) {
             store.updateText(editText, for: item)
             
             NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
@@ -1289,6 +1292,7 @@ struct HistoryContentView: View {
             pasteboard.clearContents()
             pasteboard.setString(editText, forType: .string)
         }
+        editingItemID = nil
         isEditing = false
         isTextEditorFocused = false
     }
