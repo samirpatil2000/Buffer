@@ -134,6 +134,14 @@ class ClipboardStore: ObservableObject {
         saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
     }
     
+    /// Update text content for an editable text item
+    func updateText(_ text: String, for item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].textContent = text
+        let itemsToSave = items
+        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+    }
+    
     var allTags: [String] {
         Array(Set(items.flatMap { $0.tags })).sorted()
     }
