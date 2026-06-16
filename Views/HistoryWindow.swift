@@ -221,7 +221,9 @@ struct HistoryContentView: View {
     @State private var editingItemID: UUID?
     @FocusState private var isTextEditorFocused: Bool
     
-    private var filteredItems: [ClipboardItem] {
+    @State private var filteredItems: [ClipboardItem] = []
+    
+    private func computeFilteredItems() -> [ClipboardItem] {
         var base = store.items
         if let tag = activeTagFilter {
             base = base.filter { $0.tags.contains(tag) }
@@ -234,6 +236,10 @@ struct HistoryContentView: View {
             }
         }
         return base.sorted { $0.isPinned && !$1.isPinned }
+    }
+    
+    private func updateFilteredItems() {
+        self.filteredItems = computeFilteredItems()
     }
 
     private var tagSuggestions: [String] {
@@ -459,10 +465,13 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: debouncedSearchText) { newValue in
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
+            
             // Don't reset selection when in tag autocomplete mode (list is unchanged)
             guard !newValue.hasPrefix("#") else { return }
             // Find first unpinned item in filtered results
-            let defaultItem = defaultSelectedItem
+            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
             selectedID = defaultItem?.id
             if let id = defaultItem?.id {
                 selectedIDs = [id]
@@ -472,7 +481,27 @@ struct HistoryContentView: View {
                 selectionAnchor = nil
             }
             // Calculate the correct index
-            if let index = filteredItems.firstIndex(where: { $0.id == defaultItem?.id }) {
+            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
+                selectedIndex = index
+            } else {
+                selectedIndex = 0
+            }
+        }
+        .onChange(of: activeTagFilter) { _ in
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
+            
+            // Reset selection to the first item of the new tag filter
+            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
+            selectedID = defaultItem?.id
+            if let id = defaultItem?.id {
+                selectedIDs = [id]
+                selectionAnchor = id
+            } else {
+                selectedIDs = []
+                selectionAnchor = nil
+            }
+            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
                 selectedIndex = index
             } else {
                 selectedIndex = 0
@@ -499,19 +528,22 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: store.items) { _ in
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
+            
             // Remove deleted items from selection set
             selectedIDs = selectedIDs.filter { id in
-                filteredItems.contains { $0.id == id }
+                currentFiltered.contains { $0.id == id }
             }
             
             // Preserve selection by UUID lookup, adjust index if needed
             guard let id = selectedID else { return }
-            if let newIndex = filteredItems.firstIndex(where: { $0.id == id }) {
+            if let newIndex = currentFiltered.firstIndex(where: { $0.id == id }) {
                 if selectedIndex != newIndex { selectedIndex = newIndex }
             } else {
                 // Selected item was deleted — select the item now at the same position (or last)
-                let fallbackIndex = min(selectedIndex, filteredItems.count - 1)
-                if let fallbackItem = filteredItems[safe: fallbackIndex] {
+                let fallbackIndex = min(selectedIndex, currentFiltered.count - 1)
+                if let fallbackItem = currentFiltered[safe: fallbackIndex] {
                     selectedID = fallbackItem.id
                     selectedIDs = [fallbackItem.id]
                     selectionAnchor = fallbackItem.id
@@ -535,21 +567,27 @@ struct HistoryContentView: View {
             } else {
                 debouncedSearchText = searchText
             }
+            
+            // Recalculate cache immediately
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
+            
             // Transient UI state always resets
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
             isEditing = false
+            
             // Determine target selection:
             // • Within threshold + saved UUID still in filtered list → restore it
             // • Otherwise → first unpinned item (or first if all pinned)
             let targetID: UUID?
             if !shouldResetOnOpen,
                let saved = savedSelectedID,
-               filteredItems.contains(where: { $0.id == saved }) {
+               currentFiltered.contains(where: { $0.id == saved }) {
                 targetID = saved
             } else {
-                targetID = (filteredItems.first(where: { !$0.isPinned }) ?? filteredItems.first)?.id
+                targetID = (currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first)?.id
             }
             selectedID = targetID
             if let id = targetID {
@@ -559,7 +597,7 @@ struct HistoryContentView: View {
                 selectedIDs = []
                 selectionAnchor = nil
             }
-            if let index = filteredItems.firstIndex(where: { $0.id == targetID }) {
+            if let index = currentFiltered.firstIndex(where: { $0.id == targetID }) {
                 selectedIndex = index
             } else {
                 selectedIndex = 0
@@ -570,6 +608,9 @@ struct HistoryContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isSearchFocused = true
             }
+        }
+        .onAppear {
+            updateFilteredItems()
         }
         .task(id: selectedItem?.id) {
             // Clear preview
@@ -587,7 +628,7 @@ struct HistoryContentView: View {
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
                 } else if item.type == .text {
-                    if item.isFileBacked {
+                    if item.isFileBacked || (item.textContent?.count ?? 0) > 5000 {
                         await loadInitialChunk(for: item)
                     } else {
                         chunkedText.visibleText = item.textContent ?? ""
@@ -1204,7 +1245,7 @@ struct HistoryContentView: View {
                         .foregroundColor(.secondary)
                         .padding(.top, 4)
                 }
-            } else if item.isFileBacked {
+            } else if item.isFileBacked || (item.textContent?.count ?? 0) > 5000 {
                 textContent(item)
             } else if isEditing {
                 TextEditor(text: $editText)

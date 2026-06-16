@@ -26,7 +26,7 @@ struct ClipboardItemRow: View {
     
     /// Truncated preview for list display - short and single line
     private var truncatedPreviewText: String {
-        let text = item.textContent ?? item.previewText
+        let text = item.previewText
         // Replace newlines and extra whitespace with single space
         let singleLine = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         // Truncate to 50 characters for compact display
@@ -108,8 +108,9 @@ struct ClipboardItemRow: View {
     private var icon: some View {
         // Check if text content is a pure color value
         if item.type == .text,
-           let content = item.textContent?.trimmingCharacters(in: .whitespaces),
-           let color = parseColor(content) {
+           let text = item.textContent,
+           text.count <= 100,
+           let color = parseColor(text.trimmingCharacters(in: .whitespaces)) {
             RoundedRectangle(cornerRadius: 4)
                 .fill(color)
                 .frame(width: 20, height: 20)
