@@ -188,6 +188,8 @@ struct HistoryContentView: View {
     
     @FocusState private var isSearchFocused: Bool
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var searchDebounceTask: Task<Void, Never>? = nil
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
     @State private var chunkedText = ChunkedTextState()
@@ -224,7 +226,7 @@ struct HistoryContentView: View {
         if let tag = activeTagFilter {
             base = base.filter { $0.tags.contains(tag) }
         }
-        let query = searchText.trimmingCharacters(in: .whitespaces)
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespaces)
         if !query.isEmpty && !query.hasPrefix("#") {
             base = base.filter { item in
                 guard item.type == .text else { return false }
@@ -439,6 +441,24 @@ struct HistoryContentView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { newValue in
             showTagAutocomplete = newValue.hasPrefix("#")
+            
+            searchDebounceTask?.cancel()
+            
+            if newValue.isEmpty {
+                // Instantly update when search text is cleared
+                debouncedSearchText = newValue
+            } else {
+                searchDebounceTask = Task {
+                    // 200ms debounce
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        debouncedSearchText = newValue
+                    }
+                }
+            }
+        }
+        .onChange(of: debouncedSearchText) { newValue in
             // Don't reset selection when in tag autocomplete mode (list is unchanged)
             guard !newValue.hasPrefix("#") else { return }
             // Find first unpinned item in filtered results
@@ -510,7 +530,10 @@ struct HistoryContentView: View {
             // showWindow(_:) before the notification fires.
             if shouldResetOnOpen {
                 searchText = ""
+                debouncedSearchText = ""
                 activeTagFilter = nil
+            } else {
+                debouncedSearchText = searchText
             }
             // Transient UI state always resets
             showTagAutocomplete = false
