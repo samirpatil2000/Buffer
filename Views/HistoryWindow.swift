@@ -1553,44 +1553,50 @@ struct HistoryContentView: View {
     private func tagSection(for item: ClipboardItem) -> some View {
         let inputSuggestions = showTagInput ? tagInputSuggestions(excluding: item.tags) : []
         VStack(alignment: .leading, spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(item.tags, id: \.self) { tag in
-                        TagChip(label: tag, onRemove: {
-                            store.removeTag(tag, from: item)
-                        })
-                    }
-                    if showTagInput {
-                        HStack(spacing: 6) {
-                            TextField("tag name", text: $tagInputText)
-                                .textFieldStyle(.plain)
+            HStack {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(item.tags, id: \.self) { tag in
+                            TagChip(label: tag, onRemove: {
+                                store.removeTag(tag, from: item)
+                            })
+                        }
+                        if showTagInput {
+                            HStack(spacing: 6) {
+                                TextField("tag name", text: $tagInputText)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .focused($isTagInputFocused)
+                                    .frame(minWidth: 60)
+                                Button("Cancel") {
+                                    tagInputText = ""
+                                    showTagInput = false
+                                }
+                                .buttonStyle(.plain)
                                 .font(.system(size: 11))
-                                .focused($isTagInputFocused)
-                                .frame(minWidth: 60)
-                            Button("Cancel") {
-                                tagInputText = ""
-                                showTagInput = false
+                                .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Button(action: { showTagInput = true }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text("Add tag")
+                                        .font(.system(size: 11))
+                                    Text("⌘T")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary.opacity(0.3))
+                                }
+                                .foregroundColor(.secondary.opacity(0.7))
                             }
                             .buttonStyle(.plain)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
                         }
-                    } else {
-                        Button(action: { showTagInput = true }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 9, weight: .bold))
-                                Text("Add tag")
-                                    .font(.system(size: 11))
-                                Text("⌘T")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary.opacity(0.3))
-                            }
-                            .foregroundColor(.secondary.opacity(0.7))
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
+                
+                Spacer(minLength: 8)
+                
+                RelativeTimestampView(timestamp: item.timestamp)
             }
             if !inputSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1788,3 +1794,56 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         }
     }
 }
+
+struct RelativeTimestampView: View {
+    let timestamp: Date
+    @State private var currentDate = Date()
+    
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        Text(timeAgo(from: timestamp, relativeTo: currentDate))
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .onReceive(timer) { input in
+                currentDate = input
+            }
+    }
+    
+    private func timeAgo(from date: Date, relativeTo now: Date) -> String {
+        let diff = now.timeIntervalSince(date)
+        if diff < 1 {
+            return "just now"
+        } else if diff < 60 {
+            let seconds = Int(diff)
+            return "\(seconds) second\(seconds == 1 ? "" : "s") ago"
+        } else if diff < 3600 {
+            let minutes = Int(diff / 60)
+            return "\(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        } else if diff < 86400 {
+            let hours = diff / 3600
+            let roundedHours = (hours * 2).rounded() / 2
+            if roundedHours == 1.0 {
+                return "1 hour ago"
+            } else if roundedHours.truncatingRemainder(dividingBy: 1) == 0 {
+                return "\(Int(roundedHours)) hours ago"
+            } else {
+                return "\(roundedHours) hours ago"
+            }
+        } else if diff < 604800 {
+            let days = Int(diff / 86400)
+            return "\(days) day\(days == 1 ? "" : "s") ago"
+        } else if diff < 2592000 {
+            let weeks = Int(diff / 604800)
+            return "\(weeks) week\(weeks == 1 ? "" : "s") ago"
+        } else if diff < 31536000 {
+            let months = Int(diff / 2592000)
+            return "\(months) month\(months == 1 ? "" : "s") ago"
+        } else {
+            let years = Int(diff / 31536000)
+            return "\(years) year\(years == 1 ? "" : "s") ago"
+        }
+    }
+}
+
