@@ -8,6 +8,11 @@ set +a
 
 BUILD_DIR="build"
 
+VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
+BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Info.plist)
+echo "🔖 Version: ${VERSION} (Build: ${BUILD})"
+
+
 echo "🧹 Cleaning..."
 rm -rf build dmg_* ${APP_NAME}_*.dmg ${APP_NAME}_*.zip
 
@@ -74,9 +79,9 @@ package_app() {
 <key>CFBundlePackageType</key>
 <string>APPL</string>
 <key>CFBundleShortVersionString</key>
-<string>2.0.1</string>
+<string>${VERSION}</string>
 <key>CFBundleVersion</key>
-<string>2</string>
+<string>${BUILD}</string>
 <key>LSMinimumSystemVersion</key>
 <string>${DEPLOY_TARGET}</string>
 <key>LSUIElement</key>
