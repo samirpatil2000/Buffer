@@ -163,9 +163,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         }
     }
     
-    static func == (lhs: ClipboardItem, rhs: ClipboardItem) -> Bool {
-        lhs.id == rhs.id
-    }
 }
 
 enum ClipboardItemType: String, Codable {
