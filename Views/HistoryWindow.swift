@@ -509,10 +509,14 @@ struct HistoryContentView: View {
         }
         .onChange(of: showTagInput) { newValue in
             if newValue {
+                isSearchFocused = false
+                isTextEditorFocused = false
                 // Defer by one run loop so the TextField is in the hierarchy before focusing
                 DispatchQueue.main.async { isTagInputFocused = true }
             } else {
                 isTagInputFocused = false
+                // Restore search field focus when tag input is dismissed
+                isSearchFocused = true
             }
         }
         .onChange(of: selectedIndex) { newIndex in
@@ -525,6 +529,10 @@ struct HistoryContentView: View {
         .onChange(of: selectedItem?.id) { _ in
             if isEditing {
                 exitEditMode()
+            }
+            if showTagInput {
+                showTagInput = false
+                tagInputText = ""
             }
         }
         .onChange(of: store.items) { _ in
@@ -1340,6 +1348,8 @@ struct HistoryContentView: View {
         editingItemID = item.id
         editText = item.textContent ?? ""
         isEditing = true
+        isSearchFocused = false
+        showTagInput = false
         DispatchQueue.main.async {
             isTextEditorFocused = true
         }
@@ -1359,6 +1369,7 @@ struct HistoryContentView: View {
         editingItemID = nil
         isEditing = false
         isTextEditorFocused = false
+        isSearchFocused = true
     }
 
     private func navigateUp() {

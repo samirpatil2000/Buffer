@@ -225,17 +225,25 @@ class ClipboardStore: ObservableObject {
         }
     }
     
-    func clear() {
+    func clear(keepProtected: Bool = false) {
         runOnMain { [weak self] in
             guard let self = self else { return }
-            // Delete all associated files
-            for item in self.items {
-                self.deleteAssociatedFiles(for: item)
+            if keepProtected {
+                let itemsToDelete = self.items.filter { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
+                for item in itemsToDelete {
+                    self.deleteAssociatedFiles(for: item)
+                }
+                self.items.removeAll { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
+            } else {
+                for item in self.items {
+                    self.deleteAssociatedFiles(for: item)
+                }
+                self.items.removeAll()
             }
-            self.items.removeAll()
             
+            let itemsToSave = self.items
             self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk([])
+                self?.saveHistoryToDisk(itemsToSave)
             }
         }
     }
