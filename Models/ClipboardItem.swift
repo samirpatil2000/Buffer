@@ -164,7 +164,12 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
     
     static func == (lhs: ClipboardItem, rhs: ClipboardItem) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id &&
+        lhs.ocrText == rhs.ocrText &&
+        lhs.isPinned == rhs.isPinned &&
+        lhs.isBookmarked == rhs.isBookmarked &&
+        lhs.tags == rhs.tags &&
+        lhs.textContent == rhs.textContent
     }
 }
 
