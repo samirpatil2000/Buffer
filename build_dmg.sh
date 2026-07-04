@@ -153,12 +153,12 @@ EOF
     ${DMG_NAME}
 
     echo "📤 Notarizing DMG..."
-    xcrun notarytool submit ${DMG_NAME} \
-    --keychain-profile "${NOTARY_PROFILE}" \
-    --wait
-
-    echo "📎 Stapling DMG..."
-    xcrun stapler staple ${DMG_NAME}
+    if xcrun notarytool submit ${DMG_NAME} --keychain-profile "${NOTARY_PROFILE}" --wait; then
+        echo "📎 Stapling DMG..."
+        xcrun stapler staple ${DMG_NAME}
+    else
+        echo "⚠️  Notarization failed or skipped. Continuing with unnotarized DMG..."
+    fi
 
     echo "🧼 Cleanup..."
     rm -rf ${DMG_DIR}
