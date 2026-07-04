@@ -163,6 +163,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         }
     }
     
+
 }
 
 enum ClipboardItemType: String, Codable {

@@ -6,6 +6,14 @@ import Combine
 class ClipboardStore: ObservableObject {
     @Published var items: [ClipboardItem] = []
     
+    private func runOnMain(_ action: @escaping () -> Void) {
+        if Thread.isMainThread {
+            action()
+        } else {
+            DispatchQueue.main.async(execute: action)
+        }
+    }
+    
     private var maxItems: Int { SettingsManager.shared.historyLimit.rawValue }
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
@@ -95,51 +103,66 @@ class ClipboardStore: ObservableObject {
     }
     
     func delete(_ item: ClipboardItem) {
-        items.removeAll { $0.id == item.id }
-        deleteAssociatedFiles(for: item)
-        
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            self.items.removeAll { $0.id == item.id }
+            self.deleteAssociatedFiles(for: item)
+            
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
+            }
         }
     }
     
     /// Delete multiple items in a single batch operation
     func delete(_ itemsToDelete: [ClipboardItem]) {
-        let ids = Set(itemsToDelete.map { $0.id })
-        items.removeAll { ids.contains($0.id) }
-        for item in itemsToDelete {
-            deleteAssociatedFiles(for: item)
-        }
-        
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            let ids = Set(itemsToDelete.map { $0.id })
+            self.items.removeAll { ids.contains($0.id) }
+            for item in itemsToDelete {
+                self.deleteAssociatedFiles(for: item)
+            }
+            
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
+            }
         }
     }
     
     /// Toggle pin state for an item
     func togglePin(for item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].isPinned.toggle()
-        let itemsToSave = items
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].isPinned.toggle()
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        }
     }
 
     /// Toggle bookmark state for an item (protected from eviction, stays in place)
     func toggleBookmark(for item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].isBookmarked.toggle()
-        let itemsToSave = items
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].isBookmarked.toggle()
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        }
     }
     
     /// Update text content for an editable text item
     func updateText(_ text: String, for item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].textContent = text
-        let itemsToSave = items
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].textContent = text
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        }
     }
     
     var allTags: [String] {
@@ -147,66 +170,81 @@ class ClipboardStore: ObservableObject {
     }
 
     func addTag(_ tag: String, to item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        guard !items[index].tags.contains(tag) else { return }
-        items[index].tags.append(tag)
-        let itemsToSave = items
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            guard !self.items[index].tags.contains(tag) else { return }
+            self.items[index].tags.append(tag)
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        }
     }
 
     func removeTag(_ tag: String, from item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].tags.removeAll { $0 == tag }
-        let itemsToSave = items
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].tags.removeAll { $0 == tag }
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+        }
     }
 
     /// Save extracted OCR text for an image item
     func setOCRText(_ text: String, for item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].ocrText = text
-        
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].ocrText = text
+            
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
+            }
         }
     }
     
     /// Move an item to the top of the list (most recent position)
     func moveToTop(_ item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        
-        // Already at top, no need to move
-        if index == 0 { return }
-        
-        // Remove from current position and insert at top
-        let removed = items.remove(at: index)
-        items.insert(removed, at: 0)
-        
-        // Save updated order to disk
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            
+            // Already at top, no need to move
+            if index == 0 { return }
+            
+            // Remove from current position and insert at top
+            let removed = self.items.remove(at: index)
+            self.items.insert(removed, at: 0)
+            
+            // Save updated order to disk
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
+            }
         }
     }
     
     func clear(keepProtected: Bool = false) {
-        if keepProtected {
-            let itemsToDelete = items.filter { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
-            for item in itemsToDelete {
-                deleteAssociatedFiles(for: item)
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            if keepProtected {
+                let itemsToDelete = self.items.filter { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
+                for item in itemsToDelete {
+                    self.deleteAssociatedFiles(for: item)
+                }
+                self.items.removeAll { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
+            } else {
+                for item in self.items {
+                    self.deleteAssociatedFiles(for: item)
+                }
+                self.items.removeAll()
             }
-            items.removeAll { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
-        } else {
-            for item in items {
-                deleteAssociatedFiles(for: item)
+            
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
             }
-            items.removeAll()
-        }
-        
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
         }
     }
     

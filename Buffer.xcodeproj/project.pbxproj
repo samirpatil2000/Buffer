@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		85C03D7CF2D47724949EA05F /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */; };
+		A59751F2C0DC2F523BDCF5B6 /* ClipboardItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4968B0D06F35B2362E7B8C7B /* ClipboardItemTests.swift */; };
 		AAA00001 /* BufferApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00001 /* BufferApp.swift */; };
 		AAA00002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00002 /* AppDelegate.swift */; };
 		AAA00003 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00003 /* ClipboardItem.swift */; };
@@ -22,12 +24,23 @@
 		AAA00013 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00015 /* SettingsManager.swift */; };
 		AAA00014 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00016 /* SettingsView.swift */; };
 		AAA00015 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00017 /* OCRService.swift */; };
-		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 		AAA00016 /* TagChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00018 /* TagChip.swift */; };
 		AAA00017 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00019 /* UpdateService.swift */; };
+		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		63437C035E543E23E2D29727 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = GGG00001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EEE00001;
+			remoteInfo = Buffer;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		4968B0D06F35B2362E7B8C7B /* ClipboardItemTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipboardItemTests.swift; sourceTree = "<group>"; };
 		BBB00000 /* Buffer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Buffer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBB00001 /* BufferApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BufferApp.swift; sourceTree = "<group>"; };
 		BBB00002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -46,12 +59,22 @@
 		BBB00015 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		BBB00016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		BBB00017 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
-		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
 		BBB00018 /* TagChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagChip.swift; sourceTree = "<group>"; };
 		BBB00019 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
+		D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
+		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C38C749DFF6F5D25F117BC95 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				85C03D7CF2D47724949EA05F /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CCC00001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -62,11 +85,38 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		018E7AC5A0733138F1AD70FC /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		24F0BCE63691F302E92A44C2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				018E7AC5A0733138F1AD70FC /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		494C8BEB5CD3C12F9F01766E /* BufferTests */ = {
+			isa = PBXGroup;
+			children = (
+				4968B0D06F35B2362E7B8C7B /* ClipboardItemTests.swift */,
+			);
+			name = BufferTests;
+			path = BufferTests;
+			sourceTree = "<group>";
+		};
 		DDD00000 = {
 			isa = PBXGroup;
 			children = (
 				DDD00001 /* Buffer */,
 				DDD00005 /* Products */,
+				24F0BCE63691F302E92A44C2 /* Frameworks */,
+				494C8BEB5CD3C12F9F01766E /* BufferTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -126,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				BBB00000 /* Buffer.app */,
+				EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -133,6 +184,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C3919C9418D9BDEFE1B559A5 /* BufferTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DC4E627FBEC5DAB26D856412 /* Build configuration list for PBXNativeTarget "BufferTests" */;
+			buildPhases = (
+				01448E7275C8A06E71D298A0 /* Sources */,
+				C38C749DFF6F5D25F117BC95 /* Frameworks */,
+				F94F4C68FA69548E1260DA5E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6E964EE745AAD8ECDAA95862 /* PBXTargetDependency */,
+			);
+			name = BufferTests;
+			productName = BufferTests;
+			productReference = EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		EEE00001 /* Buffer */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FFF00003 /* Build configuration list for PBXNativeTarget "Buffer" */;
@@ -179,6 +248,7 @@
 			projectRoot = "";
 			targets = (
 				EEE00001 /* Buffer */,
+				C3919C9418D9BDEFE1B559A5 /* BufferTests */,
 			);
 		};
 /* End PBXProject section */
@@ -191,9 +261,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F94F4C68FA69548E1260DA5E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		01448E7275C8A06E71D298A0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A59751F2C0DC2F523BDCF5B6 /* ClipboardItemTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EEE00002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -221,7 +306,50 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		6E964EE745AAD8ECDAA95862 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Buffer;
+			target = EEE00001 /* Buffer */;
+			targetProxy = 63437C035E543E23E2D29727 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0D39C5320D118EB54B20C4D2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = N26FZ4GW28;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samirpatil.BufferTests;
+				PRODUCT_NAME = BufferTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Buffer.app/Contents/MacOS/Buffer";
+			};
+			name = Release;
+		};
+		C63DA15124DF42DFB7E6D9BF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = N26FZ4GW28;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.samirpatil.BufferTests;
+				PRODUCT_NAME = BufferTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Buffer.app/Contents/MacOS/Buffer";
+			};
+			name = Debug;
+		};
 		FFF00002 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -432,6 +560,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		DC4E627FBEC5DAB26D856412 /* Build configuration list for PBXNativeTarget "BufferTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D39C5320D118EB54B20C4D2 /* Release */,
+				C63DA15124DF42DFB7E6D9BF /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FFF00001 /* Build configuration list for PBXProject "Buffer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

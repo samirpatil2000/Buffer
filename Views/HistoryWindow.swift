@@ -1006,7 +1006,7 @@ struct HistoryContentView: View {
                         // OCR button — only for image items without existing OCR text
                         if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
                             Button(action: {
-                                Task {
+                                Task { @MainActor in
                                     guard let img = previewImage, let item = selectedItem else { return }
                                     isExtractingText = true
                                     let result = await OCRService.shared.recognizeText(from: img)
