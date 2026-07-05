@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/samirpatil2000/Buffer/releases/latest">
-    <img src="https://img.shields.io/badge/Download-v2.3.0-blue?style=for-the-badge&logo=apple" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v2.4.0-blue?style=for-the-badge&logo=apple" alt="Download">
   </a>
   <img src="https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple" alt="macOS 13+">
   <img src="https://img.shields.io/badge/Swift-5.9-orange?style=for-the-badge&logo=swift" alt="Swift 5.9">
@@ -42,12 +42,12 @@
 ### 📥 Download
 
 <p align="center">
-  <a href="https://github.com/samirpatil2000/Buffer/releases/download/buffer-v2.3.0/Buffer_Silicon.dmg">
-    <img src="https://img.shields.io/badge/⬇️_Apple_Silicon_DMG-v2.3.0-2ea44f?style=for-the-badge" alt="Download Buffer Silicon DMG">
+  <a href="https://github.com/samirpatil2000/Buffer/releases/download/buffer-v2.4.0/Buffer_Silicon.dmg">
+    <img src="https://img.shields.io/badge/⬇️_Apple_Silicon_DMG-v2.4.0-2ea44f?style=for-the-badge" alt="Download Buffer Silicon DMG">
   </a>
   &nbsp;
-  <a href="https://github.com/samirpatil2000/Buffer/releases/download/buffer-v2.3.0/Buffer_Intel.dmg">
-    <img src="https://img.shields.io/badge/⬇️_Intel_DMG-v2.3.0-8a3ffc?style=for-the-badge" alt="Download Buffer Intel DMG">
+  <a href="https://github.com/samirpatil2000/Buffer/releases/download/buffer-v2.4.0/Buffer_Intel.dmg">
+    <img src="https://img.shields.io/badge/⬇️_Intel_DMG-v2.4.0-8a3ffc?style=for-the-badge" alt="Download Buffer Intel DMG">
   </a>
 </p>
 
