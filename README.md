@@ -57,10 +57,6 @@
 
 ---
 
-### 🛣️ Coming Next
-
-- Multi‑paste support for quickly pasting multiple items in sequence
-
 ## 🚀 Getting Started
 
 1. **Download** the `.dmg` file from above
