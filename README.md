@@ -78,6 +78,12 @@
   <em>Beautiful split-pane interface with search and preview</em>
 </p>
 
+
+#### Edit Text 
+
+<img width="800" height="539" alt="buffer-18-jun–editing" src="https://github.com/user-attachments/assets/12ec7289-0a43-453b-a0cc-ae13918fcd0b" />
+
+
 #### Multi select & paste
 
 <img width="800" height="525" alt="buffer-26-apr-v2-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/5dd61f35-9b16-413d-aec9-8e89fff4f7f8" />
