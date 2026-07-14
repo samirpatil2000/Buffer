@@ -9,12 +9,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/samirpatil2000/Buffer/releases/latest">
-    <img src="https://img.shields.io/badge/Download-v2.4.0-blue?style=for-the-badge&logo=apple" alt="Download">
-  </a>
-  <img src="https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/Swift-5.9-orange?style=for-the-badge&logo=swift" alt="Swift 5.9">
-  <a href="https://deepwiki.com/samirpatil2000/Buffer"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+<a href="https://github.com/samirpatil2000/Buffer/releases/latest">
+<img src="https://img.shields.io/badge/Download-v2.4.0-blue?style=for-the-badge&logo=apple" alt="Download">
+</a>
+<img src="https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple" alt="macOS 13+">
+<img src="https://img.shields.io/badge/Swift-5.9-orange?style=for-the-badge&logo=swift" alt="Swift 5.9">
+<a href="https://deepwiki.com/samirpatil2000/Buffer"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+<br><br>
+<img src="https://img.shields.io/github/stars/samirpatil2000/Buffer?style=flat-square&color=orange&label=stars" alt="Stars">
+&nbsp;
+<img src="https://img.shields.io/github/downloads/samirpatil2000/Buffer/total?style=flat-square&color=blue&label=downloads" alt="Downloads">
 </p>
 
 ---
