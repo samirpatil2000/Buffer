@@ -1561,32 +1561,63 @@ struct HistoryContentView: View {
             
             Spacer()
             
-            // Keyboard shortcut hint
-            HStack(spacing: 4) {
-                Image(systemName: "return")
-                    .font(.system(size: 10))
-                Text("to paste")
-                    .font(.system(size: 11))
-            }
-            .foregroundColor(.secondary.opacity(0.6))
-            
-            // Paste button - Apple-style, refined
-            Button(action: { if let item = selectedItem { onPaste(item) } }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Paste")
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
+            // Dynamic Action Button - Apple-style, refined
+            Group {
+                if isEditing {
+                    Button(action: { exitEditMode() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Save")
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .fixedSize()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(0.85))
+                        )
+                        .foregroundColor(Color(NSColor.windowBackgroundColor))
+                    }
+                } else if let item = selectedItem, item.isEditable {
+                    Button(action: { enterEditMode() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Edit")
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .fixedSize()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(0.85))
+                        )
+                        .foregroundColor(Color(NSColor.windowBackgroundColor))
+                    }
+                } else {
+                    Button(action: { if let item = selectedItem { onPaste(item) } }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Paste")
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .fixedSize()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.primary.opacity(0.85))
+                        )
+                        .foregroundColor(Color(NSColor.windowBackgroundColor))
+                    }
                 }
-                .fixedSize()
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.85))
-                )
-                .foregroundColor(Color(NSColor.windowBackgroundColor))
             }
             .buttonStyle(.plain)
         }
