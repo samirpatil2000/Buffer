@@ -519,6 +519,11 @@ struct HistoryContentView: View {
                 isSearchFocused = true
             }
         }
+        .onChange(of: isTextEditorFocused) { newValue in
+            if !newValue && isEditing {
+                exitEditMode()
+            }
+        }
         .onChange(of: selectedIndex) { newIndex in
             selectedID = filteredItems[safe: newIndex]?.id
         }
@@ -562,6 +567,16 @@ struct HistoryContentView: View {
                     selectionAnchor = nil
                     selectedIndex = 0
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            if isEditing {
+                exitEditMode()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+            if isEditing {
+                exitEditMode()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
