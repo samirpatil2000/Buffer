@@ -734,6 +734,13 @@ struct HistoryContentView: View {
                 guard selectedItem != nil else { return }
                 showTagInput = true
             },
+            onEdit: {
+                if isEditing {
+                    exitEditMode()
+                } else {
+                    enterEditMode()
+                }
+            },
             onTabComplete: {
                 guard !isEditing else { return }
                 if showTagInput {
@@ -984,7 +991,7 @@ struct HistoryContentView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundColor(isEditing ? .blue : .primary)
-                            .help(isEditing ? "Stop editing (auto-saved)" : "Edit item")
+                            .help(isEditing ? "Stop editing (auto-saved) (⌘E or Esc)" : "Edit item (⌘E)")
                         }
 
                         Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
@@ -1054,19 +1061,31 @@ struct HistoryContentView: View {
             
             // Content preview
             ScrollView {
-                if selectionCount > 1 {
-                    // Multi-selection summary
-                    multiSelectionSummary
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                } else if let item = selectedItem {
-                    itemContent(item)
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                } else {
-                    Text("Select an item")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollViewReader { proxy in
+                    if selectionCount > 1 {
+                        // Multi-selection summary
+                        multiSelectionSummary
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    } else if let item = selectedItem {
+                        itemContent(item)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .id("editArea")
+                            .onChange(of: isEditing) { newValue in
+                                if newValue {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        withAnimation {
+                                            proxy.scrollTo("editArea", anchor: .top)
+                                        }
+                                    }
+                                }
+                            }
+                    } else {
+                        Text("Select an item")
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
 
@@ -1436,56 +1455,93 @@ struct HistoryContentView: View {
                 .buttonStyle(.plain)
             }
             
-            Text("Navigate")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(.secondary.opacity(0.8))
-
-            Color.primary.opacity(0.1)
-                .frame(width: 2, height: 14)
-
-            HStack(spacing: 4) {
-                Text("⌘↑↓")
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(3)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                    )
-                Text("multi-select")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-
-            HStack(spacing: 4) {
-                Text("⌘P")
-                    .font(.system(size: 10))
-                Text("pin")
-                    .font(.system(size: 11))
-            }
-            .foregroundColor(.secondary.opacity(0.6))
-            .padding(.leading, 8)
-
-            HStack(spacing: 4) {
-                Text("⌘B")
-                    .font(.system(size: 10))
-                Text("save")
-                    .font(.system(size: 11))
-            }
-            .foregroundColor(.secondary.opacity(0.6))
-            .padding(.leading, 4)
-            
-            if selectedItem?.type == .image {
+            if isEditing {
+                Text("Editing")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                
+                Color.primary.opacity(0.1)
+                    .frame(width: 2, height: 14)
+                
                 HStack(spacing: 4) {
-                    Text("⌘S")
+                    Text("Esc")
+                        .font(.system(size: 10))
+                    Text("exit")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+                
+                HStack(spacing: 4) {
+                    Text("⌘E")
                         .font(.system(size: 10))
                     Text("save")
                         .font(.system(size: 11))
                 }
                 .foregroundColor(.secondary.opacity(0.6))
                 .padding(.leading, 4)
+            } else {
+                Text("Navigate")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.secondary.opacity(0.8))
+
+                Color.primary.opacity(0.1)
+                    .frame(width: 2, height: 14)
+
+                HStack(spacing: 4) {
+                    Text("⌘↑↓")
+                        .font(.system(size: 10))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(3)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                        )
+                    Text("multi-select")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+
+                HStack(spacing: 4) {
+                    Text("⌘P")
+                        .font(.system(size: 10))
+                    Text("pin")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+                .padding(.leading, 8)
+
+                HStack(spacing: 4) {
+                    Text("⌘B")
+                        .font(.system(size: 10))
+                    Text("save")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+                .padding(.leading, 4)
+                
+                if let item = selectedItem, item.isEditable {
+                    HStack(spacing: 4) {
+                        Text("⌘E")
+                            .font(.system(size: 10))
+                        Text("edit")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.leading, 4)
+                }
+                
+                if selectedItem?.type == .image {
+                    HStack(spacing: 4) {
+                        Text("⌘S")
+                            .font(.system(size: 10))
+                        Text("save")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.leading, 4)
+                }
             }
             
             Spacer()
@@ -1657,6 +1713,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onBookmark: () -> Void
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
+    let onEdit: () -> Void
     let onTabComplete: () -> Void
     let onBackspace: () -> Bool
 
@@ -1744,6 +1801,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                         return nil
                     }
                     return event
+                case 14: // Cmd+E (E is 14)
+                    if event.modifierFlags.contains(.command) {
+                        context.coordinator.onEdit?()
+                        return nil
+                    }
+                    return event
                 case 48: // Tab
                     if isEditing { return event }
                     context.coordinator.onTabComplete?()
@@ -1772,6 +1835,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onBookmark = onBookmark
         context.coordinator.onSaveImage = onSaveImage
         context.coordinator.onAddTag = onAddTag
+        context.coordinator.onEdit = onEdit
         context.coordinator.onTabComplete = onTabComplete
         context.coordinator.onBackspace = onBackspace
     }
@@ -1795,6 +1859,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onBookmark: (() -> Void)?
         var onSaveImage: (() -> Void)?
         var onAddTag: (() -> Void)?
+        var onEdit: (() -> Void)?
         var onTabComplete: (() -> Void)?
         var onBackspace: (() -> Bool)?
         
