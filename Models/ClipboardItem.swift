@@ -136,7 +136,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     
     /// Whether this item is editable inline
     var isEditable: Bool {
-        type == .text && !isFileBacked && !isTruncated
+        type == .text && !isFileBacked && !isTruncated && (textContent?.count ?? 0) <= 5000
     }
     
     /// Preview text for display (truncated for long content)
