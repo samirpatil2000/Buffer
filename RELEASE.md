@@ -29,12 +29,12 @@ This guide outlines the step-by-step process to bump the version, build, notariz
 
 1. **Update Info.plist**:
    Open `Info.plist` and update the following values:
-   - `CFBundleShortVersionString` $\rightarrow$ Target Version (e.g., `2.3.0`)
-   - `CFBundleVersion` $\rightarrow$ Increment the Build Number integer (e.g., `5`)
+   - `CFBundleShortVersionString` $\rightarrow$ Target Version (e.g., `2.5.0`)
+   - `CFBundleVersion` $\rightarrow$ Increment the Build Number integer (e.g., `7`)
 
 2. **Update README.md**:
    Open `README.md` and update all references to the version string in the download badges and download URLs:
-   - For Shields.io badges, escape dashes with a double dash (e.g. `v2.3.0` stays normal, but a hyphenated suffix like `v2.3.0-beta.1` must be formatted as `v2.3.0--beta.1`).
+   - For Shields.io badges, escape dashes with a double dash (e.g. `v2.5.0` stays normal, but a hyphenated suffix like `v2.5.0-beta.1` must be formatted as `v2.5.0--beta.1`).
    - Update direct download URLs for both **Silicon** and **Intel** DMGs to point to the new tag.
 
 ---
@@ -65,7 +65,7 @@ Verify that the output files are present in the project root:
 1. **Commit and Push Changes**:
    ```bash
    git add Info.plist README.md
-   git commit -m "release: bump version to v2.3.0"
+   git commit -m "release: bump version to v2.5.0"
    # Push explicitly using refs/heads/main to avoid conflict with any 'main' tag
    git push origin refs/heads/main
    ```
@@ -73,11 +73,10 @@ Verify that the output files are present in the project root:
 2. **Create GitHub Release**:
    Prepare a markdown file `release_notes.md` containing the release description, then run:
    ```bash
-   gh release create buffer-v2.3.0 \
+   gh release create buffer-v2.5.0 \
      Buffer_Silicon.dmg Buffer_Silicon.zip \
      Buffer_Intel.dmg Buffer_Intel.zip \
-     --title "Buffer v2.3.0" \
-     --notes-file release_notes.md \
-     --prerelease
+     --title "Buffer v2.5.0" \
+     --notes-file release_notes.md
    ```
-   *(Omit `--prerelease` if publishing a stable production release).*
+   *(Add `--prerelease` if publishing a pre-release).*
