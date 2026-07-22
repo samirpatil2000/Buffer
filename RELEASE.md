@@ -34,7 +34,7 @@ This guide outlines the step-by-step process to bump the version, build, notariz
 
 2. **Update README.md**:
    Open `README.md` and update all references to the version string in the download badges and download URLs:
-   - For Shields.io badges, escape dashes with a double dash (e.g. `v2.5.0` stays normal, but a hyphenated suffix like `v2.5.0-beta.1` must be formatted as `v2.5.0--beta.1`).
+   - Update version strings in Shields.io badges.
    - Update direct download URLs for both **Silicon** and **Intel** DMGs to point to the new tag.
 
 ---
