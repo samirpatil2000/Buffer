@@ -3,25 +3,37 @@ import SwiftUI
 
 /// Manages the menu bar status item - click to toggle window
 class StatusBarController {
-    private var statusItem: NSStatusItem
+    private var statusItem: NSStatusItem?
     private let store: ClipboardStore
     private let watcher: ClipboardWatcher
     private let onToggleHistory: () -> Void
     private var settingsWindowController: NSWindowController?
     private var activeAlert: NSAlert?
-    
+
     init(store: ClipboardStore, watcher: ClipboardWatcher, onShowHistory: @escaping () -> Void) {
         self.store = store
         self.watcher = watcher
         self.onToggleHistory = onShowHistory
-        
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        
-        setupButton()
+
+        if !SettingsManager.shared.hideStatusBar {
+            createStatusItem()
+        }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visibilityChanged),
+            name: .bufferStatusBarVisibilityChanged,
+            object: nil
+        )
     }
     
+    private func createStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        setupButton()
+    }
+
     private func setupButton() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button else { return }
         
         // Use SF Symbol for clipboard
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
@@ -96,9 +108,9 @@ class StatusBarController {
         quitItem.target = self
         menu.addItem(quitItem)
         
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil  // Reset so left click works
+        statusItem?.menu = menu
+        statusItem?.button?.performClick(nil)
+        statusItem?.menu = nil  // Reset so left click works
     }
     
     @objc private func checkForUpdates() {
@@ -162,15 +174,30 @@ class StatusBarController {
             store.clear(keepProtected: keepProtected)
         }
         
-        activeAlert = nil
+activeAlert = nil
     }
-    
+
+    @objc private func visibilityChanged() {
+        if SettingsManager.shared.hideStatusBar {
+            removeStatusItem()
+        } else if statusItem == nil {
+            createStatusItem()
+        }
+    }
+
+    private func removeStatusItem() {
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
+
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
     }
     
     private func updateIcon(paused: Bool) {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button else { return }
         
         let symbolName = paused ? "doc.on.clipboard.fill" : "doc.on.clipboard"
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)

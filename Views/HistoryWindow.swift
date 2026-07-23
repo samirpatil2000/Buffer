@@ -169,6 +169,7 @@ extension Notification.Name {
     static let bufferHotkeyChanged = Notification.Name("bufferHotkeyChanged")
     static let bufferWindowDidOpen = Notification.Name("bufferWindowDidOpen")
     static let bufferHistoryLimitChanged = Notification.Name("bufferHistoryLimitChanged")
+    static let bufferStatusBarVisibilityChanged = Notification.Name("bufferStatusBarVisibilityChanged")
 }
 
 /// Main content view - Split pane with list and detail
