@@ -117,6 +117,18 @@ struct SettingsView: View {
                         }
                         .toggleStyle(.switch)
                 }
+
+                HStack {
+                    Text("Hide Menu Bar Icon")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.hideStatusBar)
+                        .labelsHidden()
+                        .onChange(of: settings.hideStatusBar) { _ in
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
                 
                 // History Size Section
                 Divider()
@@ -313,6 +325,7 @@ class SettingsViewModel: ObservableObject {
     @Published var launchAtLogin: Bool
     @Published var historyLimit: HistoryLimit
     @Published var includePrereleases: Bool
+    @Published var hideStatusBar: Bool
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -339,6 +352,9 @@ class SettingsViewModel: ObservableObject {
         
         // Load pre-release updates toggle
         self.includePrereleases = defaults.bool(forKey: "includePrereleases")
+
+        // Load hide status bar
+        self.hideStatusBar = defaults.bool(forKey: "hideStatusBar")
     }
     
     func save() {
@@ -346,14 +362,17 @@ class SettingsViewModel: ObservableObject {
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
-        
+        defaults.set(hideStatusBar, forKey: "hideStatusBar")
+
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
         SettingsManager.shared.historyLimit = historyLimit
         SettingsManager.shared.includePrereleases = includePrereleases
+        SettingsManager.shared.hideStatusBar = hideStatusBar
         SettingsManager.shared.save()
-        
+
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
         NotificationCenter.default.post(name: .bufferHistoryLimitChanged, object: nil)
+        NotificationCenter.default.post(name: .bufferStatusBarVisibilityChanged, object: nil)
     }
 }

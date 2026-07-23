@@ -40,6 +40,7 @@ class SettingsManager: ObservableObject {
     @Published var launchAtLogin: Bool = false
     @Published var historyLimit: HistoryLimit = .essential
     @Published var includePrereleases: Bool = false
+    @Published var hideStatusBar: Bool = false
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -68,6 +69,9 @@ class SettingsManager: ObservableObject {
         
         // Load pre-release updates toggle
         self.includePrereleases = defaults.bool(forKey: "includePrereleases")
+
+        // Load hide status bar
+        self.hideStatusBar = defaults.bool(forKey: "hideStatusBar")
     }
     
     func save() {
@@ -75,6 +79,7 @@ class SettingsManager: ObservableObject {
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
+        defaults.set(hideStatusBar, forKey: "hideStatusBar")
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {
