@@ -7,8 +7,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardWatcher: ClipboardWatcher?
     private var historyWindowController: HistoryWindowController?
     private var hotkeyManager: HotkeyManager?
+    private var webLinkWindowController: WebLinkWindowController?
     
     let clipboardStore = ClipboardStore()
+    let webLinkStore = WebLinkStore()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon - we're menu bar only
@@ -37,9 +39,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             watcher: clipboardWatcher!,
             onShowHistory: { [weak self] in
                 self?.showHistoryWindow()
+            },
+            onShowWebLinks: { [weak self] in
+                self?.showWebLinksWindow()
             }
         )
         
+        // Initialize web link store and window controller
+        webLinkWindowController = WebLinkWindowController(store: webLinkStore)
+
         // Initialize history window controller
         historyWindowController = HistoryWindowController(store: clipboardStore)
         
@@ -81,4 +89,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showHistoryWindow() {
         historyWindowController?.showWindow(nil)
     }
+
+    private func showWebLinksWindow() {
+        if let window = webLinkWindowController?.window, window.isVisible {
+            webLinkWindowController?.close()
+        } else {
+            webLinkWindowController?.showWindow(nil)
+        }
+    }
+
 }

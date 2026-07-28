@@ -189,6 +189,7 @@ struct HistoryContentView: View {
     
     @FocusState private var isSearchFocused: Bool
     @State private var searchText = ""
+    @State private var statusBarHidden = SettingsManager.shared.hideStatusBar
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>? = nil
     @State private var selectedIndex = 0
@@ -782,6 +783,14 @@ struct HistoryContentView: View {
                 guard isSearchFocused, searchText.isEmpty, activeTagFilter != nil else { return false }
                 activeTagFilter = nil
                 return true
+            },
+            onSelectAll: {
+                guard !isEditing else { return }
+                guard !filteredItems.isEmpty else { return }
+                selectedIDs = Set(filteredItems.map(\.id))
+                selectionAnchor = filteredItems.first?.id
+                selectedID = filteredItems.first?.id
+                selectedIndex = 0
             }
         ))
     }
@@ -888,6 +897,7 @@ struct HistoryContentView: View {
             Text("\(filteredItems.count) items")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.6))
+            
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -1561,6 +1571,20 @@ struct HistoryContentView: View {
             }
             
             Spacer()
+
+            // Status bar visibility toggle
+            Button(action: {
+                statusBarHidden.toggle()
+                SettingsManager.shared.hideStatusBar = statusBarHidden
+                SettingsManager.shared.save()
+                NotificationCenter.default.post(name: .bufferStatusBarVisibilityChanged, object: nil)
+            }) {
+                Text(statusBarHidden ? "🙈" : "🐒")
+                    .font(.system(size: 14))
+            }
+            .buttonStyle(.plain)
+            .help(statusBarHidden ? "Show menu bar icon" : "Hide menu bar icon")
+            .padding(.trailing, 4)
             
             PasteButton(action: { if let item = selectedItem { onPaste(item) } })
         }
@@ -1705,6 +1729,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onEdit: () -> Void
     let onTabComplete: () -> Void
     let onBackspace: () -> Bool
+    let onSelectAll: () -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -1800,6 +1825,13 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     if isEditing { return event }
                     context.coordinator.onTabComplete?()
                     return nil
+                case 0: // A
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing { return event }
+                        context.coordinator.onSelectAll?()
+                        return nil
+                    }
+                    return event
                 default:
                     return event
                 }
@@ -1827,6 +1859,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onEdit = onEdit
         context.coordinator.onTabComplete = onTabComplete
         context.coordinator.onBackspace = onBackspace
+        context.coordinator.onSelectAll = onSelectAll
     }
     
     func makeCoordinator() -> Coordinator {
@@ -1851,6 +1884,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onEdit: (() -> Void)?
         var onTabComplete: (() -> Void)?
         var onBackspace: (() -> Bool)?
+        var onSelectAll: (() -> Void)?
         
         deinit {
             if let monitor = monitor {
