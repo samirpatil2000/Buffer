@@ -1524,7 +1524,7 @@ struct HistoryContentView: View {
                     .frame(width: 2, height: 14)
 
                 HStack(spacing: 4) {
-                    Text("⌘↑↓")
+                    Text("Shift+↑↓")
                         .font(.system(size: 10))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
