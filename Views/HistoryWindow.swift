@@ -118,6 +118,9 @@ class HistoryWindowController: NSWindowController {
             onCopyToClipboard: { [weak self] item in
                 self?.copyToClipboard(item)
             },
+            onCopyMultipleToClipboard: { [weak self] items in
+                self?.copyMultipleToClipboard(items)
+            },
             onPaste: { [weak self] item in
                 self?.pasteItem(item)
             },
@@ -135,6 +138,11 @@ class HistoryWindowController: NSWindowController {
     private func copyToClipboard(_ item: ClipboardItem) {
         NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
         PasteController.copyToClipboard(item, store: store)
+    }
+    
+    private func copyMultipleToClipboard(_ items: [ClipboardItem]) {
+        NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+        PasteController.copyMultipleToClipboard(items, store: store)
     }
     
     private func pasteItem(_ item: ClipboardItem) {
@@ -183,6 +191,7 @@ struct HistoryContentView: View {
     /// the threshold. Stored on the controller so it survives SwiftUI state resets.
     @Binding var savedSelectedID: UUID?
     let onCopyToClipboard: (ClipboardItem) -> Void
+    let onCopyMultipleToClipboard: ([ClipboardItem]) -> Void
     let onPaste: (ClipboardItem) -> Void
     let onPasteMultiple: ([ClipboardItem]) -> Void
     let onDismiss: () -> Void
@@ -725,7 +734,13 @@ struct HistoryContentView: View {
             },
             onCopy: {
                 guard !isEditing else { return }
-                if let item = selectedItem { onCopyToClipboard(item) }
+                if selectedIDs.count > 1 {
+                    onCopyMultipleToClipboard(Array(selectedItems))
+                    onDismiss()
+                } else if let item = selectedItem {
+                    onCopyToClipboard(item)
+                    onDismiss()
+                }
             },
             onPin: {
                 guard !isEditing else { return }
@@ -1010,11 +1025,16 @@ struct HistoryContentView: View {
                             .help(isEditing ? "Stop editing (auto-saved) (⌘E or Esc)" : "Edit item (⌘E)")
                         }
 
-                        Button(action: { if let item = selectedItem { onCopyToClipboard(item) } }) {
+                        Button(action: {
+                            if let item = selectedItem {
+                                onCopyToClipboard(item)
+                                onDismiss()
+                            }
+                        }) {
                             Image(systemName: "doc.on.doc")
                         }
                         .buttonStyle(.plain)
-                        .help("Copy")
+                        .help("Copy (⌘C)")
                         
                         if selectedItem?.type == .image && previewImage != nil {
                             Button(action: {
@@ -1755,7 +1775,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     if event.modifierFlags.contains(.command) {
                         if isEditing { return event }
                         // If text is selected in a text view, let the system handle native copy
-                        if let responder = view.window?.firstResponder, responder is NSTextView {
+                        if let textView = view.window?.firstResponder as? NSTextView, textView.selectedRange.length > 0 {
                             return event
                         }
                         context.coordinator.onCopy?()

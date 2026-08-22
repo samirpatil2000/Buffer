@@ -45,6 +45,40 @@ class PasteController {
         }
     }
     
+    /// Copy multiple items content back to system clipboard
+    static func copyMultipleToClipboard(_ items: [ClipboardItem], store: ClipboardStore) {
+        guard !items.isEmpty else { return }
+        if items.count == 1, let first = items.first {
+            copyToClipboard(first, store: store)
+            return
+        }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        let textItems = items.filter { $0.type == .text }
+        let imageItems = items.filter { $0.type == .image }
+        
+        if !textItems.isEmpty {
+            let joinedText = textItems.compactMap { store.fullText(for: $0) }.joined(separator: "\n")
+            pasteboard.setString(joinedText, forType: .string)
+        } else if !imageItems.isEmpty {
+            var imageURLs: [URL] = []
+            for (index, imageItem) in imageItems.enumerated() {
+                if let image = store.image(for: imageItem) {
+                    let paddedNumber = String(format: "%04d", index + 1)
+                    let fileName = "image-\(paddedNumber).png"
+                    if let fileURL = saveImageToTemp(image, fileName: fileName) {
+                        imageURLs.append(fileURL)
+                    }
+                }
+            }
+            if !imageURLs.isEmpty {
+                pasteboard.writeObjects(imageURLs as [NSPasteboardWriting])
+            }
+        }
+    }
+    
     /// Paste item into the frontmost application
     static func paste(_ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
         let pasteboard = NSPasteboard.general
