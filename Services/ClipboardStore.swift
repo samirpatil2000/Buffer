@@ -160,6 +160,8 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].textContent = text
+            self.items[index].rtfData = nil
+            self.items[index].htmlData = nil
             let itemsToSave = self.items
             self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
         }

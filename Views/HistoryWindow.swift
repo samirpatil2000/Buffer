@@ -202,6 +202,7 @@ struct HistoryContentView: View {
     @State private var searchDebounceTask: Task<Void, Never>? = nil
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
+    @State private var richPreview: AttributedString?
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     @State private var itemSize: Int?         // Holds computed size of item
@@ -645,9 +646,10 @@ struct HistoryContentView: View {
         .onAppear {
             updateFilteredItems()
         }
-        .task(id: selectedItem?.id) {
+        .task(id: "\(selectedItem?.id.uuidString ?? "")-\(selectedItem?.textContent ?? "")-\(selectedItem?.rtfData?.count ?? 0)") {
             // Clear preview
             previewImage = nil
+            richPreview = nil
             chunkedText = ChunkedTextState()
             isExtractingText = false
             itemSize = nil
@@ -661,6 +663,12 @@ struct HistoryContentView: View {
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
                 } else if item.type == .text {
+                    if let rtf = item.rtfData {
+                        richPreview = await loadRichText(fromRTF: rtf)
+                    } else if let html = item.htmlData {
+                        richPreview = await loadRichText(fromHTML: html)
+                    }
+                    
                     if item.isFileBacked || (item.textContent?.count ?? 0) > 5000 {
                         await loadInitialChunk(for: item)
                     } else {
@@ -708,7 +716,7 @@ struct HistoryContentView: View {
                         searchText = ""
                         showTagAutocomplete = false
                     }
-                } else if !selectedItems.isEmpty {
+                } else if selectedItems.count > 1 {
                     onPasteMultiple(Array(selectedItems))
                 } else if let item = selectedItem {
                     onPaste(item)
@@ -799,6 +807,47 @@ struct HistoryContentView: View {
                 return true
             }
         ))
+    }
+    
+    private func loadRichText(fromRTF rtfData: Data) async -> AttributedString? {
+        await Task.detached(priority: .userInitiated) {
+            guard let nsAttr = try? NSAttributedString(
+                data: rtfData,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ) else { return nil }
+            let adjusted = Self.sanitizeAttributedStringForTheme(nsAttr)
+            return try? AttributedString(adjusted, including: \.appKit)
+        }.value
+    }
+    
+    private func loadRichText(fromHTML htmlData: Data) async -> AttributedString? {
+        await Task.detached(priority: .userInitiated) {
+            guard let nsAttr = try? NSAttributedString(
+                data: htmlData,
+                options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
+                documentAttributes: nil
+            ) else { return nil }
+            let adjusted = Self.sanitizeAttributedStringForTheme(nsAttr)
+            return try? AttributedString(adjusted, including: \.appKit)
+        }.value
+    }
+    
+    private static func sanitizeAttributedStringForTheme(_ nsAttr: NSAttributedString) -> NSAttributedString {
+        let mutable = NSMutableAttributedString(attributedString: nsAttr)
+        mutable.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: mutable.length), options: []) { value, range, _ in
+            if let color = value as? NSColor {
+                if let rgb = color.usingColorSpace(.sRGB) {
+                    // Adapt black/near-black to labelColor for dynamic light/dark mode support
+                    if rgb.redComponent < 0.15 && rgb.greenComponent < 0.15 && rgb.blueComponent < 0.15 {
+                        mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+                    }
+                }
+            } else {
+                mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+            }
+        }
+        return mutable
     }
     
     private func loadPreviewImage(for item: ClipboardItem) async -> NSImage? {
@@ -979,7 +1028,7 @@ struct HistoryContentView: View {
                         .cornerRadius(4)
                     } else {
                         HStack(spacing: 6) {
-                            Text(item.type == .text ? "Text" : "Image")
+                            Text(item.type == .text ? (item.rtfData != nil || item.htmlData != nil ? "Rich Text" : "Text") : "Image")
                             
                             if item.isFileBacked {
                                 Text("Large")
@@ -1315,6 +1364,10 @@ struct HistoryContentView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .frame(minHeight: 200, maxHeight: .infinity)
                     .focused($isTextEditorFocused)
+            } else if let rich = richPreview {
+                Text(rich)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             } else {
                 Text(item.textContent ?? "")
                     .font(.system(size: 13, design: .monospaced))
@@ -1415,11 +1468,14 @@ struct HistoryContentView: View {
         if let itemID = editingItemID,
            let item = store.items.first(where: { $0.id == itemID }) {
             store.updateText(editText, for: item)
+            richPreview = nil
             
             NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(editText, forType: .string)
+            let pboardItem = NSPasteboardItem()
+            pboardItem.setString(editText, forType: .string)
+            pasteboard.writeObjects([pboardItem])
         }
         editingItemID = nil
         isEditing = false
@@ -1580,9 +1636,13 @@ struct HistoryContentView: View {
                 }
             }
             
-            Spacer()
-            
-            PasteButton(action: { if let item = selectedItem { onPaste(item) } })
+            PasteButton(action: {
+                if selectedItems.count > 1 {
+                    onPasteMultiple(Array(selectedItems))
+                } else if let item = selectedItem {
+                    onPaste(item)
+                }
+            })
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

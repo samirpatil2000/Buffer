@@ -29,13 +29,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // Extracted OCR text (persisted after first extraction)
     var ocrText: String?
     
+    // Rich formatting data (for text items)
+    var rtfData: Data?
+    var htmlData: Data?
+    
     // For extreme text items — true if content exceeded storage limit and only preview is saved
     let isTruncated: Bool
     
     // For large/extreme text items — original size in bytes (for display purposes)
     let originalSizeBytes: Int?
     
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil) {
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -49,11 +53,14 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.ocrText = ocrText
         self.isTruncated = isTruncated
         self.originalSizeBytes = originalSizeBytes
+        self.rtfData = rtfData
+        self.htmlData = htmlData
     }
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
         case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
+        case rtfData, htmlData
     }
 
     init(from decoder: Decoder) throws {
@@ -71,6 +78,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
         self.isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
         self.originalSizeBytes = try container.decodeIfPresent(Int.self, forKey: .originalSizeBytes)
+        self.rtfData = try container.decodeIfPresent(Data.self, forKey: .rtfData)
+        self.htmlData = try container.decodeIfPresent(Data.self, forKey: .htmlData)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -88,14 +97,18 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(ocrText, forKey: .ocrText)
         try container.encode(isTruncated, forKey: .isTruncated)
         try container.encodeIfPresent(originalSizeBytes, forKey: .originalSizeBytes)
+        try container.encodeIfPresent(rtfData, forKey: .rtfData)
+        try container.encodeIfPresent(htmlData, forKey: .htmlData)
     }
     
     /// Create a text clipboard item
-    static func text(_ content: String, sourceApp: String? = nil) -> ClipboardItem {
+    static func text(_ content: String, sourceApp: String? = nil, rtfData: Data? = nil, htmlData: Data? = nil) -> ClipboardItem {
         ClipboardItem(
             type: .text,
             sourceApp: sourceApp,
-            textContent: content
+            textContent: content,
+            rtfData: rtfData,
+            htmlData: htmlData
         )
     }
     
@@ -109,12 +122,14 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
     
     /// Create a large text clipboard item (file-backed with inline preview)
-    static func largeText(preview: String, filename: String, sourceApp: String? = nil) -> ClipboardItem {
+    static func largeText(preview: String, filename: String, sourceApp: String? = nil, rtfData: Data? = nil, htmlData: Data? = nil) -> ClipboardItem {
         ClipboardItem(
             type: .text,
             sourceApp: sourceApp,
             textContent: preview,
-            textFilename: filename
+            textFilename: filename,
+            rtfData: rtfData,
+            htmlData: htmlData
         )
     }
     

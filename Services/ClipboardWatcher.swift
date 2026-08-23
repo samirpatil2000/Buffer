@@ -18,6 +18,7 @@ class ClipboardWatcher: ObservableObject {
     // Size thresholds for text handling
     private let inlineTextLimit = 50_000       // 50 KB — store inline
     private let previewLength = 500            // Characters kept as inline preview
+    private let richTextLimit = 500_000        // 500 KB — max RTF/HTML data payload
     
     init(store: ClipboardStore) {
         self.store = store
@@ -109,15 +110,27 @@ class ClipboardWatcher: ObservableObject {
             if hash != lastContentHash {
                 lastContentHash = hash
                 
+                // Extract RTF data if available and within size limit
+                var rtfData: Data? = nil
+                if let data = pasteboard.data(forType: .rtf), data.count <= richTextLimit {
+                    rtfData = data
+                }
+                
+                // Extract HTML data if available and within size limit
+                var htmlData: Data? = nil
+                if let data = pasteboard.data(forType: .html), data.count <= richTextLimit {
+                    htmlData = data
+                }
+                
                 if textSize <= inlineTextLimit {
                     // Small text: store inline (current behavior)
-                    let item = ClipboardItem.text(text, sourceApp: sourceApp)
+                    let item = ClipboardItem.text(text, sourceApp: sourceApp, rtfData: rtfData, htmlData: htmlData)
                     store.add(item)
                 } else {
                     // Large text: save to file, store preview inline
                     let preview = String(text.prefix(previewLength))
                     if let filename = store.saveText(text) {
-                        let item = ClipboardItem.largeText(preview: preview, filename: filename, sourceApp: sourceApp)
+                        let item = ClipboardItem.largeText(preview: preview, filename: filename, sourceApp: sourceApp, rtfData: rtfData, htmlData: htmlData)
                         store.add(item)
                         print("[Buffer] Large text (\(textSize / 1024) KB) saved to file: \(filename)")
                     }
