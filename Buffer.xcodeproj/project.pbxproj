@@ -28,6 +28,9 @@
 		AAA00017 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00019 /* UpdateService.swift */; };
 		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 		AAA00020 /* PasteButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00020 /* PasteButton.swift */; };
+		AAA00021 /* WebLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00021 /* WebLink.swift */; };
+		AAA00022 /* WebLinkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00022 /* WebLinkStore.swift */; };
+		AAA00023 /* WebLinksWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00023 /* WebLinksWindow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +68,9 @@
 		D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
 		BBB00020 /* PasteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteButton.swift; sourceTree = "<group>"; };
+		BBB00021 /* WebLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebLink.swift; sourceTree = "<group>"; };
+		BBB00022 /* WebLinkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebLinkStore.swift; sourceTree = "<group>"; };
+		BBB00023 /* WebLinksWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebLinksWindow.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -141,6 +147,7 @@
 			isa = PBXGroup;
 			children = (
 				BBB00003 /* ClipboardItem.swift */,
+				BBB00021 /* WebLink.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -155,6 +162,7 @@
 				BBB00015 /* SettingsManager.swift */,
 				BBB00017 /* OCRService.swift */,
 				BBB00019 /* UpdateService.swift */,
+				BBB00022 /* WebLinkStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -171,6 +179,7 @@
 				BBB00012 /* StatusBarController.swift */,
 				BBB00016 /* SettingsView.swift */,
 				BBB00020 /* PasteButton.swift */,
+				BBB00023 /* WebLinksWindow.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -305,6 +314,9 @@
 				AAA00016 /* TagChip.swift in Sources */,
 				AAA00017 /* UpdateService.swift in Sources */,
 				AAA00020 /* PasteButton.swift in Sources */,
+				AAA00021 /* WebLink.swift in Sources */,
+				AAA00022 /* WebLinkStore.swift in Sources */,
+				AAA00023 /* WebLinksWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
