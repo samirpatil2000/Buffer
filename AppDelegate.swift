@@ -7,6 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardWatcher: ClipboardWatcher?
     private var historyWindowController: HistoryWindowController?
     private var hotkeyManager: HotkeyManager?
+    private var captureHotkeyManager: HotkeyManager?
     
     let clipboardStore = ClipboardStore()
     
@@ -49,8 +50,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hotkeyManager?.register()
         
+        // Setup Capture to Text hotkey (opt-in, default ⌃⇧⌘V)
+        captureHotkeyManager = HotkeyManager(
+            id: .captureToText,
+            binding: {
+                let settings = SettingsManager.shared
+                guard settings.captureToTextEnabled else { return nil }
+                return (settings.captureHotkeyKeyCode, settings.captureHotkeyModifiers)
+            },
+            callback: {
+                Task { @MainActor in
+                    ScreenCaptureService.shared.captureTextToClipboard()
+                }
+            }
+        )
+        captureHotkeyManager?.register()
+        
         NotificationCenter.default.addObserver(forName: .bufferHotkeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.hotkeyManager?.reregister()
+            self?.captureHotkeyManager?.reregister()
         }
 
         UpdateService.shared.checkIfJustUpdated()
@@ -63,6 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         clipboardWatcher?.stopWatching()
         hotkeyManager?.unregister()
+        captureHotkeyManager?.unregister()
         print("[AppDelegate] applicationWillTerminate — call stack:")
         Thread.callStackSymbols.forEach { print($0) }
     }

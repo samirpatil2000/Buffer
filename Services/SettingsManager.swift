@@ -34,9 +34,15 @@ class SettingsManager: ObservableObject {
     // Keys
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
+    private let captureHotkeyModifiersKey = "captureHotkeyModifiers"
+    private let captureHotkeyKeyCodeKey = "captureHotkeyKeyCode"
     
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
+    @Published var captureToTextEnabled: Bool = false
+    @Published var captureHotkeyModifiers: HotkeyModifiers
+    @Published var captureHotkeyKeyCode: UInt16
+    @Published var captureFallbackToImage: Bool = true
     @Published var launchAtLogin: Bool = false
     @Published var historyLimit: HistoryLimit = .essential
     @Published var includePrereleases: Bool = false
@@ -58,6 +64,19 @@ class SettingsManager: ObservableObject {
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
         self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : defaultKeyCode
         
+        // Capture to Text shortcut — defaults to ⌃⇧⌘V (⇧⌘3/4/5 are taken by macOS)
+        if let savedCaptureMods = defaults.array(forKey: captureHotkeyModifiersKey) as? [String] {
+            self.captureHotkeyModifiers = HotkeyModifiers(from: savedCaptureMods)
+        } else {
+            self.captureHotkeyModifiers = HotkeyModifiers(shift: true, command: true, option: false, control: true)
+        }
+        let savedCaptureKeyCode = defaults.integer(forKey: captureHotkeyKeyCodeKey)
+        self.captureHotkeyKeyCode = savedCaptureKeyCode > 0 ? UInt16(savedCaptureKeyCode) : defaultKeyCode
+        
+        // Capture to Text is opt-in so Screen Recording is never requested unasked
+        self.captureToTextEnabled = defaults.bool(forKey: "captureToTextEnabled")
+        self.captureFallbackToImage = defaults.object(forKey: "captureFallbackToImage") as? Bool ?? true
+        
         // Load launch at login status
         if #available(macOS 13.0, *) {
             self.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -77,6 +96,10 @@ class SettingsManager: ObservableObject {
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
+        defaults.set(captureHotkeyModifiers.toArray(), forKey: captureHotkeyModifiersKey)
+        defaults.set(Int(captureHotkeyKeyCode), forKey: captureHotkeyKeyCodeKey)
+        defaults.set(captureToTextEnabled, forKey: "captureToTextEnabled")
+        defaults.set(captureFallbackToImage, forKey: "captureFallbackToImage")
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")

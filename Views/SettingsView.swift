@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var settings = SettingsViewModel()
     @State private var isRecording = false
+    @State private var isRecordingCapture = false
     @State private var recordedKeyCode: UInt16 = 0
     @State private var recordedModifiers = HotkeyModifiers()
     @State private var showingTrimAlert = false
@@ -77,6 +78,84 @@ struct SettingsView: View {
                     presetButton(label: "⌥⌘V", mods: HotkeyModifiers(command: true, option: true), keyCode: 9)
                     presetButton(label: "⌃⇧V", mods: HotkeyModifiers(shift: true, control: true), keyCode: 9)
                     presetButton(label: "⌘B", mods: HotkeyModifiers(command: true), keyCode: 11)
+                }
+            }
+            
+            Divider()
+            
+            // Capture to Text section
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Capture to Text")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Text("Select a screen region — the text lands on your clipboard")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.captureToTextEnabled)
+                        .labelsHidden()
+                        .onChange(of: settings.captureToTextEnabled) { _ in
+                            isRecordingCapture = false
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
+                
+                if settings.captureToTextEnabled {
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            Text(settings.captureHotkeyModifiers.displayString)
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            Text(keyCodeNames[settings.captureHotkeyKeyCode] ?? "?")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isRecordingCapture ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(isRecordingCapture ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                        
+                        Button(action: {
+                            isRecording = false
+                            isRecordingCapture.toggle()
+                        }) {
+                            Text(isRecordingCapture ? "Cancel" : "Change")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Spacer()
+                    }
+                    
+                    if isRecordingCapture {
+                        Text("Press your new shortcut...")
+                            .font(.system(size: 11))
+                            .foregroundColor(.accentColor)
+                    }
+                    
+                    HStack {
+                        Text("Copy the image when no text is found")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Toggle("", isOn: $settings.captureFallbackToImage)
+                            .labelsHidden()
+                            .onChange(of: settings.captureFallbackToImage) { _ in
+                                settings.save()
+                            }
+                            .toggleStyle(.switch)
+                    }
+                    
+                    Text("macOS asks for Screen Recording permission the first time you use this.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.7))
                 }
             }
             
@@ -228,16 +307,31 @@ struct SettingsView: View {
         } message: {
             Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
         }
-        .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
-            settings.hotkeyKeyCode = keyCode
-            settings.hotkeyModifiers = modifiers
+        .background(KeyRecorder(isRecording: Binding(
+            get: { isRecording || isRecordingCapture },
+            set: { active in
+                if !active {
+                    isRecording = false
+                    isRecordingCapture = false
+                }
+            }
+        )) { keyCode, modifiers in
+            if isRecordingCapture {
+                settings.captureHotkeyKeyCode = keyCode
+                settings.captureHotkeyModifiers = modifiers
+            } else {
+                settings.hotkeyKeyCode = keyCode
+                settings.hotkeyModifiers = modifiers
+            }
             settings.save()
             isRecording = false
+            isRecordingCapture = false
         })
     }
     
     private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {
         Button(action: {
+            isRecording = false
             settings.hotkeyModifiers = mods
             settings.hotkeyKeyCode = keyCode
             settings.save()
@@ -322,6 +416,10 @@ class KeyRecorderView: NSView {
 class SettingsViewModel: ObservableObject {
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
+    @Published var captureToTextEnabled: Bool
+    @Published var captureHotkeyModifiers: HotkeyModifiers
+    @Published var captureHotkeyKeyCode: UInt16
+    @Published var captureFallbackToImage: Bool
     @Published var launchAtLogin: Bool
     @Published var historyLimit: HistoryLimit
     @Published var includePrereleases: Bool
@@ -330,6 +428,8 @@ class SettingsViewModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
+    private let captureHotkeyModifiersKey = "captureHotkeyModifiers"
+    private let captureHotkeyKeyCodeKey = "captureHotkeyKeyCode"
     
     init() {
         // Load modifiers
@@ -342,6 +442,17 @@ class SettingsViewModel: ObservableObject {
         // Load keycode (default to V = 9)
         let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
         self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : 9
+        
+        // Load Capture to Text shortcut (defaults to ⌃⇧⌘V)
+        if let savedCaptureMods = defaults.array(forKey: captureHotkeyModifiersKey) as? [String] {
+            self.captureHotkeyModifiers = HotkeyModifiers(from: savedCaptureMods)
+        } else {
+            self.captureHotkeyModifiers = HotkeyModifiers(shift: true, command: true, option: false, control: true)
+        }
+        let savedCaptureKeyCode = defaults.integer(forKey: captureHotkeyKeyCodeKey)
+        self.captureHotkeyKeyCode = savedCaptureKeyCode > 0 ? UInt16(savedCaptureKeyCode) : 9
+        self.captureToTextEnabled = defaults.bool(forKey: "captureToTextEnabled")
+        self.captureFallbackToImage = defaults.object(forKey: "captureFallbackToImage") as? Bool ?? true
         
         // Load launch at login status from manager natively via SMAppService
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
@@ -360,12 +471,20 @@ class SettingsViewModel: ObservableObject {
     func save() {
         defaults.set(hotkeyModifiers.toArray(), forKey: hotkeyModifiersKey)
         defaults.set(Int(hotkeyKeyCode), forKey: hotkeyKeyCodeKey)
+        defaults.set(captureHotkeyModifiers.toArray(), forKey: captureHotkeyModifiersKey)
+        defaults.set(Int(captureHotkeyKeyCode), forKey: captureHotkeyKeyCodeKey)
+        defaults.set(captureToTextEnabled, forKey: "captureToTextEnabled")
+        defaults.set(captureFallbackToImage, forKey: "captureFallbackToImage")
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
 
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
+        SettingsManager.shared.captureHotkeyModifiers = captureHotkeyModifiers
+        SettingsManager.shared.captureHotkeyKeyCode = captureHotkeyKeyCode
+        SettingsManager.shared.captureToTextEnabled = captureToTextEnabled
+        SettingsManager.shared.captureFallbackToImage = captureFallbackToImage
         SettingsManager.shared.historyLimit = historyLimit
         SettingsManager.shared.includePrereleases = includePrereleases
         SettingsManager.shared.hideStatusBar = hideStatusBar
