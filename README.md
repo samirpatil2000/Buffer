@@ -34,6 +34,7 @@
 - **Multi-select & multi‑paste** — Select multiple items in history with clear on-screen instructions, paste them together, or bulk-delete with inline confirmation 
 - **Bookmarks** — Star important items with Cmd+B for quick reuse  
 - **Tags & Filtering** — Categorize history items with custom, color-coded tags. Quick tag items with `Cmd+T` and filter using `#` autocomplete in the search bar  
+- **Capture to Text** — Press `⌃⇧⌘V`, drag over any region of the screen, and the recognized text lands on your clipboard — the image never touches it. Great for video calls, PDFs, and screenshots people send you  
 - **Configurable hotkeys** — Change the global shortcut in Settings with dynamic re-registration  
 - **Native macOS Feel** — Clean SwiftUI + AppKit menu-bar app  
 - **Seamless Updates** — Built-in secure auto-updater with code signature verification and a native post-update HUD with a "What's New" link  
@@ -109,6 +110,7 @@ Click the **Pencil icon** in the preview/detail pane to open an inline text edit
 | Shortcut | Action |
 |----------|--------|
 | `⇧⌘V` | Open clipboard history |
+| `⌃⇧⌘V` | Capture to Text — select a screen region, copy its text (opt-in) |
 | `↑` / `↓` | Navigate items |
 | `⇧↑` / `⇧↓` | Expand selection (Multi-select) |
 | `↵` Enter | Paste selected item |
@@ -126,6 +128,17 @@ Text items can be edited directly within Buffer by clicking the **Pencil icon** 
 
 - **Global keyboard shortcuts are temporarily bypassed** so you can type normally without triggering shortcuts.
 - Press **Escape**, click the **pencil icon** again, or **select a different item** in the list to **auto-save** your changes and sync them to the macOS pasteboard.
+
+---
+
+### 🔎 Capture to Text
+
+Turn any pixels on screen into text on your clipboard. Enable it in **Settings → Capture to Text**, then press `⌃⇧⌘V` (configurable) and drag over the region you want.
+
+- Recognition runs **entirely on-device** through Apple's Vision framework — nothing leaves your Mac, and the temporary screenshot is deleted immediately.
+- The result arrives as a normal text item in your history, attributed to the app you captured it from.
+- If no text is found, Buffer can fall back to copying the image so the capture isn't lost (toggle in Settings).
+- macOS asks for **Screen Recording** permission the first time you use it. The feature is off by default, so the prompt never appears unless you enable it.
 
 ---
 
