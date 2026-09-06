@@ -1019,13 +1019,27 @@ struct HistoryContentView: View {
                     if isEditing {
                         HStack(spacing: 6) {
                             Text("Editing")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.blue)
+                                .cornerRadius(4)
+                            
+                            if item.rtfData != nil || item.htmlData != nil {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 10))
+                                    Text("Plain text · Formatting cleared on save")
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.12))
+                                .cornerRadius(4)
+                            }
                         }
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.blue)
-                        .cornerRadius(4)
                     } else {
                         HStack(spacing: 6) {
                             Text(item.type == .text ? (item.rtfData != nil || item.htmlData != nil ? "Rich Text" : "Text") : "Image")
@@ -1571,6 +1585,19 @@ struct HistoryContentView: View {
                 }
                 .foregroundColor(.secondary.opacity(0.6))
                 .padding(.leading, 4)
+                
+                if let item = selectedItem, item.rtfData != nil || item.htmlData != nil {
+                    Color.primary.opacity(0.1)
+                        .frame(width: 2, height: 14)
+                    
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 9))
+                        Text("plain text")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(.orange.opacity(0.85))
+                }
             } else {
                 Text("Navigate")
                     .font(.system(size: 11, weight: .regular))

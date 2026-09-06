@@ -10,16 +10,17 @@ struct SettingsView: View {
     @State private var pendingTier: HistoryLimit?
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            HStack {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 24))
-                    .foregroundColor(.accentColor)
-                Text("Buffer Settings")
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer()
-            }
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 24))
+                        .foregroundColor(.accentColor)
+                    Text("Buffer Settings")
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                }
             
             Divider()
             
@@ -129,6 +130,23 @@ struct SettingsView: View {
                         }
                         .toggleStyle(.switch)
                 }
+
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preserve Rich Text")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Keep bold, colors, and links when copying")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.preserveRichText)
+                        .labelsHidden()
+                        .onChange(of: settings.preserveRichText) { _ in
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
                 
                 // History Size Section
                 Divider()
@@ -216,8 +234,10 @@ struct SettingsView: View {
             .multilineTextAlignment(.center)
         }
         .padding(24)
-        .frame(width: 380)
-        .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
+    }
+    .frame(width: 400)
+    .frame(minHeight: 520, maxHeight: 620)
+    .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Reduce & Delete", role: .destructive) {
                 if let tier = pendingTier {
@@ -326,6 +346,7 @@ class SettingsViewModel: ObservableObject {
     @Published var historyLimit: HistoryLimit
     @Published var includePrereleases: Bool
     @Published var hideStatusBar: Bool
+    @Published var preserveRichText: Bool
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -355,6 +376,13 @@ class SettingsViewModel: ObservableObject {
 
         // Load hide status bar
         self.hideStatusBar = defaults.bool(forKey: "hideStatusBar")
+        
+        // Load preserve rich text
+        if defaults.object(forKey: "preserveRichText") == nil {
+            self.preserveRichText = true
+        } else {
+            self.preserveRichText = defaults.bool(forKey: "preserveRichText")
+        }
     }
     
     func save() {
@@ -363,12 +391,14 @@ class SettingsViewModel: ObservableObject {
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
+        defaults.set(preserveRichText, forKey: "preserveRichText")
 
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
         SettingsManager.shared.historyLimit = historyLimit
         SettingsManager.shared.includePrereleases = includePrereleases
         SettingsManager.shared.hideStatusBar = hideStatusBar
+        SettingsManager.shared.preserveRichText = preserveRichText
         SettingsManager.shared.save()
 
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)

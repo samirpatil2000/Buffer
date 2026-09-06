@@ -127,6 +127,7 @@ class StatusBarController {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Settings"
         window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: 400, height: 580))
         window.center()
         let controller = NSWindowController(window: window)
         settingsWindowController = controller

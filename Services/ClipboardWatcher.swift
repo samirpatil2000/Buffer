@@ -110,16 +110,16 @@ class ClipboardWatcher: ObservableObject {
             if hash != lastContentHash {
                 lastContentHash = hash
                 
-                // Extract RTF data if available and within size limit
+                // Extract RTF and HTML data if enabled in settings and within size limit
                 var rtfData: Data? = nil
-                if let data = pasteboard.data(forType: .rtf), data.count <= richTextLimit {
-                    rtfData = data
-                }
-                
-                // Extract HTML data if available and within size limit
                 var htmlData: Data? = nil
-                if let data = pasteboard.data(forType: .html), data.count <= richTextLimit {
-                    htmlData = data
+                if SettingsManager.shared.preserveRichText {
+                    if let data = pasteboard.data(forType: .rtf), data.count <= richTextLimit {
+                        rtfData = data
+                    }
+                    if let data = pasteboard.data(forType: .html), data.count <= richTextLimit {
+                        htmlData = data
+                    }
                 }
                 
                 if textSize <= inlineTextLimit {

@@ -41,6 +41,7 @@ class SettingsManager: ObservableObject {
     @Published var historyLimit: HistoryLimit = .essential
     @Published var includePrereleases: Bool = false
     @Published var hideStatusBar: Bool = false
+    @Published var preserveRichText: Bool = true
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -72,6 +73,13 @@ class SettingsManager: ObservableObject {
 
         // Load hide status bar
         self.hideStatusBar = defaults.bool(forKey: "hideStatusBar")
+        
+        // Load preserve rich text toggle (defaults to true if not set)
+        if defaults.object(forKey: "preserveRichText") == nil {
+            self.preserveRichText = true
+        } else {
+            self.preserveRichText = defaults.bool(forKey: "preserveRichText")
+        }
     }
     
     func save() {
@@ -80,6 +88,7 @@ class SettingsManager: ObservableObject {
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
+        defaults.set(preserveRichText, forKey: "preserveRichText")
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {
