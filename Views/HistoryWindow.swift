@@ -232,20 +232,20 @@ struct HistoryContentView: View {
     @FocusState private var isTextEditorFocused: Bool
     
     @State private var filteredItems: [ClipboardItem] = []
+    @State private var matchedSnippets: [UUID: String] = [:]
     
     private func computeFilteredItems() -> [ClipboardItem] {
-        var base = store.items
-        if let tag = activeTagFilter {
-            base = base.filter { $0.tags.contains(tag) }
+        let results = SearchEngine.search(
+            query: debouncedSearchText,
+            in: store.items,
+            activeTag: activeTagFilter
+        )
+        var snippets: [UUID: String] = [:]
+        for result in results {
+            snippets[result.item.id] = result.snippet
         }
-        let query = debouncedSearchText.trimmingCharacters(in: .whitespaces)
-        if !query.isEmpty && !query.hasPrefix("#") {
-            base = base.filter { item in
-                guard item.type == .text else { return false }
-                return item.textContent?.localizedCaseInsensitiveContains(query) ?? false
-            }
-        }
-        return base.sorted { $0.isPinned && !$1.isPinned }
+        self.matchedSnippets = snippets
+        return results.map { $0.item }
     }
     
     private func updateFilteredItems() {
@@ -941,7 +941,8 @@ struct HistoryContentView: View {
                     onSelectSingle: selectSingle,
                     onToggleSelection: toggleSelection,
                     onExtendSelectionTo: extendSelectionTo,
-                    onTagTap: { tag in activeTagFilter = tag }
+                    onTagTap: { tag in activeTagFilter = tag },
+                    matchedSnippets: matchedSnippets
                 )
             }
         }
