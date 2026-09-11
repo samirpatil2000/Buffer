@@ -28,6 +28,8 @@
 		AAA00017 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00019 /* UpdateService.swift */; };
 		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 		AAA00020 /* PasteButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00020 /* PasteButton.swift */; };
+		AAA00021 /* SearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00021 /* SearchEngine.swift */; };
+		AAA00022 /* SearchEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00022 /* SearchEngineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +67,8 @@
 		D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
 		BBB00020 /* PasteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteButton.swift; sourceTree = "<group>"; };
+		BBB00021 /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
+		BBB00022 /* SearchEngineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SearchEngineTests.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -107,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				4968B0D06F35B2362E7B8C7B /* ClipboardItemTests.swift */,
+				BBB00022 /* SearchEngineTests.swift */,
 			);
 			name = BufferTests;
 			path = BufferTests;
@@ -155,6 +160,7 @@
 				BBB00015 /* SettingsManager.swift */,
 				BBB00017 /* OCRService.swift */,
 				BBB00019 /* UpdateService.swift */,
+				BBB00021 /* SearchEngine.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -279,6 +285,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A59751F2C0DC2F523BDCF5B6 /* ClipboardItemTests.swift in Sources */,
+				AAA00022 /* SearchEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,6 +312,7 @@
 				AAA00016 /* TagChip.swift in Sources */,
 				AAA00017 /* UpdateService.swift in Sources */,
 				AAA00020 /* PasteButton.swift in Sources */,
+				AAA00021 /* SearchEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
