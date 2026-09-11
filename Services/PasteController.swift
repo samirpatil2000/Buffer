@@ -26,6 +26,28 @@ class PasteController {
         return nil
     }
     
+    /// Populate pasteboard with all available formats for a text item using NSPasteboardItem
+    private static func writeTextItemToPasteboard(_ item: ClipboardItem, store: ClipboardStore, pasteboard: NSPasteboard) {
+        let pboardItem = NSPasteboardItem()
+        
+        // 1. Plain text string (always provided)
+        if let text = store.fullText(for: item) {
+            pboardItem.setString(text, forType: .string)
+        }
+        
+        // 2. Attach RTF data if present
+        if let rtfData = item.rtfData {
+            pboardItem.setData(rtfData, forType: .rtf)
+        }
+        
+        // 3. Attach HTML data if present
+        if let htmlData = item.htmlData {
+            pboardItem.setData(htmlData, forType: .html)
+        }
+        
+        pasteboard.writeObjects([pboardItem])
+    }
+    
     /// Copy item content back to system clipboard
     static func copyToClipboard(_ item: ClipboardItem, store: ClipboardStore) {
         let pasteboard = NSPasteboard.general
@@ -33,14 +55,13 @@ class PasteController {
         
         switch item.type {
         case .text:
-            // Use full text from file if file-backed, otherwise use inline content
-            if let text = store.fullText(for: item) {
-                pasteboard.setString(text, forType: .string)
-            }
+            writeTextItemToPasteboard(item, store: store, pasteboard: pasteboard)
         case .image:
             if let image = store.image(for: item),
                let tiffData = image.tiffRepresentation {
-                pasteboard.setData(tiffData, forType: .tiff)
+                let pboardItem = NSPasteboardItem()
+                pboardItem.setData(tiffData, forType: .tiff)
+                pasteboard.writeObjects([pboardItem])
             }
         }
     }
@@ -61,7 +82,9 @@ class PasteController {
         
         if !textItems.isEmpty {
             let joinedText = textItems.compactMap { store.fullText(for: $0) }.joined(separator: "\n")
-            pasteboard.setString(joinedText, forType: .string)
+            let pboardItem = NSPasteboardItem()
+            pboardItem.setString(joinedText, forType: .string)
+            pasteboard.writeObjects([pboardItem])
         } else if !imageItems.isEmpty {
             var imageURLs: [URL] = []
             for (index, imageItem) in imageItems.enumerated() {
@@ -86,25 +109,27 @@ class PasteController {
         
         switch item.type {
         case .text:
-            if let text = store.fullText(for: item) {
-                pasteboard.setString(text, forType: .string)
-            }
+            writeTextItemToPasteboard(item, store: store, pasteboard: pasteboard)
         case .image:
             if let image = store.image(for: item) {
                 // Save image to temp with proper name
                 if let fileURL = saveImageToTemp(image, fileName: "image-0001.png") {
                     pasteboard.writeObjects([fileURL as NSPasteboardWriting])
-                } else {
-                    // Fallback to TIFF if file save fails
-                    if let tiffData = image.tiffRepresentation {
-                        pasteboard.setData(tiffData, forType: .tiff)
-                    }
+                } else if let tiffData = image.tiffRepresentation {
+                    let pboardItem = NSPasteboardItem()
+                    pboardItem.setData(tiffData, forType: .tiff)
+                    pasteboard.writeObjects([pboardItem])
                 }
             }
         }
 
         // Reactivate previous app, then simulate paste after it has focus
-        previousApp?.activate(options: .activateIgnoringOtherApps)
+        if let app = previousApp, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+            app.activate(options: .activateIgnoringOtherApps)
+        } else {
+            NSApp.hide(nil)
+        }
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // Post ignore notification right before paste
             NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
@@ -116,6 +141,10 @@ class PasteController {
     /// Text items are joined with newlines, images are handled individually
     static func pasteMultiple(_ items: [ClipboardItem], store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
         guard !items.isEmpty else { return }
+        if items.count == 1, let first = items.first {
+            paste(first, store: store, previousApp: previousApp)
+            return
+        }
         
         let pasteboard = NSPasteboard.general
         
@@ -127,17 +156,27 @@ class PasteController {
         if !textItems.isEmpty {
             pasteboard.clearContents()
             let joinedText = textItems.compactMap { store.fullText(for: $0) }.joined(separator: "\n")
-            pasteboard.setString(joinedText, forType: .string)
+            let pboardItem = NSPasteboardItem()
+            pboardItem.setString(joinedText, forType: .string)
+            pasteboard.writeObjects([pboardItem])
             
             // If all items are text, paste once and done
             if imageItems.isEmpty {
-                previousApp?.activate(options: .activateIgnoringOtherApps)
+                if let app = previousApp, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                    app.activate(options: .activateIgnoringOtherApps)
+                } else {
+                    NSApp.hide(nil)
+                }
                 simulatePasteWithCustomDelay(0.1)
                 return
             }
             
             // Paste text first, then images together after
-            previousApp?.activate(options: .activateIgnoringOtherApps)
+            if let app = previousApp, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                app.activate(options: .activateIgnoringOtherApps)
+            } else {
+                NSApp.hide(nil)
+            }
             simulatePasteWithCustomDelay(0.1)
             
             // Then paste all images together
@@ -164,7 +203,11 @@ class PasteController {
             }
         } else if !imageItems.isEmpty {
             // Images only - paste all together at once (like Finder multi-select)
-            previousApp?.activate(options: .activateIgnoringOtherApps)
+            if let app = previousApp, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                app.activate(options: .activateIgnoringOtherApps)
+            } else {
+                NSApp.hide(nil)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 pasteboard.clearContents()
                 
@@ -202,8 +245,8 @@ class PasteController {
         keyUp?.flags = .maskCommand
         
         // Post the events
-        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
-        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        keyDown?.post(tap: .cghidEventTap)
+        keyUp?.post(tap: .cghidEventTap)
     }
     
     /// Simulate Command + V keystroke with delay to ensure pasteboard is ready
