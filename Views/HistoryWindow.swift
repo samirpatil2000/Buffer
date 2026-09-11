@@ -252,6 +252,74 @@ struct HistoryContentView: View {
         self.filteredItems = computeFilteredItems()
     }
 
+    private func resetSelection(to defaultItem: ClipboardItem?, in items: [ClipboardItem]) {
+        selectedID = defaultItem?.id
+        if let id = defaultItem?.id {
+            selectedIDs = [id]
+            selectionAnchor = id
+            selectedIndex = items.firstIndex(where: { $0.id == id }) ?? 0
+        } else {
+            selectedIDs = []
+            selectionAnchor = nil
+            selectedIndex = 0
+        }
+    }
+
+    private func performSearch(for query: String) {
+        showTagAutocomplete = query.hasPrefix("#")
+        searchDebounceTask?.cancel()
+        
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.hasPrefix("#") {
+            debouncedSearchText = query
+            var base = store.items
+            if let tag = activeTagFilter {
+                base = base.filter { $0.tags.contains(tag) }
+            }
+            let sorted = base.sorted { $0.isPinned && !$1.isPinned }
+            self.filteredItems = sorted
+            self.matchedSnippets = [:]
+            
+            if !trimmed.hasPrefix("#") {
+                let defaultItem = sorted.first(where: { !$0.isPinned }) ?? sorted.first
+                resetSelection(to: defaultItem, in: sorted)
+            }
+            return
+        }
+        
+        let itemsToSearch = store.items
+        let tagFilter = activeTagFilter
+        
+        searchDebounceTask = Task.detached(priority: .userInitiated) {
+            // 120ms debounce: responsive typing with fast cancellation
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            
+            let results = SearchEngine.search(
+                query: query,
+                in: itemsToSearch,
+                activeTag: tagFilter
+            )
+            guard !Task.isCancelled else { return }
+            
+            let items = results.map { $0.item }
+            var snippets: [UUID: String] = [:]
+            for r in results where !r.snippet.isEmpty {
+                snippets[r.item.id] = r.snippet
+            }
+            
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                self.debouncedSearchText = query
+                self.filteredItems = items
+                self.matchedSnippets = snippets
+                
+                let defaultItem = items.first(where: { !$0.isPinned }) ?? items.first
+                self.resetSelection(to: defaultItem, in: items)
+            }
+        }
+    }
+
     private var tagSuggestions: [String] {
         let query = searchText.hasPrefix("#") ? String(searchText.dropFirst()).lowercased() : ""
         if query.isEmpty { return store.allTags }
@@ -456,66 +524,10 @@ struct HistoryContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .onChange(of: searchText) { newValue in
-            showTagAutocomplete = newValue.hasPrefix("#")
-            
-            searchDebounceTask?.cancel()
-            
-            if newValue.isEmpty {
-                // Instantly update when search text is cleared
-                debouncedSearchText = newValue
-            } else {
-                searchDebounceTask = Task {
-                    // 200ms debounce
-                    try? await Task.sleep(nanoseconds: 200_000_000)
-                    guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        debouncedSearchText = newValue
-                    }
-                }
-            }
-        }
-        .onChange(of: debouncedSearchText) { newValue in
-            let currentFiltered = computeFilteredItems()
-            self.filteredItems = currentFiltered
-            
-            // Don't reset selection when in tag autocomplete mode (list is unchanged)
-            guard !newValue.hasPrefix("#") else { return }
-            // Find first unpinned item in filtered results
-            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
-            selectedID = defaultItem?.id
-            if let id = defaultItem?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
-            }
-            // Calculate the correct index
-            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
+            performSearch(for: newValue)
         }
         .onChange(of: activeTagFilter) { _ in
-            let currentFiltered = computeFilteredItems()
-            self.filteredItems = currentFiltered
-            
-            // Reset selection to the first item of the new tag filter
-            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
-            selectedID = defaultItem?.id
-            if let id = defaultItem?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
-            }
-            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
+            performSearch(for: searchText)
         }
         .onChange(of: showTagInput) { newValue in
             if newValue {
