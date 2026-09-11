@@ -531,7 +531,11 @@ struct HistoryContentView: View {
         }
         .onChange(of: isTextEditorFocused) { newValue in
             if !newValue && isEditing {
-                exitEditMode()
+                DispatchQueue.main.async {
+                    if isEditing {
+                        exitEditMode(save: false)
+                    }
+                }
             }
         }
         .onChange(of: selectedIndex) { newIndex in
@@ -543,7 +547,7 @@ struct HistoryContentView: View {
         }
         .onChange(of: selectedItem?.id) { _ in
             if isEditing {
-                exitEditMode()
+                exitEditMode(save: false)
             }
             if showTagInput {
                 showTagInput = false
@@ -581,12 +585,12 @@ struct HistoryContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
             if isEditing {
-                exitEditMode()
+                exitEditMode(save: false)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
             if isEditing {
-                exitEditMode()
+                exitEditMode(save: false)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
@@ -610,6 +614,8 @@ struct HistoryContentView: View {
             showTagInput = false
             tagInputText = ""
             isEditing = false
+            editText = ""
+            editingItemID = nil
             
             // Determine target selection:
             // • Within threshold + saved UUID still in filtered list → restore it
@@ -716,7 +722,7 @@ struct HistoryContentView: View {
             },
             onEscape: {
                 if isEditing {
-                    exitEditMode()
+                    exitEditMode(save: false)
                     return
                 }
                 if showTagInput {
@@ -765,9 +771,14 @@ struct HistoryContentView: View {
                 guard selectedItem != nil else { return }
                 showTagInput = true
             },
+            onSaveEdit: {
+                if isEditing {
+                    exitEditMode(save: true)
+                }
+            },
             onEdit: {
                 if isEditing {
-                    exitEditMode()
+                    exitEditMode(save: true)
                 } else {
                     enterEditMode()
                 }
@@ -1011,80 +1022,96 @@ struct HistoryContentView: View {
                 // Action buttons - only show for single selection or hide for multi
                 if selectionCount <= 1 {
                     HStack(spacing: 12) {
-                        if let item = selectedItem, item.isEditable {
+                        if isEditing {
                             Button(action: {
-                                if isEditing {
-                                    exitEditMode()
-                                } else {
+                                exitEditMode(save: false)
+                            }) {
+                                Image(systemName: "xmark")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                            .help("Cancel editing (Esc)")
+
+                            Button(action: {
+                                exitEditMode(save: true)
+                            }) {
+                                Image(systemName: "checkmark")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.blue)
+                            .help("Save changes (⌘Return or ⌘E)")
+                        } else {
+                            if let item = selectedItem, item.isEditable {
+                                Button(action: {
                                     enterEditMode()
+                                }) {
+                                    Image(systemName: "square.and.pencil")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(.primary)
+                                .help("Edit item (⌘E)")
+                            }
+
+                            Button(action: {
+                                if let item = selectedItem {
+                                    onCopyToClipboard(item)
+                                    onDismiss()
                                 }
                             }) {
-                                Image(systemName: "square.and.pencil")
+                                Image(systemName: "doc.on.doc")
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(isEditing ? .blue : .primary)
-                            .help(isEditing ? "Stop editing (auto-saved) (⌘E or Esc)" : "Edit item (⌘E)")
-                        }
-
-                        Button(action: {
-                            if let item = selectedItem {
-                                onCopyToClipboard(item)
-                                onDismiss()
-                            }
-                        }) {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.plain)
-                        .help("Copy (⌘C)")
-                        
-                        if selectedItem?.type == .image && previewImage != nil {
-                            Button(action: {
-                                if let img = previewImage { PasteController.saveImageToDisk(img) }
-                            }) {
-                                Image(systemName: "arrow.down.to.line")
-                            }
-                            .buttonStyle(.plain)
-                            .help("Save image")
-                        }
-                        
-                        // OCR button — only for image items without existing OCR text
-                        if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
-                            Button(action: {
-                                Task { @MainActor in
-                                    guard let img = previewImage, let item = selectedItem else { return }
-                                    isExtractingText = true
-                                    let result = await OCRService.shared.recognizeText(from: img)
-                                    let text = result ?? "No text found in this image."
-                                    store.setOCRText(text, for: item)
-                                    isExtractingText = false
+                            .help("Copy (⌘C)")
+                            
+                            if selectedItem?.type == .image && previewImage != nil {
+                                Button(action: {
+                                    if let img = previewImage { PasteController.saveImageToDisk(img) }
+                                }) {
+                                    Image(systemName: "arrow.down.to.line")
                                 }
-                            }) {
-                                Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
+                                .buttonStyle(.plain)
+                                .help("Save image")
+                            }
+                            
+                            // OCR button — only for image items without existing OCR text
+                            if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
+                                Button(action: {
+                                    Task { @MainActor in
+                                        guard let img = previewImage, let item = selectedItem else { return }
+                                        isExtractingText = true
+                                        let result = await OCRService.shared.recognizeText(from: img)
+                                        let text = result ?? "No text found in this image."
+                                        store.setOCRText(text, for: item)
+                                        isExtractingText = false
+                                    }
+                                }) {
+                                    Image(systemName: isExtractingText ? "ellipsis.circle" : "text.viewfinder")
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isExtractingText)
+                                .help("Extract Text from Image")
+                            }
+                            
+                            Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
+                                Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
                             }
                             .buttonStyle(.plain)
-                            .disabled(isExtractingText)
-                            .help("Extract Text from Image")
-                        }
-                        
-                        Button(action: { if let item = selectedItem { store.togglePin(for: item) } }) {
-                            Image(systemName: selectedItem?.isPinned == true ? "pin.fill" : "pin")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
-                        .help(selectedItem?.isPinned == true ? "Unpin (⌘P)" : "Pin to top (⌘P)")
+                            .foregroundColor(selectedItem?.isPinned == true ? .accentColor : .secondary)
+                            .help(selectedItem?.isPinned == true ? "Unpin (⌘P)" : "Pin to top (⌘P)")
 
-                        Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
-                            Image(systemName: selectedItem?.isBookmarked == true ? "bookmark.fill" : "bookmark")
+                            Button(action: { if let item = selectedItem { store.toggleBookmark(for: item) } }) {
+                                Image(systemName: selectedItem?.isBookmarked == true ? "bookmark.fill" : "bookmark")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
+                            .help(selectedItem?.isBookmarked == true ? "Remove bookmark (⌘B)" : "Bookmark — protect from deletion (⌘B)")
+                            
+                            Button(action: { if let item = selectedItem { store.delete(item) } }) {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Delete")
                         }
-                        .buttonStyle(.plain)
-                        .foregroundColor(selectedItem?.isBookmarked == true ? .yellow : .secondary)
-                        .help(selectedItem?.isBookmarked == true ? "Remove bookmark (⌘B)" : "Bookmark — protect from deletion (⌘B)")
-                        
-                        Button(action: { if let item = selectedItem { store.delete(item) } }) {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.plain)
-                        .help("Delete")
                     }
                     .foregroundColor(.secondary)
                     .font(.system(size: 13))
@@ -1411,9 +1438,10 @@ struct HistoryContentView: View {
         }
     }
     
-    private func exitEditMode() {
-        // Commit edit to the original item (not selectedItem, which may have changed)
-        if let itemID = editingItemID,
+    private func exitEditMode(save: Bool = false) {
+        // Commit edit to the original item (not selectedItem, which may have changed) only if save is true
+        if save,
+           let itemID = editingItemID,
            let item = store.items.first(where: { $0.id == itemID }) {
             store.updateText(editText, for: item)
             
@@ -1423,6 +1451,7 @@ struct HistoryContentView: View {
             pasteboard.setString(editText, forType: .string)
         }
         editingItemID = nil
+        editText = ""
         isEditing = false
         isTextEditorFocused = false
         isSearchFocused = true
@@ -1503,13 +1532,13 @@ struct HistoryContentView: View {
                 HStack(spacing: 4) {
                     Text("Esc")
                         .font(.system(size: 10))
-                    Text("exit")
+                    Text("cancel")
                         .font(.system(size: 11))
                 }
                 .foregroundColor(.secondary.opacity(0.6))
                 
                 HStack(spacing: 4) {
-                    Text("⌘E")
+                    Text("⌘↵ / ⌘E")
                         .font(.system(size: 10))
                     Text("save")
                         .font(.system(size: 11))
@@ -1723,6 +1752,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onBookmark: () -> Void
     let onSaveImage: () -> Void
     let onAddTag: () -> Void
+    let onSaveEdit: () -> Void
     let onEdit: () -> Void
     let onTabComplete: () -> Void
     let onBackspace: () -> Bool
@@ -1753,7 +1783,13 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     }
                     return nil // Consume event
                 case 36: // Enter
-                    if isEditing { return event }
+                    if isEditing {
+                        if event.modifierFlags.contains(.command) {
+                            context.coordinator.onSaveEdit?()
+                            return nil
+                        }
+                        return event
+                    }
                     context.coordinator.onEnter?()
                     return nil
                 case 53: // Escape
@@ -1799,7 +1835,10 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     return event
                 case 1: // Cmd+S (S is 1)
                     if event.modifierFlags.contains(.command) {
-                        if isEditing { return event }
+                        if isEditing {
+                            context.coordinator.onSaveEdit?()
+                            return nil
+                        }
                         context.coordinator.onSaveImage?()
                         return nil
                     }
@@ -1845,6 +1884,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onBookmark = onBookmark
         context.coordinator.onSaveImage = onSaveImage
         context.coordinator.onAddTag = onAddTag
+        context.coordinator.onSaveEdit = onSaveEdit
         context.coordinator.onEdit = onEdit
         context.coordinator.onTabComplete = onTabComplete
         context.coordinator.onBackspace = onBackspace
@@ -1869,6 +1909,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onBookmark: (() -> Void)?
         var onSaveImage: (() -> Void)?
         var onAddTag: (() -> Void)?
+        var onSaveEdit: (() -> Void)?
         var onEdit: (() -> Void)?
         var onTabComplete: (() -> Void)?
         var onBackspace: (() -> Bool)?
