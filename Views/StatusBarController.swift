@@ -7,13 +7,15 @@ class StatusBarController {
     private let store: ClipboardStore
     private let watcher: ClipboardWatcher
     private let onToggleHistory: () -> Void
+    private let onShowWebLinks: () -> Void
     private var settingsWindowController: NSWindowController?
     private var activeAlert: NSAlert?
 
-    init(store: ClipboardStore, watcher: ClipboardWatcher, onShowHistory: @escaping () -> Void) {
+    init(store: ClipboardStore, watcher: ClipboardWatcher, onShowHistory: @escaping () -> Void, onShowWebLinks: @escaping () -> Void) {
         self.store = store
         self.watcher = watcher
         self.onToggleHistory = onShowHistory
+        self.onShowWebLinks = onShowWebLinks
 
         if !SettingsManager.shared.hideStatusBar {
             createStatusItem()
@@ -95,6 +97,13 @@ class StatusBarController {
         menu.addItem(pauseItem)
         
         menu.addItem(NSMenuItem.separator())
+
+        // Quick Web Links
+        let webLinksItem = NSMenuItem(title: "Quick Web Links…", action: #selector(showWebLinks), keyEquivalent: "u")
+        webLinksItem.target = self
+        menu.addItem(webLinksItem)
+
+        menu.addItem(NSMenuItem.separator())
         
         // Clear History
         let clearItem = NSMenuItem(title: "Clear History", action: #selector(clearHistory), keyEquivalent: "")
@@ -134,6 +143,10 @@ class StatusBarController {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    @objc private func showWebLinks() {
+        onShowWebLinks()
+    }
+
     @objc private func togglePause() {
         if watcher.isPaused {
             watcher.resume()
