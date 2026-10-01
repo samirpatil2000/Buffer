@@ -77,9 +77,11 @@ struct ShortcutsCheatSheetView: View {
             name: "Zoom & Size",
             icon: "plus.magnifyingglass",
             items: [
-                ShortcutEntry(keys: ["⌘", "+"], title: "Zoom in (larger rows & preview)"),
+                ShortcutEntry(keys: ["⌘", "+"], title: "Zoom in (text or image)"),
                 ShortcutEntry(keys: ["⌘", "-"], title: "Zoom out"),
-                ShortcutEntry(keys: ["⌘", "0"], title: "Reset zoom to 100%")
+                ShortcutEntry(keys: ["⌘", "0"], title: "Reset zoom to 100% / fit"),
+                ShortcutEntry(keys: ["2× Click"], title: "Toggle image actual size / fit"),
+                ShortcutEntry(keys: ["Pinch"], title: "Zoom image under cursor")
             ]
         ),
         ShortcutCategory(

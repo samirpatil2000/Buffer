@@ -263,4 +263,12 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(HistoryLimit.essential.isReduction(from: .essential))
         XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .unlimited))
     }
+
+    func testZoomableImageViewConstantsAndPresets() {
+        XCTAssertEqual(ZoomableImageView.minScale, 1.0)
+        XCTAssertEqual(ZoomableImageView.maxScale, 4.0)
+        XCTAssertEqual(ZoomableImageView.defaultDoubleTapScale, 2.5)
+        XCTAssertGreaterThanOrEqual(ZoomableImageView.defaultDoubleTapScale, ZoomableImageView.minScale)
+        XCTAssertLessThanOrEqual(ZoomableImageView.defaultDoubleTapScale, ZoomableImageView.maxScale)
+    }
 }
