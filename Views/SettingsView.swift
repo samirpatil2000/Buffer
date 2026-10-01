@@ -215,7 +215,7 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     ForEach(HistoryLimit.allCases, id: \.self) { tier in
                         Button(action: { 
-                            if tier.rawValue < settings.historyLimit.rawValue {
+                            if tier.isReduction(from: settings.historyLimit) {
                                 pendingTier = tier
                                 showingTrimAlert = true
                             } else {
@@ -404,8 +404,7 @@ class SettingsViewModel: ObservableObject {
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
         
         // Load history limit
-        let rawLimit = defaults.integer(forKey: "historyLimit")
-        self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
+        self.historyLimit = SettingsManager.shared.historyLimit
         
         // Load pre-release updates toggle
         self.includePrereleases = defaults.bool(forKey: "includePrereleases")

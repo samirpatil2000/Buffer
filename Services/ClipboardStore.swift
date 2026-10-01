@@ -14,7 +14,7 @@ class ClipboardStore: ObservableObject {
         }
     }
     
-    private var maxItems: Int { SettingsManager.shared.historyLimit.rawValue }
+    private var maxItems: Int? { SettingsManager.shared.historyLimit.maxCount }
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
     
@@ -48,7 +48,7 @@ class ClipboardStore: ObservableObject {
     }
     
     @objc private func handleLimitChanged() {
-        guard items.count > maxItems else { return }
+        guard let maxItems = maxItems, items.count > maxItems else { return }
         var trimmed = items
         while trimmed.count > maxItems {
             if let idx = trimmed.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
@@ -99,7 +99,7 @@ class ClipboardStore: ObservableObject {
         items.insert(item, at: 0)
         
         // Evict oldest unprotected item if over limit
-        if items.count > maxItems {
+        if let maxItems = maxItems, items.count > maxItems {
             if let indexToRemove = items.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
                 let removed = items.remove(at: indexToRemove)
                 deleteAssociatedFiles(for: removed)

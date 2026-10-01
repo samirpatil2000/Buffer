@@ -4,9 +4,9 @@ import Combine
 
 /// Define the tiers as a type
 enum HistoryLimit: Int, CaseIterable, Codable {
-    case essential  = 100
-    case deep       = 500
-    case unlimited  = 1000
+    case essential  = 200
+    case deep       = 1000
+    case unlimited  = 0
     
     var label: String {
         switch self {
@@ -18,10 +18,28 @@ enum HistoryLimit: Int, CaseIterable, Codable {
     
     var subtitle: String {
         switch self {
-        case .essential: return "100 items"
-        case .deep:      return "500 items"
-        case .unlimited: return "1,000 items"
+        case .essential: return "200 items"
+        case .deep:      return "1,000 items"
+        case .unlimited: return "No limit"
         }
+    }
+
+    var maxCount: Int? {
+        switch self {
+        case .essential: return 200
+        case .deep:      return 1000
+        case .unlimited: return nil
+        }
+    }
+
+    func isReduction(from current: HistoryLimit) -> Bool {
+        guard let currentMax = current.maxCount else {
+            return self != .unlimited
+        }
+        guard let targetMax = self.maxCount else {
+            return false
+        }
+        return targetMax < currentMax
     }
 }
 
@@ -75,9 +93,21 @@ class SettingsManager: ObservableObject {
             self.launchAtLogin = SMAppService.mainApp.status == .enabled
         }
         
-        // Load history limit
-        let rawLimit = defaults.integer(forKey: "historyLimit")
-        self.historyLimit = HistoryLimit(rawValue: rawLimit) ?? .essential
+        // Load history limit with backward compatibility for legacy limits (100, 500, 1000)
+        if let savedLimit = defaults.object(forKey: "historyLimit") as? Int {
+            switch savedLimit {
+            case 100:
+                self.historyLimit = .essential
+            case 500:
+                self.historyLimit = .deep
+            case 1000:
+                self.historyLimit = .deep
+            default:
+                self.historyLimit = HistoryLimit(rawValue: savedLimit) ?? .essential
+            }
+        } else {
+            self.historyLimit = .essential
+        }
         
         // Load pre-release updates toggle
         self.includePrereleases = defaults.bool(forKey: "includePrereleases")

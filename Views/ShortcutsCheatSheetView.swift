@@ -55,6 +55,7 @@ struct ShortcutsCheatSheetView: View {
             icon: "arrow.up.and.down",
             items: [
                 ShortcutEntry(keys: ["↑", "↓"], title: "Navigate history"),
+                ShortcutEntry(keys: ["⌘", "A"], title: "Select all items"),
                 ShortcutEntry(keys: ["⇧", "↑ / ↓"], title: "Multi-select items"),
                 ShortcutEntry(keys: ["↵"], title: "Paste to frontmost app"),
                 ShortcutEntry(keys: ["Esc"], title: "Dismiss Buffer window")
@@ -69,7 +70,7 @@ struct ShortcutsCheatSheetView: View {
                 ShortcutEntry(keys: ["⌘", "B"], title: "Bookmark item"),
                 ShortcutEntry(keys: ["⌘", "E"], title: "Edit snippet"),
                 ShortcutEntry(keys: ["⌘", "S"], title: "Save image to disk"),
-                ShortcutEntry(keys: ["⌘", "⌫"], title: "Delete item")
+                ShortcutEntry(keys: ["⌘", "⌫"], title: "Delete item (or selected)")
             ]
         ),
         ShortcutCategory(

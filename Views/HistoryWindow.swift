@@ -423,11 +423,33 @@ struct HistoryContentView: View {
         // selectedID will be synced via onChange(of: selectedIndex)
     }
     
-    /// Clear all selections
+    /// Select all visible items
+    private func selectAll() {
+        guard !filteredItems.isEmpty else { return }
+        selectedIDs = Set(filteredItems.map { $0.id })
+        if selectedID == nil, let first = filteredItems.first {
+            selectedID = first.id
+            selectedIndex = 0
+            selectionAnchor = first.id
+        }
+    }
+    
+    /// Clear all selections back to single focused item
     private func clearSelection() {
-        selectedIDs = []
-        selectionAnchor = nil
-        selectedID = nil
+        if let currentItem = selectedItem {
+            selectedIDs = [currentItem.id]
+            selectionAnchor = currentItem.id
+        } else if let first = filteredItems.first {
+            selectedID = first.id
+            selectedIDs = [first.id]
+            selectedIndex = 0
+            selectionAnchor = first.id
+        } else {
+            selectedIDs = []
+            selectedID = nil
+            selectionAnchor = nil
+        }
+        showDeleteConfirmation = false
     }
     
     /// Download all selected images to a folder
@@ -762,6 +784,11 @@ struct HistoryContentView: View {
             },
             onEnter: {
                 if isEditing { return }
+                if showDeleteConfirmation {
+                    store.delete(selectedItems)
+                    showDeleteConfirmation = false
+                    return
+                }
                 if showTagInput {
                     if let item = selectedItem {
                         let normalized = TagChip.normalize(tagInputText)
@@ -787,16 +814,28 @@ struct HistoryContentView: View {
                     exitEditMode(save: false)
                     return
                 }
+                if showDeleteConfirmation {
+                    showDeleteConfirmation = false
+                    return
+                }
                 if showTagInput {
                     showTagInput = false
                     tagInputText = ""
-                } else {
-                    onDismiss()
+                    return
                 }
+                if selectedIDs.count > 1 {
+                    clearSelection()
+                    return
+                }
+                onDismiss()
             },
             onDelete: {
                 guard !isEditing else { return }
-                if let item = selectedItem {
+                if selectedIDs.count > 1 {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        showDeleteConfirmation = true
+                    }
+                } else if let item = selectedItem {
                     store.delete(item)
                 }
             },
@@ -809,6 +848,10 @@ struct HistoryContentView: View {
                     onCopyToClipboard(item)
                     onDismiss()
                 }
+            },
+            onSelectAll: {
+                guard !isEditing else { return }
+                selectAll()
             },
             onPin: {
                 guard !isEditing else { return }
@@ -1135,7 +1178,21 @@ struct HistoryContentView: View {
                 }
 
                 Spacer()
-                if selectionCount <= 1 {
+                if selectionCount > 1 {
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                showDeleteConfirmation = true
+                            }
+                        }) {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.red.opacity(0.85))
+                        .help("Delete \(selectionCount) selected items (⌘⌫)")
+                    }
+                    .font(.system(size: 13))
+                } else {
                     HStack(spacing: 12) {
                         if isEditing {
                             Button(action: {
@@ -2126,6 +2183,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onEscape: () -> Void
     let onDelete: () -> Void
     let onCopy: () -> Void
+    let onSelectAll: () -> Void
     let onPin: () -> Void
     let onBookmark: () -> Void
     let onSaveImage: () -> Void
@@ -2156,6 +2214,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onEscape = onEscape
         context.coordinator.onDelete = onDelete
         context.coordinator.onCopy = onCopy
+        context.coordinator.onSelectAll = onSelectAll
         context.coordinator.onPin = onPin
         context.coordinator.onBookmark = onBookmark
         context.coordinator.onSaveImage = onSaveImage
@@ -2188,6 +2247,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onEscape: (() -> Void)?
         var onDelete: (() -> Void)?
         var onCopy: (() -> Void)?
+        var onSelectAll: (() -> Void)?
         var onPin: (() -> Void)?
         var onBookmark: (() -> Void)?
         var onSaveImage: (() -> Void)?
@@ -2223,6 +2283,17 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     let charsIgnoring = event.charactersIgnoringModifiers ?? ""
                     let rawChars = event.characters ?? ""
                     
+                    // Select All: ⌘A
+                    // KeyCode: 0 (A)
+                    if event.keyCode == 0 || charsIgnoring == "a" || charsIgnoring == "A" || rawChars == "a" || rawChars == "A" {
+                        if isEditing { return event }
+                        if let textView = self.view?.window?.firstResponder as? NSTextView, textView.string.count > 0 {
+                            return event
+                        }
+                        self.onSelectAll?()
+                        return nil
+                    }
+
                     // Zoom In: ⌘+ or ⌘=
                     // KeyCodes: 24 (Equal/Plus), 69 (Keypad +), 81 (Keypad =)
                     if event.keyCode == 24 || event.keyCode == 69 || event.keyCode == 81 ||

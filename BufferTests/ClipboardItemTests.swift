@@ -240,4 +240,27 @@ class ClipboardItemTests: XCTestCase {
         settings.zoomReset()
         XCTAssertEqual(settings.contentZoomScale, 1.0)
     }
+
+    func testHistoryLimitTiersAndReduction() {
+        XCTAssertEqual(HistoryLimit.allCases.count, 3)
+        XCTAssertEqual(HistoryLimit.essential.maxCount, 200)
+        XCTAssertEqual(HistoryLimit.deep.maxCount, 1000)
+        XCTAssertNil(HistoryLimit.unlimited.maxCount)
+
+        XCTAssertEqual(HistoryLimit.essential.subtitle, "200 items")
+        XCTAssertEqual(HistoryLimit.deep.subtitle, "1,000 items")
+        XCTAssertEqual(HistoryLimit.unlimited.subtitle, "No limit")
+
+        // Reductions
+        XCTAssertTrue(HistoryLimit.essential.isReduction(from: .deep))
+        XCTAssertTrue(HistoryLimit.essential.isReduction(from: .unlimited))
+        XCTAssertTrue(HistoryLimit.deep.isReduction(from: .unlimited))
+
+        // Increases or same
+        XCTAssertFalse(HistoryLimit.deep.isReduction(from: .essential))
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .essential))
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .deep))
+        XCTAssertFalse(HistoryLimit.essential.isReduction(from: .essential))
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .unlimited))
+    }
 }
