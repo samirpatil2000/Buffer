@@ -7,6 +7,7 @@ struct ClipboardItemRow: View {
     let isPrimarySelection: Bool  // True for focused row (full accent), false otherwise
     let isMultiSelected: Bool     // True if this item is part of multi-selection
     var onTagTap: ((String) -> Void)? = nil
+    var matchedSnippet: String? = nil
     
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
@@ -26,6 +27,9 @@ struct ClipboardItemRow: View {
     
     /// Truncated preview for list display - short and single line
     private var truncatedPreviewText: String {
+        if let snippet = matchedSnippet, !snippet.isEmpty {
+            return snippet
+        }
         let text = item.previewText
         // Replace newlines and extra whitespace with single space
         let singleLine = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
