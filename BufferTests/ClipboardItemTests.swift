@@ -151,4 +151,27 @@ class ClipboardItemTests: XCTestCase {
         service.stopPeriodicChecking()
         service.updateCheckInterval = 3600
     }
+
+    func testHistoryWindowAutosaveAndSizeConstants() {
+        XCTAssertEqual(HistoryWindowController.windowAutosaveName, "BufferHistoryWindow")
+        XCTAssertEqual(HistoryWindowController.defaultWindowSize.width, 700)
+        XCTAssertEqual(HistoryWindowController.defaultWindowSize.height, 480)
+        XCTAssertEqual(HistoryWindowController.minWindowSize.width, 600)
+        XCTAssertEqual(HistoryWindowController.minWindowSize.height, 400)
+    }
+
+    func testBufferOpenSettingsWindowNotification() {
+        let exp = expectation(description: "bufferOpenSettingsWindow received")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .bufferOpenSettingsWindow,
+            object: nil,
+            queue: .main
+        ) { _ in
+            exp.fulfill()
+        }
+        
+        NotificationCenter.default.post(name: .bufferOpenSettingsWindow, object: nil)
+        wait(for: [exp], timeout: 1.0)
+        NotificationCenter.default.removeObserver(observer)
+    }
 }

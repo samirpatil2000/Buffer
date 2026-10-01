@@ -7,6 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardWatcher: ClipboardWatcher?
     private var historyWindowController: HistoryWindowController?
     private var hotkeyManager: HotkeyManager?
+    private var settingsWindowController: NSWindowController?
     
     let clipboardStore = ClipboardStore()
     
@@ -57,6 +58,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showHistoryWindow()
         }
 
+        NotificationCenter.default.addObserver(forName: .bufferOpenSettingsWindow, object: nil, queue: .main) { [weak self] _ in
+            self?.showSettingsWindow()
+        }
+
         UpdateService.shared.checkIfJustUpdated()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -66,6 +71,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        if let window = historyWindowController?.window {
+            window.saveFrame(usingName: HistoryWindowController.windowAutosaveName)
+        }
         UpdateService.shared.stopPeriodicChecking()
         clipboardWatcher?.stopWatching()
         hotkeyManager?.unregister()
@@ -86,5 +94,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func showHistoryWindow() {
         historyWindowController?.showWindow(nil)
+    }
+
+    private func showSettingsWindow() {
+        if let controller = settingsWindowController, let window = controller.window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hostingController = NSHostingController(rootView: SettingsView())
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

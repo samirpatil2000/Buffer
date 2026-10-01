@@ -26,6 +26,10 @@ private struct ChunkedTextState {
 
 /// Manages the floating history window
 class HistoryWindowController: NSWindowController {
+    static let windowAutosaveName = NSWindow.FrameAutosaveName("BufferHistoryWindow")
+    static let defaultWindowSize = NSSize(width: 700, height: 480)
+    static let minWindowSize = NSSize(width: 600, height: 400)
+
     private let store: ClipboardStore
     private var previousApp: NSRunningApplication?
 
@@ -47,7 +51,7 @@ class HistoryWindowController: NSWindowController {
         
         // Wider window for split pane
         let panel = HistoryPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 480),
+            contentRect: NSRect(origin: .zero, size: Self.defaultWindowSize),
             styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -65,6 +69,7 @@ class HistoryWindowController: NSWindowController {
 
     override func close() {
         lastClosedAt = Date()
+        window?.saveFrame(usingName: Self.windowAutosaveName)
         super.close()
     }
     
@@ -73,6 +78,7 @@ class HistoryWindowController: NSWindowController {
     }
     
     private func setupPanel(_ panel: NSPanel) {
+        panel.title = "Buffer"
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
@@ -87,8 +93,13 @@ class HistoryWindowController: NSWindowController {
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.cornerRadius = 10
         panel.contentView?.layer?.masksToBounds = true
+        panel.minSize = Self.minWindowSize
         
-        panel.center()
+        let didRestore = panel.setFrameUsingName(Self.windowAutosaveName)
+        if !didRestore {
+            panel.center()
+        }
+        panel.setFrameAutosaveName(Self.windowAutosaveName)
         
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -129,10 +140,18 @@ class HistoryWindowController: NSWindowController {
             },
             onDismiss: { [weak self] in
                 self?.close()
+            },
+            onOpenSettings: { [weak self] in
+                self?.openSettings()
             }
         )
         
         window?.contentView = NSHostingView(rootView: contentView)
+    }
+
+    private func openSettings() {
+        close()
+        NotificationCenter.default.post(name: .bufferOpenSettingsWindow, object: nil)
     }
     
     private func copyToClipboard(_ item: ClipboardItem) {
@@ -164,11 +183,22 @@ class HistoryWindowController: NSWindowController {
         // Compute reset decision *before* super.showWindow fires didBecomeKeyNotification
         // → bufferWindowDidOpen, so the content view onReceive handler sees the right value.
         shouldResetOnOpen = shouldResetSearch
-        window?.center()
+        ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(window?.contentView)
+    }
+
+    private func ensureWindowIsVisibleOnScreen() {
+        guard let window = window else { return }
+        let currentFrame = window.frame
+        let isVisible = NSScreen.screens.contains { screen in
+            screen.visibleFrame.intersects(currentFrame)
+        }
+        if !isVisible {
+            window.center()
+        }
     }
 }
 
@@ -180,6 +210,7 @@ extension Notification.Name {
     static let bufferStatusBarVisibilityChanged = Notification.Name("bufferStatusBarVisibilityChanged")
     static let bufferUpdateAvailable = Notification.Name("bufferUpdateAvailable")
     static let bufferOpenHistoryWindow = Notification.Name("bufferOpenHistoryWindow")
+    static let bufferOpenSettingsWindow = Notification.Name("bufferOpenSettingsWindow")
 }
 
 /// Main content view - Split pane with list and detail
@@ -198,10 +229,12 @@ struct HistoryContentView: View {
     let onPaste: (ClipboardItem) -> Void
     let onPasteMultiple: ([ClipboardItem]) -> Void
     let onDismiss: () -> Void
+    let onOpenSettings: () -> Void
     
     @FocusState private var isSearchFocused: Bool
     @State private var showUpdatePopover = false
     @State private var isUpdateChipHovered = false
+    @State private var isSettingsHovered = false
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>? = nil
@@ -460,6 +493,7 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
+        .ignoresSafeArea()
         .onChange(of: searchText) { newValue in
             showTagAutocomplete = newValue.hasPrefix("#")
             
@@ -813,7 +847,8 @@ struct HistoryContentView: View {
                 guard isSearchFocused, searchText.isEmpty, activeTagFilter != nil else { return false }
                 activeTagFilter = nil
                 return true
-            }
+            },
+            onOpenSettings: onOpenSettings
         ))
     }
     
@@ -873,7 +908,22 @@ struct HistoryContentView: View {
     }
     
     private var searchBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            // App branding
+            HStack(spacing: 5) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                Text("Buffer")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+            }
+            .padding(.trailing, 2)
+
+            Color.primary.opacity(0.12)
+                .frame(width: 1, height: 14)
+                .padding(.trailing, 2)
+
             // Search icon
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary.opacity(0.7))
@@ -923,6 +973,21 @@ struct HistoryContentView: View {
             Text("\(filteredItems.count) items")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundColor(.secondary.opacity(0.6))
+
+            // Settings button
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(isSettingsHovered ? .primary : .secondary.opacity(0.7))
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color.primary.opacity(isSettingsHovered ? 0.08 : 0))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Settings (⌘,)")
+            .onHover { isSettingsHovered = $0 }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -2035,6 +2100,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onEdit: () -> Void
     let onTabComplete: () -> Void
     let onBackspace: () -> Bool
+    let onOpenSettings: () -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -2135,11 +2201,21 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                         return nil
                     }
                     return event
+                case 43: // Cmd+, (Comma is 43)
+                    if event.modifierFlags.contains(.command) {
+                        context.coordinator.onOpenSettings?()
+                        return nil
+                    }
+                    return event
                 case 48: // Tab
                     if isEditing { return event }
                     context.coordinator.onTabComplete?()
                     return nil
                 default:
+                    if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "," {
+                        context.coordinator.onOpenSettings?()
+                        return nil
+                    }
                     return event
                 }
             }
@@ -2167,6 +2243,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onEdit = onEdit
         context.coordinator.onTabComplete = onTabComplete
         context.coordinator.onBackspace = onBackspace
+        context.coordinator.onOpenSettings = onOpenSettings
     }
     
     func makeCoordinator() -> Coordinator {
@@ -2192,6 +2269,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onEdit: (() -> Void)?
         var onTabComplete: (() -> Void)?
         var onBackspace: (() -> Bool)?
+        var onOpenSettings: (() -> Void)?
         
         deinit {
             if let monitor = monitor {
