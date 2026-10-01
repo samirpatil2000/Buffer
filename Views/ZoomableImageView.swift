@@ -1,13 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// Native AppKit NSView that handles image drawing, zooming, panning, and trackpad gestures.
+/// Native AppKit NSView that handles image drawing, direct manipulation zooming, and panning.
 /// Crucially sets `mouseDownCanMoveWindow = false` so mouse dragging on the image never moves the window.
 final class ZoomableImageNSView: NSView {
     var image: NSImage?
     var scale: CGFloat = 1.0
     var panOffset: CGPoint = .zero
-    var onScaleChanged: ((CGFloat) -> Void)?
     
     static let minScale: CGFloat = 1.0
     static let maxScale: CGFloat = 4.0
@@ -110,7 +109,6 @@ final class ZoomableImageNSView: NSView {
         scale = newScale
         clampPan()
         needsDisplay = true
-        onScaleChanged?(scale)
         updateCursor()
     }
     
@@ -189,7 +187,6 @@ final class ZoomableImageNSView: NSView {
             )
             self.clampPan()
             self.needsDisplay = true
-            self.onScaleChanged?(self.scale)
             
             if progress >= 1.0 {
                 timer.invalidate()
@@ -203,34 +200,18 @@ final class ZoomableImageNSView: NSView {
 /// SwiftUI wrapper for ZoomableImageNSView
 struct ZoomableImageRepresentable: NSViewRepresentable {
     let image: NSImage
-    @Binding var scale: CGFloat
-    var onScaleChanged: ((CGFloat) -> Void)?
     
     func makeNSView(context: Context) -> ZoomableImageNSView {
         let view = ZoomableImageNSView()
         view.image = image
-        view.scale = scale
-        view.onScaleChanged = { newScale in
-            Task { @MainActor in
-                self.scale = newScale
-                self.onScaleChanged?(newScale)
-            }
-        }
         return view
     }
     
     func updateNSView(_ nsView: ZoomableImageNSView, context: Context) {
         if nsView.image !== image {
             nsView.image = image
-            nsView.scale = scale
+            nsView.scale = ZoomableImageNSView.minScale
             nsView.panOffset = .zero
-            nsView.needsDisplay = true
-        } else if abs(nsView.scale - scale) > 0.01 {
-            nsView.scale = scale
-            if scale <= 1.01 {
-                nsView.panOffset = .zero
-            }
-            nsView.clampPan()
             nsView.needsDisplay = true
         }
     }
@@ -238,12 +219,9 @@ struct ZoomableImageRepresentable: NSViewRepresentable {
 
 /// Interactive, zoomable image preview component.
 /// Supports trackpad pinch-to-zoom, drag-to-pan when magnified,
-/// double-click toggle between 100% actual size and fit,
-/// and external scale synchronization (e.g. ⌘+/⌘-/⌘0).
+/// and double-click toggle between 100% actual size and fit.
 struct ZoomableImageView: View {
     let image: NSImage
-    @Binding var scale: CGFloat
-    var onScaleChanged: ((CGFloat) -> Void)? = nil
     
     static let minScale: CGFloat = ZoomableImageNSView.minScale
     static let maxScale: CGFloat = ZoomableImageNSView.maxScale
@@ -255,14 +233,10 @@ struct ZoomableImageView: View {
     }
     
     var body: some View {
-        ZoomableImageRepresentable(
-            image: image,
-            scale: $scale,
-            onScaleChanged: onScaleChanged
-        )
-        .aspectRatio(aspectRatio, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .help("Double-click to toggle 100% actual size • Pinch to zoom • Drag to pan")
+        ZoomableImageRepresentable(image: image)
+            .aspectRatio(aspectRatio, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .help("Double-click to toggle 100% actual size • Pinch to zoom • Drag to pan")
     }
 }

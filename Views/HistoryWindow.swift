@@ -238,8 +238,6 @@ struct HistoryContentView: View {
     @State private var isUpdateChipHovered = false
     @State private var isSettingsHovered = false
     @State private var showZoomBadge = false
-    @State private var activeZoomPercentage: Int = 100
-    @State private var imageZoomScale: CGFloat = 1.0
     @State private var zoomBadgeTimer: Task<Void, Never>? = nil
     @State private var showShortcutsPopover = false
     @State private var isShortcutsHovered = false
@@ -526,8 +524,20 @@ struct HistoryContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .ignoresSafeArea()
-        .onChange(of: settings.contentZoomScale) { newValue in
-            triggerZoomBadge(percentage: Int(round(newValue * 100)))
+        .onChange(of: settings.contentZoomScale) { _ in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showZoomBadge = true
+            }
+            zoomBadgeTimer?.cancel()
+            zoomBadgeTimer = Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showZoomBadge = false
+                    }
+                }
+            }
         }
         .onChange(of: searchText) { newValue in
             showTagAutocomplete = newValue.hasPrefix("#")
@@ -728,7 +738,6 @@ struct HistoryContentView: View {
         .task(id: selectedItem?.id) {
             // Clear preview
             previewImage = nil
-            imageZoomScale = 1.0
             chunkedText = ChunkedTextState()
             isExtractingText = false
             itemSize = nil
@@ -906,86 +915,11 @@ struct HistoryContentView: View {
                 return true
             },
             onOpenSettings: onOpenSettings,
-            onZoomIn: {
-                if selectedItem?.type == .image {
-                    zoomInImage()
-                } else {
-                    settings.zoomIn()
-                }
-            },
-            onZoomOut: {
-                if selectedItem?.type == .image {
-                    zoomOutImage()
-                } else {
-                    settings.zoomOut()
-                }
-            },
-            onZoomReset: {
-                if selectedItem?.type == .image && imageZoomScale > 1.01 {
-                    zoomResetImage()
-                } else {
-                    zoomResetImage()
-                    settings.zoomReset()
-                }
-            },
+            onZoomIn: { settings.zoomIn() },
+            onZoomOut: { settings.zoomOut() },
+            onZoomReset: { settings.zoomReset() },
             onToggleShortcuts: { showShortcutsPopover.toggle() }
         ))
-    }
-    
-    private static let imageZoomPresets: [CGFloat] = [1.0, 1.5, 2.0, 3.0, 4.0]
-
-    private func triggerZoomBadge(percentage: Int) {
-        activeZoomPercentage = percentage
-        withAnimation(.easeInOut(duration: 0.15)) {
-            showZoomBadge = true
-        }
-        zoomBadgeTimer?.cancel()
-        zoomBadgeTimer = Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    showZoomBadge = false
-                }
-            }
-        }
-    }
-
-    private func zoomInImage() {
-        let current = imageZoomScale
-        if let next = Self.imageZoomPresets.first(where: { $0 > current + 0.05 }) {
-            withAnimation(.easeOut(duration: 0.15)) {
-                imageZoomScale = next
-            }
-            triggerZoomBadge(percentage: Int(round(next * 100)))
-        } else {
-            withAnimation(.easeOut(duration: 0.15)) {
-                imageZoomScale = 4.0
-            }
-            triggerZoomBadge(percentage: 400)
-        }
-    }
-
-    private func zoomOutImage() {
-        let current = imageZoomScale
-        if let prev = Self.imageZoomPresets.last(where: { $0 < current - 0.05 }) {
-            withAnimation(.easeOut(duration: 0.15)) {
-                imageZoomScale = prev
-            }
-            triggerZoomBadge(percentage: Int(round(prev * 100)))
-        } else {
-            withAnimation(.easeOut(duration: 0.15)) {
-                imageZoomScale = 1.0
-            }
-            triggerZoomBadge(percentage: 100)
-        }
-    }
-
-    private func zoomResetImage() {
-        withAnimation(.easeOut(duration: 0.15)) {
-            imageZoomScale = 1.0
-        }
-        triggerZoomBadge(percentage: 100)
     }
     
     private func loadPreviewImage(for item: ClipboardItem) async -> NSImage? {
@@ -1232,7 +1166,7 @@ struct HistoryContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 9, weight: .bold))
-                        Text("\(activeZoomPercentage)%")
+                        Text("\(Int(round(settings.contentZoomScale * 100)))%")
                             .font(.system(size: 10, weight: .bold))
                     }
                     .foregroundColor(.accentColor)
@@ -1590,13 +1524,7 @@ struct HistoryContentView: View {
         case .image:
             VStack(spacing: 12) {
                 if let img = previewImage {
-                    ZoomableImageView(
-                        image: img,
-                        scale: $imageZoomScale,
-                        onScaleChanged: { newScale in
-                            triggerZoomBadge(percentage: Int(round(newScale * 100)))
-                        }
-                    )
+                    ZoomableImageView(image: img)
                 } else {
                     // Loading placeholder
                     ProgressView()
