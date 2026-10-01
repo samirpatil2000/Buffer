@@ -144,11 +144,11 @@ class ClipboardItemTests: XCTestCase {
 
     func testUpdateCheckIntervalAndPeriodicChecking() {
         let service = UpdateService.shared
-        XCTAssertEqual(service.updateCheckInterval, 60)
+        XCTAssertEqual(service.updateCheckInterval, 3600)
         service.startPeriodicChecking()
         service.updateCheckInterval = 120
         XCTAssertEqual(service.updateCheckInterval, 120)
         service.stopPeriodicChecking()
-        service.updateCheckInterval = 60
+        service.updateCheckInterval = 3600
     }
 }
