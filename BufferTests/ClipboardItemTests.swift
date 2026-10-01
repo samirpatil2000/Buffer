@@ -113,18 +113,18 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertNotEqual(info1, info3)
         XCTAssertEqual(
             info1.targetReleaseURL.absoluteString,
-            "https://github.com/samirpatil2000/release-test/releases/tag/v2.1.0"
+            "https://github.com/samirpatil2000/Buffer/releases/tag/v2.1.0"
         )
         let infoCustom = UpdateInfo(
             version: "2.7.0",
             tag: "buffer-v2.7.0",
             downloadURL: "https://example.com/buffer-v2.7.0.zip",
             releaseNotes: "Cool stuff",
-            releaseURL: URL(string: "https://github.com/samirpatil2000/release-test/releases/tag/buffer-v2.7.0")
+            releaseURL: URL(string: "https://github.com/samirpatil2000/Buffer/releases/tag/buffer-v2.7.0")
         )
         XCTAssertEqual(
             infoCustom.targetReleaseURL.absoluteString,
-            "https://github.com/samirpatil2000/release-test/releases/tag/buffer-v2.7.0"
+            "https://github.com/samirpatil2000/Buffer/releases/tag/buffer-v2.7.0"
         )
     }
 

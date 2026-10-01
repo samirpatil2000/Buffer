@@ -29,9 +29,9 @@ class UpdateService: ObservableObject {
     @Published var availableUpdate: UpdateInfo?
     @Published var isUpdating: Bool = false
 
-    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/release-test/releases")!
+    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/Buffer/releases")!
     private let lastCheckKey = "lastUpdateCheckDate"
-    let repoBaseURL = "https://github.com/samirpatil2000/release-test"
+    let repoBaseURL = "https://github.com/samirpatil2000/Buffer"
     private var progressWindow: NSWindow?
     private var toastWindow: NSWindow?
     private var pendingReleaseURL: URL?
