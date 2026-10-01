@@ -8,8 +8,12 @@ struct ClipboardItemRow: View {
     let isMultiSelected: Bool     // True if this item is part of multi-selection
     var onTagTap: ((String) -> Void)? = nil
     
+    @ObservedObject private var settings = SettingsManager.shared
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
+
+    private var zoomScale: Double { settings.contentZoomScale }
+    private var iconSize: CGFloat { max(18, CGFloat(20 * zoomScale)) }
     
     private var backgroundColor: Color {
         if isMultiSelected && !isPrimarySelection {
@@ -40,11 +44,11 @@ struct ClipboardItemRow: View {
         HStack(spacing: 10) {
             // Icon
             icon
-                .frame(width: 20, height: 20)
+                .frame(width: iconSize, height: iconSize)
             
             // Content preview - truncated for list view
             Text(truncatedPreviewText)
-                .font(.system(size: 13))
+                .font(.system(size: 13 * zoomScale))
                 .foregroundColor(.primary)
                 .lineLimit(1)
             
@@ -55,7 +59,7 @@ struct ClipboardItemRow: View {
                 TagChip(label: item.tags[0], onTap: { onTagTap?(item.tags[0]) })
                 if item.tags.count > 1 {
                     Text("+\(item.tags.count - 1)")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * zoomScale))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
@@ -71,7 +75,7 @@ struct ClipboardItemRow: View {
             // Source app badge
             if let app = item.sourceApp {
                 Text(app)
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.secondary)
             }
             
@@ -85,12 +89,12 @@ struct ClipboardItemRow: View {
             // Bookmark indicator (only when not also pinned, to avoid double badge)
             if item.isBookmarked && !item.isPinned {
                 Image(systemName: "bookmark.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.yellow.opacity(0.8))
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 6 * zoomScale)
         .background(backgroundColor)
         .cornerRadius(4)
         .onHover { hovering in
@@ -113,7 +117,7 @@ struct ClipboardItemRow: View {
            let color = parseColor(text.trimmingCharacters(in: .whitespaces)) {
             RoundedRectangle(cornerRadius: 4)
                 .fill(color)
-                .frame(width: 20, height: 20)
+                .frame(width: iconSize, height: iconSize)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(Color.primary.opacity(0.15), lineWidth: 0.5)
@@ -122,7 +126,7 @@ struct ClipboardItemRow: View {
             switch item.type {
             case .text:
                 Image(systemName: "doc.text")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * zoomScale))
                     .foregroundColor(.secondary)
             case .image:
                 if let img = thumbnail {
@@ -130,14 +134,14 @@ struct ClipboardItemRow: View {
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 20, height: 20)
+                        .frame(width: iconSize, height: iconSize)
                         .clipped()
                         .cornerRadius(2)
                 } else {
                     // Placeholder while loading
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Color.secondary.opacity(0.2))
-                        .frame(width: 20, height: 20)
+                        .frame(width: iconSize, height: iconSize)
                 }
             }
         }

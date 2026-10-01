@@ -174,4 +174,46 @@ class ClipboardItemTests: XCTestCase {
         wait(for: [exp], timeout: 1.0)
         NotificationCenter.default.removeObserver(observer)
     }
+
+    func testContentZoomScaleInSettingsManager() {
+        let settings = SettingsManager.shared
+        let original = settings.contentZoomScale
+        defer {
+            settings.contentZoomScale = original
+            settings.save()
+        }
+
+        settings.zoomReset()
+        XCTAssertEqual(settings.contentZoomScale, 1.0)
+
+        // Step up
+        settings.zoomIn()
+        XCTAssertEqual(settings.contentZoomScale, 1.15)
+        settings.zoomIn()
+        XCTAssertEqual(settings.contentZoomScale, 1.3)
+        settings.zoomIn()
+        XCTAssertEqual(settings.contentZoomScale, 1.5)
+        // Clamp max
+        settings.zoomIn()
+        XCTAssertEqual(settings.contentZoomScale, 1.5)
+
+        // Step down
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 1.3)
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 1.15)
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 1.0)
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 0.9)
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 0.8)
+        // Clamp min
+        settings.zoomOut()
+        XCTAssertEqual(settings.contentZoomScale, 0.8)
+
+        // Reset
+        settings.zoomReset()
+        XCTAssertEqual(settings.contentZoomScale, 1.0)
+    }
 }

@@ -217,6 +217,7 @@ extension Notification.Name {
 struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
     @ObservedObject private var updateService = UpdateService.shared
+    @ObservedObject private var settings = SettingsManager.shared
     /// Set to true by HistoryWindowController when the window has been closed for more than
     /// 1.5 minutes (or on the very first open). The view resets search/tag state only when this
     /// is true, then writes false back so a second notification in the same session is a no-op.
@@ -235,6 +236,8 @@ struct HistoryContentView: View {
     @State private var showUpdatePopover = false
     @State private var isUpdateChipHovered = false
     @State private var isSettingsHovered = false
+    @State private var showZoomBadge = false
+    @State private var zoomBadgeTimer: Task<Void, Never>? = nil
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>? = nil
@@ -271,6 +274,8 @@ struct HistoryContentView: View {
     
     @State private var filteredItems: [ClipboardItem] = []
     
+    private var previewFontSize: CGFloat { CGFloat(13 * settings.contentZoomScale) }
+
     private func computeFilteredItems() -> [ClipboardItem] {
         var base = store.items
         if let tag = activeTagFilter {
@@ -494,6 +499,21 @@ struct HistoryContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
         .ignoresSafeArea()
+        .onChange(of: settings.contentZoomScale) { _ in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showZoomBadge = true
+            }
+            zoomBadgeTimer?.cancel()
+            zoomBadgeTimer = Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showZoomBadge = false
+                    }
+                }
+            }
+        }
         .onChange(of: searchText) { newValue in
             showTagAutocomplete = newValue.hasPrefix("#")
             
@@ -848,7 +868,10 @@ struct HistoryContentView: View {
                 activeTagFilter = nil
                 return true
             },
-            onOpenSettings: onOpenSettings
+            onOpenSettings: onOpenSettings,
+            onZoomIn: { settings.zoomIn() },
+            onZoomOut: { settings.zoomOut() },
+            onZoomReset: { settings.zoomReset() }
         ))
     }
     
@@ -1092,7 +1115,22 @@ struct HistoryContentView: View {
                 
                 Spacer()
                 
-                // Action buttons - only show for single selection or hide for multi
+                if showZoomBadge {
+                    HStack(spacing: 4) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("\(Int(round(settings.contentZoomScale * 100)))%")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor.opacity(0.15))
+                    .cornerRadius(4)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+
+                Spacer()
                 if selectionCount <= 1 {
                     HStack(spacing: 12) {
                         if isEditing {
@@ -1400,7 +1438,7 @@ struct HistoryContentView: View {
             if item.isTruncated {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(item.textContent ?? "")
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: previewFontSize, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     
@@ -1413,12 +1451,12 @@ struct HistoryContentView: View {
                 textContent(item)
             } else if isEditing {
                 TextEditor(text: $editText)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: previewFontSize, design: .monospaced))
                     .frame(minHeight: 200, maxHeight: .infinity)
                     .focused($isTextEditorFocused)
             } else {
                 Text(item.textContent ?? "")
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: previewFontSize, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -1448,7 +1486,7 @@ struct HistoryContentView: View {
                         
                         HStack(alignment: .top) {
                             Text(ocrText)
-                                .font(.system(size: 13))
+                                .font(.system(size: previewFontSize))
                                 .textSelection(.enabled)
                                 .lineSpacing(4)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1476,7 +1514,7 @@ struct HistoryContentView: View {
     private func textContent(_ item: ClipboardItem) -> some View {
         LazyVStack(spacing: 8, pinnedViews: []) {
             Text(chunkedText.visibleText)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: previewFontSize, design: .monospaced))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             
@@ -2101,127 +2139,13 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onTabComplete: () -> Void
     let onBackspace: () -> Bool
     let onOpenSettings: () -> Void
+    let onZoomIn: () -> Void
+    let onZoomOut: () -> Void
+    let onZoomReset: () -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async {
-            // Add local monitor to window
-            guard let window = view.window else { return }
-            
-            let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                let isEditing = context.coordinator.isEditing
-                switch event.keyCode {
-                case 126: // Up
-                    if isEditing { return event }
-                    if event.modifierFlags.contains(.shift) {
-                        context.coordinator.onExtendUp?()
-                    } else {
-                        context.coordinator.onUp?()
-                    }
-                    return nil // Consume event
-                case 125: // Down
-                    if isEditing { return event }
-                    if event.modifierFlags.contains(.shift) {
-                        context.coordinator.onExtendDown?()
-                    } else {
-                        context.coordinator.onDown?()
-                    }
-                    return nil // Consume event
-                case 36: // Enter
-                    if isEditing {
-                        if event.modifierFlags.contains(.command) {
-                            context.coordinator.onSaveEdit?()
-                            return nil
-                        }
-                        return event
-                    }
-                    context.coordinator.onEnter?()
-                    return nil
-                case 53: // Escape
-                    context.coordinator.onEscape?()
-                    return nil
-                case 51: // Delete/Backspace
-                    if isEditing {
-                        if event.modifierFlags.contains(.command) {
-                            return nil // ⌘Delete is no-op
-                        }
-                        return event
-                    }
-                    if event.modifierFlags.contains(.command) {
-                        context.coordinator.onDelete?()
-                        return nil
-                    }
-                    if context.coordinator.onBackspace?() == true { return nil }
-                    return event
-                case 8: // C (for Copy)
-                    if event.modifierFlags.contains(.command) {
-                        if isEditing { return event }
-                        // If text is selected in a text view, let the system handle native copy
-                        if let textView = view.window?.firstResponder as? NSTextView, textView.selectedRange.length > 0 {
-                            return event
-                        }
-                        context.coordinator.onCopy?()
-                        return nil
-                    }
-                    return event
-                case 35: // Cmd+P (P is 35)
-                    if event.modifierFlags.contains(.command) {
-                        if isEditing { return nil }
-                        context.coordinator.onPin?()
-                        return nil
-                    }
-                    return event
-                case 11: // Cmd+B (B is 11)
-                    if event.modifierFlags.contains(.command) {
-                        if isEditing { return nil }
-                        context.coordinator.onBookmark?()
-                        return nil
-                    }
-                    return event
-                case 1: // Cmd+S (S is 1)
-                    if event.modifierFlags.contains(.command) {
-                        if isEditing {
-                            context.coordinator.onSaveEdit?()
-                            return nil
-                        }
-                        context.coordinator.onSaveImage?()
-                        return nil
-                    }
-                    return event
-                case 17: // Cmd+T (T is 17)
-                    if event.modifierFlags.contains(.command) {
-                        if isEditing { return nil }
-                        context.coordinator.onAddTag?()
-                        return nil
-                    }
-                    return event
-                case 14: // Cmd+E (E is 14)
-                    if event.modifierFlags.contains(.command) {
-                        context.coordinator.onEdit?()
-                        return nil
-                    }
-                    return event
-                case 43: // Cmd+, (Comma is 43)
-                    if event.modifierFlags.contains(.command) {
-                        context.coordinator.onOpenSettings?()
-                        return nil
-                    }
-                    return event
-                case 48: // Tab
-                    if isEditing { return event }
-                    context.coordinator.onTabComplete?()
-                    return nil
-                default:
-                    if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "," {
-                        context.coordinator.onOpenSettings?()
-                        return nil
-                    }
-                    return event
-                }
-            }
-            
-            context.coordinator.monitor = monitor
-        }
+        context.coordinator.setupMonitor(for: view)
         return view
     }
     
@@ -2244,6 +2168,10 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onTabComplete = onTabComplete
         context.coordinator.onBackspace = onBackspace
         context.coordinator.onOpenSettings = onOpenSettings
+        context.coordinator.onZoomIn = onZoomIn
+        context.coordinator.onZoomOut = onZoomOut
+        context.coordinator.onZoomReset = onZoomReset
+        context.coordinator.setupMonitor(for: nsView)
     }
     
     func makeCoordinator() -> Coordinator {
@@ -2252,6 +2180,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     
     class Coordinator {
         var monitor: Any?
+        weak var view: NSView?
         var isEditing: Bool = false
         var onUp: (() -> Void)?
         var onDown: (() -> Void)?
@@ -2270,6 +2199,162 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onTabComplete: (() -> Void)?
         var onBackspace: (() -> Bool)?
         var onOpenSettings: (() -> Void)?
+        var onZoomIn: (() -> Void)?
+        var onZoomOut: (() -> Void)?
+        var onZoomReset: (() -> Void)?
+        
+        func setupMonitor(for view: NSView) {
+            self.view = view
+            guard monitor == nil else { return }
+            
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self = self else { return event }
+                // Only intercept events when our window is the key window
+                if let win = self.view?.window, !win.isKeyWindow {
+                    return event
+                }
+                
+                let isEditing = self.isEditing
+                let flags = event.modifierFlags
+                let isCmd = flags.contains(.command)
+                let hasCtrlOrOpt = flags.contains(.control) || flags.contains(.option)
+                
+                // Command shortcuts (with or without Shift)
+                if isCmd && !hasCtrlOrOpt {
+                    let charsIgnoring = event.charactersIgnoringModifiers ?? ""
+                    let rawChars = event.characters ?? ""
+                    
+                    // Zoom In: ⌘+ or ⌘=
+                    // KeyCodes: 24 (Equal/Plus), 69 (Keypad +), 81 (Keypad =)
+                    if event.keyCode == 24 || event.keyCode == 69 || event.keyCode == 81 ||
+                       charsIgnoring == "+" || charsIgnoring == "=" || rawChars == "+" || rawChars == "=" {
+                        self.onZoomIn?()
+                        return nil
+                    }
+                    
+                    // Zoom Out: ⌘- or ⌘_
+                    // KeyCodes: 27 (Minus), 78 (Keypad -)
+                    if event.keyCode == 27 || event.keyCode == 78 ||
+                       charsIgnoring == "-" || charsIgnoring == "_" || rawChars == "-" || rawChars == "_" {
+                        self.onZoomOut?()
+                        return nil
+                    }
+                    
+                    // Zoom Reset: ⌘0
+                    // KeyCode: 29 (0)
+                    if event.keyCode == 29 || charsIgnoring == "0" || rawChars == "0" {
+                        self.onZoomReset?()
+                        return nil
+                    }
+                    
+                    // Settings: ⌘,
+                    // KeyCode: 43 (Comma)
+                    if event.keyCode == 43 || charsIgnoring == "," || rawChars == "," {
+                        self.onOpenSettings?()
+                        return nil
+                    }
+                }
+                
+                switch event.keyCode {
+                case 126: // Up
+                    if isEditing { return event }
+                    if event.modifierFlags.contains(.shift) {
+                        self.onExtendUp?()
+                    } else {
+                        self.onUp?()
+                    }
+                    return nil // Consume event
+                case 125: // Down
+                    if isEditing { return event }
+                    if event.modifierFlags.contains(.shift) {
+                        self.onExtendDown?()
+                    } else {
+                        self.onDown?()
+                    }
+                    return nil // Consume event
+                case 36: // Enter
+                    if isEditing {
+                        if event.modifierFlags.contains(.command) {
+                            self.onSaveEdit?()
+                            return nil
+                        }
+                        return event
+                    }
+                    self.onEnter?()
+                    return nil
+                case 53: // Escape
+                    self.onEscape?()
+                    return nil
+                case 51: // Delete/Backspace
+                    if isEditing {
+                        if event.modifierFlags.contains(.command) {
+                            return nil // ⌘Delete is no-op
+                        }
+                        return event
+                    }
+                    if event.modifierFlags.contains(.command) {
+                        self.onDelete?()
+                        return nil
+                    }
+                    if self.onBackspace?() == true { return nil }
+                    return event
+                case 8: // C (for Copy)
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing { return event }
+                        // If text is selected in a text view, let the system handle native copy
+                        if let textView = self.view?.window?.firstResponder as? NSTextView, textView.selectedRange.length > 0 {
+                            return event
+                        }
+                        self.onCopy?()
+                        return nil
+                    }
+                    return event
+                case 35: // Cmd+P (P is 35)
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing { return nil }
+                        self.onPin?()
+                        return nil
+                    }
+                    return event
+                case 11: // Cmd+B (B is 11)
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing { return nil }
+                        self.onBookmark?()
+                        return nil
+                    }
+                    return event
+                case 1: // Cmd+S (S is 1)
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing {
+                            self.onSaveEdit?()
+                            return nil
+                        }
+                        self.onSaveImage?()
+                        return nil
+                    }
+                    return event
+                case 17: // Cmd+T (T is 17)
+                    if event.modifierFlags.contains(.command) {
+                        if isEditing { return nil }
+                        self.onAddTag?()
+                        return nil
+                    }
+                    return event
+                case 14: // Cmd+E (E is 14)
+                    if event.modifierFlags.contains(.command) {
+                        self.onEdit?()
+                        return nil
+                    }
+                    return event
+                case 48: // Tab
+                    if isEditing { return event }
+                    self.onTabComplete?()
+                    return nil
+                default:
+                    return event
+                }
+            }
+        }
         
         deinit {
             if let monitor = monitor {

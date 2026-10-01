@@ -36,6 +36,12 @@ class SettingsManager: ObservableObject {
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private let minTextLengthKey = "minTextLength"
     private let deduplicateHistoryKey = "deduplicateHistory"
+    private let contentZoomScaleKey = "contentZoomScale"
+
+    static let zoomLevels: [Double] = [0.8, 0.9, 1.0, 1.15, 1.3, 1.5]
+    static let defaultZoomScale: Double = 1.0
+    static let minZoomScale: Double = 0.8
+    static let maxZoomScale: Double = 1.5
     
     @Published var hotkeyModifiers: HotkeyModifiers
     @Published var hotkeyKeyCode: UInt16
@@ -45,6 +51,7 @@ class SettingsManager: ObservableObject {
     @Published var hideStatusBar: Bool = false
     @Published var minTextLength: Int = 1
     @Published var deduplicateHistory: Bool = false
+    @Published var contentZoomScale: Double = defaultZoomScale
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -80,6 +87,14 @@ class SettingsManager: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = defaults.object(forKey: minTextLengthKey) as? Int ?? 1
         self.deduplicateHistory = defaults.bool(forKey: deduplicateHistoryKey)
+
+        // Load content zoom scale
+        let savedZoom = defaults.double(forKey: contentZoomScaleKey)
+        if savedZoom >= Self.minZoomScale && savedZoom <= Self.maxZoomScale {
+            self.contentZoomScale = savedZoom
+        } else {
+            self.contentZoomScale = Self.defaultZoomScale
+        }
     }
     
     func save() {
@@ -90,6 +105,32 @@ class SettingsManager: ObservableObject {
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
         defaults.set(minTextLength, forKey: minTextLengthKey)
         defaults.set(deduplicateHistory, forKey: deduplicateHistoryKey)
+        defaults.set(contentZoomScale, forKey: contentZoomScaleKey)
+    }
+
+    func zoomIn() {
+        let current = contentZoomScale
+        if let next = Self.zoomLevels.first(where: { $0 > current + 0.01 }) {
+            contentZoomScale = next
+        } else {
+            contentZoomScale = Self.maxZoomScale
+        }
+        save()
+    }
+
+    func zoomOut() {
+        let current = contentZoomScale
+        if let prev = Self.zoomLevels.last(where: { $0 < current - 0.01 }) {
+            contentZoomScale = prev
+        } else {
+            contentZoomScale = Self.minZoomScale
+        }
+        save()
+    }
+
+    func zoomReset() {
+        contentZoomScale = Self.defaultZoomScale
+        save()
     }
     
     func toggleLaunchAtLogin(_ enabled: Bool) {
