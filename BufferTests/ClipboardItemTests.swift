@@ -152,6 +152,30 @@ class ClipboardItemTests: XCTestCase {
         service.updateCheckInterval = 3600
     }
 
+    func testShouldCheckForUpdatesThrottling() {
+        let now = Date()
+        let interval: TimeInterval = 3600 // 1 hour
+
+        // 1. Never checked before
+        XCTAssertTrue(UpdateService.shouldCheckForUpdates(lastCheckDate: nil, interval: interval, currentDate: now))
+
+        // 2. Checked 30 minutes ago (< 1 hour)
+        let thirtyMinutesAgo = now.addingTimeInterval(-1800)
+        XCTAssertFalse(UpdateService.shouldCheckForUpdates(lastCheckDate: thirtyMinutesAgo, interval: interval, currentDate: now))
+
+        // 3. Checked 59 minutes ago (< 1 hour)
+        let fiftyNineMinutesAgo = now.addingTimeInterval(-3540)
+        XCTAssertFalse(UpdateService.shouldCheckForUpdates(lastCheckDate: fiftyNineMinutesAgo, interval: interval, currentDate: now))
+
+        // 4. Checked exactly 60 minutes ago (>= 1 hour)
+        let sixtyMinutesAgo = now.addingTimeInterval(-3600)
+        XCTAssertTrue(UpdateService.shouldCheckForUpdates(lastCheckDate: sixtyMinutesAgo, interval: interval, currentDate: now))
+
+        // 5. Checked 2 hours ago (>= 1 hour)
+        let twoHoursAgo = now.addingTimeInterval(-7200)
+        XCTAssertTrue(UpdateService.shouldCheckForUpdates(lastCheckDate: twoHoursAgo, interval: interval, currentDate: now))
+    }
+
     func testHistoryWindowAutosaveAndSizeConstants() {
         XCTAssertEqual(HistoryWindowController.windowAutosaveName, "BufferHistoryWindow")
         XCTAssertEqual(HistoryWindowController.defaultWindowSize.width, 700)

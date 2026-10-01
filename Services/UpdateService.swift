@@ -112,34 +112,73 @@ class UpdateService: ObservableObject {
         pollTimer = nil
     }
 
-    func checkOnLaunchIfNeeded() {
-        if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date,
-           Date().timeIntervalSince(lastCheck) < updateCheckInterval {
-            let hoursAgo = Date().timeIntervalSince(lastCheck) / 3600
-            print("[UpdateService] Skipping launch check — last checked \(String(format: "%.1f", hoursAgo))h ago")
+    private var isCheckingUpdates: Bool = false
+
+    var lastCheckDate: Date? {
+        UserDefaults.standard.object(forKey: lastCheckKey) as? Date
+    }
+
+    static func shouldCheckForUpdates(lastCheckDate: Date?, interval: TimeInterval, currentDate: Date = Date()) -> Bool {
+        guard let lastCheckDate = lastCheckDate else {
+            return true
+        }
+        return currentDate.timeIntervalSince(lastCheckDate) >= interval
+    }
+
+    func checkOnWindowOpenIfNeeded() {
+        guard !isCheckingUpdates else {
+            print("[UpdateService] Update check already in progress, skipping window open check.")
             return
         }
-        print("[UpdateService] Running launch check")
-        checkForUpdates(silent: true)
+
+        let lastCheck = lastCheckDate
+        if Self.shouldCheckForUpdates(lastCheckDate: lastCheck, interval: updateCheckInterval) {
+            let lastCheckStr = lastCheck.map { "\(Int(Date().timeIntervalSince($0) / 60))m ago" } ?? "never"
+            print("[UpdateService] Window open check triggered (last check: \(lastCheckStr))")
+            checkForUpdates(silent: true)
+        } else if let lastCheck = lastCheck {
+            let minutesAgo = Int(Date().timeIntervalSince(lastCheck) / 60)
+            print("[UpdateService] Window opened — skipping check (last check was \(minutesAgo)m ago, interval is \(Int(updateCheckInterval / 60))m)")
+        }
+    }
+
+    func checkOnLaunchIfNeeded() {
+        checkOnWindowOpenIfNeeded()
     }
 
     func checkForUpdates(silent: Bool) {
+        guard !isCheckingUpdates else {
+            print("[UpdateService] checkForUpdates: Already in progress, ignoring call.")
+            return
+        }
+        isCheckingUpdates = true
         print("[UpdateService] checkForUpdates(silent: \(silent))")
-        UserDefaults.standard.set(Date(), forKey: lastCheckKey)
 
         var request = URLRequest(url: releasesURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            if let error {
+            guard let self = self else { return }
+            defer {
+                DispatchQueue.main.async {
+                    self.isCheckingUpdates = false
+                }
+            }
+
+            if let error = error {
                 print("[UpdateService] Network error: \(error.localizedDescription)")
                 return
             }
+
             if let http = response as? HTTPURLResponse {
                 print("[UpdateService] GitHub API responded: HTTP \(http.statusCode)")
+                // Record timestamp on completed HTTP response from GitHub
+                if http.statusCode == 200 || http.statusCode == 304 {
+                    UserDefaults.standard.set(Date(), forKey: self.lastCheckKey)
+                }
             }
-            guard let self,
-                  let data,
+
+            guard let data = data,
                   let releases = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
                 print("[UpdateService] Failed to parse releases JSON")
                 return
