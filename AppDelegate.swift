@@ -53,14 +53,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeyManager?.reregister()
         }
 
+        NotificationCenter.default.addObserver(forName: .bufferOpenHistoryWindow, object: nil, queue: .main) { [weak self] _ in
+            self?.showHistoryWindow()
+        }
+
         UpdateService.shared.checkIfJustUpdated()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             UpdateService.shared.checkOnLaunchIfNeeded()
+            UpdateService.shared.startPeriodicChecking()
         }
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        UpdateService.shared.stopPeriodicChecking()
         clipboardWatcher?.stopWatching()
         hotkeyManager?.unregister()
         print("[AppDelegate] applicationWillTerminate — call stack:")

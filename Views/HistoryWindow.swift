@@ -178,11 +178,14 @@ extension Notification.Name {
     static let bufferWindowDidOpen = Notification.Name("bufferWindowDidOpen")
     static let bufferHistoryLimitChanged = Notification.Name("bufferHistoryLimitChanged")
     static let bufferStatusBarVisibilityChanged = Notification.Name("bufferStatusBarVisibilityChanged")
+    static let bufferUpdateAvailable = Notification.Name("bufferUpdateAvailable")
+    static let bufferOpenHistoryWindow = Notification.Name("bufferOpenHistoryWindow")
 }
 
 /// Main content view - Split pane with list and detail
 struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
+    @ObservedObject private var updateService = UpdateService.shared
     /// Set to true by HistoryWindowController when the window has been closed for more than
     /// 1.5 minutes (or on the very first open). The view resets search/tag state only when this
     /// is true, then writes false back so a second notification in the same session is a no-op.
@@ -197,6 +200,8 @@ struct HistoryContentView: View {
     let onDismiss: () -> Void
     
     @FocusState private var isSearchFocused: Bool
+    @State private var showUpdatePopover = false
+    @State private var isUpdateChipHovered = false
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>? = nil
@@ -910,6 +915,10 @@ struct HistoryContentView: View {
             
             Spacer()
             
+            if let update = updateService.availableUpdate {
+                updateChip(update: update)
+            }
+
             // Item count
             Text("\(filteredItems.count) items")
                 .font(.system(size: 11, weight: .regular))
@@ -1727,6 +1736,277 @@ struct HistoryContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+    }
+
+    // MARK: - Update views
+
+    @ViewBuilder
+    private func updateChip(update: UpdateInfo) -> some View {
+        Button(action: {
+            showUpdatePopover.toggle()
+        }) {
+            HStack(spacing: 4.5) {
+                if updateService.isUpdating {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Updating…")
+                        .font(.system(size: 11, weight: .medium))
+                } else {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Update v\(update.version)")
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+            .foregroundColor(Color(red: 0.16, green: 0.62, blue: 0.35))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                Capsule()
+                    .fill(Color(red: 0.16, green: 0.62, blue: 0.35).opacity(isUpdateChipHovered ? 0.18 : 0.10))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color(red: 0.16, green: 0.62, blue: 0.35).opacity(isUpdateChipHovered ? 0.35 : 0.20), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isUpdateChipHovered = $0 }
+        .disabled(updateService.isUpdating)
+        .help("Buffer v\(update.version) is ready to install")
+        .popover(isPresented: $showUpdatePopover, arrowEdge: .bottom) {
+            UpdatePopoverView(
+                update: update,
+                isUpdating: updateService.isUpdating,
+                onUpdate: {
+                    showUpdatePopover = false
+                    updateService.installUpdate(update)
+                },
+                onDismiss: {
+                    showUpdatePopover = false
+                }
+            )
+        }
+    }
+}
+
+/// Parsed release content separating human notes from raw repository changelog links
+struct ParsedReleaseNotes {
+    let bulletPoints: [String]
+    let changelogURL: URL?
+
+    init(raw: String?) {
+        guard let raw = raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            self.bulletPoints = []
+            self.changelogURL = nil
+            return
+        }
+
+        var bullets: [String] = []
+        var foundURL: URL? = nil
+
+        let lines = raw.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+
+            // Extract changelog URL if this line contains it
+            if trimmed.lowercased().contains("changelog") && trimmed.contains("http") {
+                if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue),
+                   let match = detector.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)),
+                   let range = Range(match.range, in: trimmed) {
+                    foundURL = URL(string: String(trimmed[range]))
+                }
+                continue
+            }
+
+            // Skip markdown headings
+            if trimmed.hasPrefix("#") {
+                continue
+            }
+
+            // Clean bullet points
+            var text = trimmed
+            if text.hasPrefix("* ") || text.hasPrefix("- ") || text.hasPrefix("• ") {
+                text = String(text.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            }
+
+            // Remove trailing PR / author noise like " by @author in https://..."
+            if let inIdx = text.range(of: " in https://", options: .backwards) {
+                text = String(text[..<inIdx.lowerBound])
+            }
+            if let byIdx = text.range(of: " by @", options: .backwards) {
+                text = String(text[..<byIdx.lowerBound])
+            }
+
+            text = text.replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "`", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !text.isEmpty {
+                bullets.append(text)
+            }
+        }
+
+        self.bulletPoints = bullets
+        self.changelogURL = foundURL
+    }
+}
+
+/// Compact, elegant popover displaying update highlights and one-click install
+struct UpdatePopoverView: View {
+    let update: UpdateInfo
+    var isUpdating: Bool = false
+    let onUpdate: () -> Void
+    let onDismiss: () -> Void
+
+    @State private var isLaterHovered = false
+
+    private var parsedNotes: ParsedReleaseNotes {
+        ParsedReleaseNotes(raw: update.releaseNotes)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 38, height: 38)
+                        .cornerRadius(9)
+                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
+
+                    Circle()
+                        .fill(Color(red: 0.16, green: 0.72, blue: 0.38))
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Color(NSColor.windowBackgroundColor), lineWidth: 1.5))
+                        .offset(x: 2, y: 2)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Buffer \(update.version)")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+
+                        Text("New")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(Color(red: 0.16, green: 0.65, blue: 0.35))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color(red: 0.16, green: 0.65, blue: 0.35).opacity(0.12))
+                            .cornerRadius(4)
+                    }
+
+                    Text("A new version is ready to install")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+
+            // Highlights / Notes
+            if !parsedNotes.bulletPoints.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(parsedNotes.bulletPoints, id: \.self) { point in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("•")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(Color(red: 0.16, green: 0.65, blue: 0.35))
+                                    Text(point)
+                                        .font(.system(size: 11.5))
+                                        .foregroundColor(.primary.opacity(0.85))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                    }
+                    .frame(maxHeight: 110)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
+                }
+            } else {
+                Text("Includes performance improvements, bug fixes, and general refinements.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .padding(.vertical, 2)
+            }
+
+            // Full changelog link to release tag
+            Button(action: {
+                NSWorkspace.shared.open(update.targetReleaseURL)
+            }) {
+                HStack(spacing: 3) {
+                    Text("View full changelog")
+                        .font(.system(size: 11))
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundColor(.accentColor)
+            }
+            .buttonStyle(.plain)
+
+            // Action Buttons
+            HStack(spacing: 10) {
+                Button(action: onDismiss) {
+                    Text("Later")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isLaterHovered ? Color.primary.opacity(0.08) : Color.primary.opacity(0.04))
+                        )
+                }
+                .buttonStyle(.plain)
+                .onHover { isLaterHovered = $0 }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button(action: onUpdate) {
+                    HStack(spacing: 5) {
+                        if isUpdating {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Updating…")
+                                .font(.system(size: 12, weight: .semibold))
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Update & Restart")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.accentColor)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isUpdating)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 2)
+        }
+        .padding(16)
+        .frame(width: 310)
     }
 }
 

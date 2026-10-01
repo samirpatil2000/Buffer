@@ -1,20 +1,120 @@
 import Foundation
 import AppKit
+import SwiftUI
+import Combine
 
-class UpdateService {
+struct UpdateInfo: Equatable {
+    let version: String
+    let tag: String
+    let downloadURL: String
+    let releaseNotes: String?
+    let releaseURL: URL?
+
+    init(version: String, tag: String, downloadURL: String, releaseNotes: String? = nil, releaseURL: URL? = nil) {
+        self.version = version
+        self.tag = tag
+        self.downloadURL = downloadURL
+        self.releaseNotes = releaseNotes
+        self.releaseURL = releaseURL
+    }
+
+    var targetReleaseURL: URL {
+        releaseURL ?? UpdateService.shared.releaseURL(for: tag)
+    }
+}
+
+class UpdateService: ObservableObject {
     static let shared = UpdateService()
-    private init() {}
 
-    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/Buffer/releases")!
+    @Published var availableUpdate: UpdateInfo?
+    @Published var isUpdating: Bool = false
+
+    private let releasesURL = URL(string: "https://api.github.com/repos/samirpatil2000/release-test/releases")!
     private let lastCheckKey = "lastUpdateCheckDate"
-    private let repoBaseURL = "https://github.com/samirpatil2000/Buffer"
+    let repoBaseURL = "https://github.com/samirpatil2000/release-test"
     private var progressWindow: NSWindow?
     private var toastWindow: NSWindow?
     private var pendingReleaseURL: URL?
 
+    func releaseURL(for tag: String) -> URL {
+        if tag.isEmpty {
+            return URL(string: "\(repoBaseURL)/releases")!
+        }
+        return URL(string: "\(repoBaseURL)/releases/tag/\(tag)")!
+    }
+
+    private let cachedVersionKey = "bufferCachedUpdateVersion"
+    private let cachedTagKey = "bufferCachedUpdateTag"
+    private let cachedURLKey = "bufferCachedUpdateURL"
+    private let cachedNotesKey = "bufferCachedUpdateNotes"
+    private let cachedReleaseURLKey = "bufferCachedUpdateReleaseURL"
+
+    private init() {
+        restoreCachedUpdateIfValid()
+    }
+
+    private func saveCachedUpdate(_ info: UpdateInfo) {
+        UserDefaults.standard.set(info.version, forKey: cachedVersionKey)
+        UserDefaults.standard.set(info.tag, forKey: cachedTagKey)
+        UserDefaults.standard.set(info.downloadURL, forKey: cachedURLKey)
+        UserDefaults.standard.set(info.releaseNotes, forKey: cachedNotesKey)
+        UserDefaults.standard.set(info.targetReleaseURL.absoluteString, forKey: cachedReleaseURLKey)
+    }
+
+    private func clearCachedUpdate() {
+        UserDefaults.standard.removeObject(forKey: cachedVersionKey)
+        UserDefaults.standard.removeObject(forKey: cachedTagKey)
+        UserDefaults.standard.removeObject(forKey: cachedURLKey)
+        UserDefaults.standard.removeObject(forKey: cachedNotesKey)
+        UserDefaults.standard.removeObject(forKey: cachedReleaseURLKey)
+    }
+
+    private func restoreCachedUpdateIfValid() {
+        let current = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+        if let version = UserDefaults.standard.string(forKey: cachedVersionKey),
+           let tag = UserDefaults.standard.string(forKey: cachedTagKey),
+           let url = UserDefaults.standard.string(forKey: cachedURLKey),
+           Self.versionIsNewer(version, than: current) {
+            let notes = UserDefaults.standard.string(forKey: cachedNotesKey)
+            let pageURL = UserDefaults.standard.string(forKey: cachedReleaseURLKey).flatMap { URL(string: $0) }
+            self.availableUpdate = UpdateInfo(
+                version: version,
+                tag: tag,
+                downloadURL: url,
+                releaseNotes: notes,
+                releaseURL: pageURL
+            )
+            print("[UpdateService] Restored cached update info for v\(version)")
+        } else {
+            clearCachedUpdate()
+        }
+    }
+
+    var updateCheckInterval: TimeInterval = 3600 { // 1 hour poll
+        didSet {
+            if pollTimer != nil {
+                startPeriodicChecking()
+            }
+        }
+    }
+    private var pollTimer: Timer?
+
+    func startPeriodicChecking() {
+        pollTimer?.invalidate()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: updateCheckInterval, repeats: true) { [weak self] _ in
+            print("[UpdateService] Periodic poll triggered (interval: \(self?.updateCheckInterval ?? 0)s)")
+            self?.checkForUpdates(silent: true)
+        }
+    }
+
+    func stopPeriodicChecking() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
     func checkOnLaunchIfNeeded() {
         if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date,
-           Date().timeIntervalSince(lastCheck) < 86400 {
+           Date().timeIntervalSince(lastCheck) < updateCheckInterval {
             let hoursAgo = Date().timeIntervalSince(lastCheck) / 3600
             print("[UpdateService] Skipping launch check — last checked \(String(format: "%.1f", hoursAgo))h ago")
             return
@@ -63,6 +163,8 @@ class UpdateService {
 
         var latestTag: String?
         var latestZipURL: String?
+        var latestNotes: String?
+        var latestReleasePageURL: URL?
         for release in sorted {
             guard let tag = release["tag_name"] as? String,
                   let assets = release["assets"] as? [[String: Any]] else { continue }
@@ -75,6 +177,12 @@ class UpdateService {
                let url = zip["browser_download_url"] as? String {
                 latestTag = tag
                 latestZipURL = url
+                latestNotes = release["body"] as? String
+                if let htmlStr = release["html_url"] as? String, let pageURL = URL(string: htmlStr) {
+                    latestReleasePageURL = pageURL
+                } else {
+                    latestReleasePageURL = self.releaseURL(for: tag)
+                }
                 print("[UpdateService] Selected asset: \(zip["name"] as? String ?? "?") (\(archKeyword) preferred)")
                 break
             }
@@ -85,22 +193,36 @@ class UpdateService {
             return
         }
 
-        let latest = stripTagPrefix(tag)
+        let latest = Self.stripTagPrefix(tag)
         let current = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
         print("[UpdateService] Latest: \(latest)  Current: \(current)  ZipURL: \(zipURL)")
 
         DispatchQueue.main.async {
-            if self.versionIsNewer(latest, than: current) {
-                print("[UpdateService] Update available — showing alert")
-                self.showUpdateAlert(version: latest, tag: tag, downloadURL: zipURL)
+            if Self.versionIsNewer(latest, than: current) {
+                print("[UpdateService] Update available: \(latest)")
+                let info = UpdateInfo(
+                    version: latest,
+                    tag: tag,
+                    downloadURL: zipURL,
+                    releaseNotes: latestNotes,
+                    releaseURL: latestReleasePageURL ?? self.releaseURL(for: tag)
+                )
+                self.availableUpdate = info
+                self.saveCachedUpdate(info)
+                NotificationCenter.default.post(name: .bufferUpdateAvailable, object: nil)
+                if !silent {
+                    NotificationCenter.default.post(name: .bufferOpenHistoryWindow, object: nil)
+                }
             } else {
                 print("[UpdateService] Already up to date (silent: \(silent))")
+                self.availableUpdate = nil
+                self.clearCachedUpdate()
                 if !silent { self.showUpToDateAlert() }
             }
         }
     }
 
-    private func stripTagPrefix(_ tag: String) -> String {
+    static func stripTagPrefix(_ tag: String) -> String {
         var v = tag
         let lower = v.lowercased()
         if lower.hasPrefix("buffer-v") {
@@ -111,7 +233,7 @@ class UpdateService {
         return v
     }
 
-    private func versionIsNewer(_ latest: String, than current: String) -> Bool {
+    static func versionIsNewer(_ latest: String, than current: String) -> Bool {
         let lp = latest.split(separator: ".").compactMap { Int($0) }
         let cp = current.split(separator: ".").compactMap { Int($0) }
         for i in 0..<max(lp.count, cp.count) {
@@ -149,6 +271,8 @@ class UpdateService {
     }
 
     func checkIfJustUpdated() {
+        clearCachedUpdate()
+        availableUpdate = nil
         guard UserDefaults.standard.bool(forKey: "bufferJustUpdated") else { return }
         UserDefaults.standard.removeObject(forKey: "bufferJustUpdated")
         let tag = UserDefaults.standard.string(forKey: "bufferUpdateTag") ?? ""
@@ -257,12 +381,19 @@ class UpdateService {
         })
     }
 
-    private func downloadAndInstall(url: String, tag: String) {
+    func installUpdate(_ info: UpdateInfo) {
+        downloadAndInstall(url: info.downloadURL, tag: info.tag)
+    }
+
+    func downloadAndInstall(url: String, tag: String) {
         guard let downloadURL = URL(string: url) else {
             print("[UpdateService] Invalid download URL: \(url)")
             return
         }
         print("[UpdateService] Starting download: \(url)")
+        DispatchQueue.main.async {
+            self.isUpdating = true
+        }
         showProgressWindow()
 
         URLSession.shared.downloadTask(with: downloadURL) { [weak self] localURL, _, error in
@@ -270,7 +401,10 @@ class UpdateService {
 
             func fail(_ reason: String) {
                 print("[UpdateService] \(reason)")
-                DispatchQueue.main.async { self.hideProgressWindow() }
+                DispatchQueue.main.async {
+                    self.isUpdating = false
+                    self.hideProgressWindow()
+                }
             }
 
             if let error {
@@ -390,6 +524,7 @@ class UpdateService {
 
             DispatchQueue.main.async {
                 self.hideProgressWindow()
+                self.isUpdating = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     NSApplication.shared.terminate(nil)
                 }
