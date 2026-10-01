@@ -238,6 +238,8 @@ struct HistoryContentView: View {
     @State private var isSettingsHovered = false
     @State private var showZoomBadge = false
     @State private var zoomBadgeTimer: Task<Void, Never>? = nil
+    @State private var showShortcutsPopover = false
+    @State private var isShortcutsHovered = false
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>? = nil
@@ -871,7 +873,8 @@ struct HistoryContentView: View {
             onOpenSettings: onOpenSettings,
             onZoomIn: { settings.zoomIn() },
             onZoomOut: { settings.zoomOut() },
-            onZoomReset: { settings.zoomReset() }
+            onZoomReset: { settings.zoomReset() },
+            onToggleShortcuts: { showShortcutsPopover.toggle() }
         ))
     }
     
@@ -1594,132 +1597,12 @@ struct HistoryContentView: View {
     }
     
     private var actionBar: some View {
-        HStack(spacing: 16) {
-            // Navigate buttons - minimal, elegant
-            HStack(spacing: 6) {
-                Button(action: navigateDown) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(NSColor.controlBackgroundColor))
-                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: navigateUp) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(NSColor.controlBackgroundColor))
-                                .shadow(color: Color.black.opacity(0.06), radius: 1, x: 0, y: 1)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
+        HStack(spacing: 12) {
+            navigationControls
             
-            if isEditing {
-                Text("Editing")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.accentColor)
-                
-                Color.primary.opacity(0.1)
-                    .frame(width: 2, height: 14)
-                
-                HStack(spacing: 4) {
-                    Text("Esc")
-                        .font(.system(size: 10))
-                    Text("cancel")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(.secondary.opacity(0.6))
-                
-                HStack(spacing: 4) {
-                    Text("⌘↵ / ⌘E")
-                        .font(.system(size: 10))
-                    Text("save")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(.secondary.opacity(0.6))
-                .padding(.leading, 4)
-            } else {
-                Text("Navigate")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(.secondary.opacity(0.8))
-
-                Color.primary.opacity(0.1)
-                    .frame(width: 2, height: 14)
-
-                HStack(spacing: 4) {
-                    Text("Shift+↑↓")
-                        .font(.system(size: 10))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(3)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
-                    Text("multi-select")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-
-                HStack(spacing: 4) {
-                    Text("⌘P")
-                        .font(.system(size: 10))
-                    Text("pin")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(.secondary.opacity(0.6))
-                .padding(.leading, 8)
-
-                HStack(spacing: 4) {
-                    Text("⌘B")
-                        .font(.system(size: 10))
-                    Text("save")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(.secondary.opacity(0.6))
-                .padding(.leading, 4)
-                
-                if let item = selectedItem, item.isEditable {
-                    HStack(spacing: 4) {
-                        Text("⌘E")
-                            .font(.system(size: 10))
-                        Text("edit")
-                            .font(.system(size: 11))
-                    }
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .padding(.leading, 4)
-                }
-                
-                if selectedItem?.type == .image {
-                    HStack(spacing: 4) {
-                        Text("⌘S")
-                            .font(.system(size: 10))
-                        Text("save")
-                            .font(.system(size: 11))
-                    }
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .padding(.leading, 4)
-                }
-            }
+            shortcutsButton
+            
+            contextIndicator
             
             Spacer()
             
@@ -1736,6 +1619,118 @@ struct HistoryContentView: View {
                     alignment: .top
                 )
         )
+    }
+
+    private var navigationControls: some View {
+        HStack(spacing: 4) {
+            Button(action: navigateDown) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(NSColor.controlBackgroundColor))
+                            .shadow(color: Color.black.opacity(0.04), radius: 1, x: 0, y: 1)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Next item (↓)")
+            
+            Button(action: navigateUp) {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(NSColor.controlBackgroundColor))
+                            .shadow(color: Color.black.opacity(0.04), radius: 1, x: 0, y: 1)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Previous item (↑)")
+        }
+    }
+
+    private var shortcutsButton: some View {
+        Button(action: { showShortcutsPopover.toggle() }) {
+            HStack(spacing: 5) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11, weight: .medium))
+                Text("Shortcuts")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(isShortcutsHovered ? .primary : .secondary.opacity(0.75))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(NSColor.controlBackgroundColor))
+                    .shadow(color: Color.black.opacity(0.04), radius: 1, x: 0, y: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.primary.opacity(isShortcutsHovered ? 0.15 : 0.08), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Keyboard Shortcuts (⌘/)")
+        .onHover { isShortcutsHovered = $0 }
+        .popover(isPresented: $showShortcutsPopover, arrowEdge: .bottom) {
+            ShortcutsCheatSheetView(onOpenSettings: {
+                showShortcutsPopover = false
+                settings.selectedSettingsTab = 1
+                onOpenSettings()
+            })
+        }
+    }
+
+    @ViewBuilder
+    private var contextIndicator: some View {
+        if isEditing {
+            HStack(spacing: 6) {
+                Color.primary.opacity(0.1)
+                    .frame(width: 1, height: 14)
+                
+                Text("Editing")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                
+                HStack(spacing: 3) {
+                    Text("Esc")
+                        .font(.system(size: 10, design: .monospaced))
+                    Text("cancel")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+                
+                HStack(spacing: 3) {
+                    Text("⌘↵")
+                        .font(.system(size: 10, design: .monospaced))
+                    Text("save")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(.secondary.opacity(0.6))
+            }
+        } else if selectionCount > 1 {
+            HStack(spacing: 6) {
+                Color.primary.opacity(0.1)
+                    .frame(width: 1, height: 14)
+                
+                Text("\(selectionCount) items selected")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.8))
+            }
+        }
     }
 
     // MARK: - Tag views
@@ -2142,6 +2137,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
     let onZoomIn: () -> Void
     let onZoomOut: () -> Void
     let onZoomReset: () -> Void
+    let onToggleShortcuts: () -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -2171,6 +2167,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         context.coordinator.onZoomIn = onZoomIn
         context.coordinator.onZoomOut = onZoomOut
         context.coordinator.onZoomReset = onZoomReset
+        context.coordinator.onToggleShortcuts = onToggleShortcuts
         context.coordinator.setupMonitor(for: nsView)
     }
     
@@ -2202,6 +2199,7 @@ struct GlobalKeyMonitor: NSViewRepresentable {
         var onZoomIn: (() -> Void)?
         var onZoomOut: (() -> Void)?
         var onZoomReset: (() -> Void)?
+        var onToggleShortcuts: (() -> Void)?
         
         func setupMonitor(for view: NSView) {
             self.view = view
@@ -2251,6 +2249,13 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                     // KeyCode: 43 (Comma)
                     if event.keyCode == 43 || charsIgnoring == "," || rawChars == "," {
                         self.onOpenSettings?()
+                        return nil
+                    }
+                    
+                    // Shortcuts Cheat Sheet: ⌘/ or ⌘?
+                    // KeyCode: 44 (Slash)
+                    if event.keyCode == 44 || charsIgnoring == "/" || charsIgnoring == "?" || rawChars == "/" || rawChars == "?" {
+                        self.onToggleShortcuts?()
                         return nil
                     }
                 }

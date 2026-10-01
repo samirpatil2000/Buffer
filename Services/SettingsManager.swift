@@ -52,6 +52,7 @@ class SettingsManager: ObservableObject {
     @Published var minTextLength: Int = 1
     @Published var deduplicateHistory: Bool = false
     @Published var contentZoomScale: Double = defaultZoomScale
+    @Published var selectedSettingsTab: Int = 0
     
     private init() {
         // Initialize with defaults first, then load saved values

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Settings view for configuring Buffer preferences
 struct SettingsView: View {
+    @ObservedObject private var settingsManager = SettingsManager.shared
     @StateObject private var settings = SettingsViewModel()
     @State private var isRecording = false
     @State private var recordedKeyCode: UInt16 = 0
@@ -10,19 +11,55 @@ struct SettingsView: View {
     @State private var pendingTier: HistoryLimit?
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             // Header
             HStack {
                 Image(systemName: "keyboard")
-                    .font(.system(size: 24))
+                    .font(.system(size: 22))
                     .foregroundColor(.accentColor)
                 Text("Buffer Settings")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
             }
             
+            // Tab Picker
+            Picker("", selection: $settingsManager.selectedSettingsTab) {
+                Text("General").tag(0)
+                Text("Shortcuts").tag(1)
+            }
+            .pickerStyle(.segmented)
+            
             Divider()
             
+            if settingsManager.selectedSettingsTab == 0 {
+                generalSettingsTab
+            } else {
+                ShortcutsCheatSheetView(isEmbeddedInSettings: true)
+            }
+        }
+        .padding(22)
+        .frame(width: 380)
+        .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reduce & Delete", role: .destructive) {
+                if let tier = pendingTier {
+                    settings.historyLimit = tier
+                    settings.save()
+                }
+            }
+        } message: {
+            Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
+        }
+        .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
+            settings.hotkeyKeyCode = keyCode
+            settings.hotkeyModifiers = modifiers
+            settings.save()
+            isRecording = false
+        })
+    }
+    
+    private var generalSettingsTab: some View {
+        VStack(spacing: 20) {
             // Hotkey section
             VStack(alignment: .leading, spacing: 12) {
                 Text("Keyboard Shortcut")
@@ -252,25 +289,6 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)
         }
-        .padding(24)
-        .frame(width: 380)
-        .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reduce & Delete", role: .destructive) {
-                if let tier = pendingTier {
-                    settings.historyLimit = tier
-                    settings.save()
-                }
-            }
-        } message: {
-            Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
-        }
-        .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
-            settings.hotkeyKeyCode = keyCode
-            settings.hotkeyModifiers = modifiers
-            settings.save()
-            isRecording = false
-        })
     }
     
     private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {

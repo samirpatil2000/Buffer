@@ -28,6 +28,7 @@
 		AAA00017 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00019 /* UpdateService.swift */; };
 		D87736122F8ECC6B00392A0B /* ClickDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87736112F8ECC6B00392A0B /* ClickDetector.swift */; };
 		AAA00020 /* PasteButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00020 /* PasteButton.swift */; };
+		AAA00021 /* ShortcutsCheatSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00021 /* ShortcutsCheatSheetView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +66,7 @@
 		D57AA9E1A5E3E5C6ED5E9CDC /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		D87736112F8ECC6B00392A0B /* ClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickDetector.swift; sourceTree = "<group>"; };
 		BBB00020 /* PasteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteButton.swift; sourceTree = "<group>"; };
+		BBB00021 /* ShortcutsCheatSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsCheatSheetView.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -171,6 +173,7 @@
 				BBB00012 /* StatusBarController.swift */,
 				BBB00016 /* SettingsView.swift */,
 				BBB00020 /* PasteButton.swift */,
+				BBB00021 /* ShortcutsCheatSheetView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -305,6 +308,7 @@
 				AAA00016 /* TagChip.swift in Sources */,
 				AAA00017 /* UpdateService.swift in Sources */,
 				AAA00020 /* PasteButton.swift in Sources */,
+				AAA00021 /* ShortcutsCheatSheetView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
