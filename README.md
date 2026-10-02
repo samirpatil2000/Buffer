@@ -66,49 +66,52 @@
 
 ## 🍺 Install with Homebrew
 
-Buffer is a GUI macOS app, so Homebrew support should be added as a `cask`, not a formula.
+Buffer can be installed as a Homebrew cask directly from this repository:
 
-### For users
-
-If you publish a tap, users can install Buffer with:
+### For Users
 
 ```bash
-brew install --cask samirpatil2000/buffer/buffer
+# 1. Tap the repository
+brew tap samirpatil2000/buffer https://github.com/samirpatil2000/Buffer.git
+
+# 2. Install Buffer
+brew install --cask buffer
 ```
 
-### For maintainers
+To upgrade:
+```bash
+brew upgrade --cask buffer
+```
 
-The easiest setup is:
+To completely uninstall (including preferences and application support files):
+```bash
+brew uninstall --zap buffer
+```
 
-1. Create a tap repo named `homebrew-buffer`
-2. Keep the cask file at `Casks/buffer.rb`
-3. Continue shipping notarized `.dmg` assets from GitHub Releases
+> [!TIP]
+> If a dedicated `samirpatil2000/homebrew-buffer` tap repository is configured in the future, standard one-liner `brew install --cask samirpatil2000/buffer/buffer` will also be supported.
 
-This repo includes a helper script to generate the cask from your release DMGs:
+### For Maintainers
+
+The repository includes an automated script to generate and validate `Casks/buffer.rb`:
 
 ```bash
-./scripts/generate_homebrew_cask.sh 1.6 Buffer_Silicon.dmg Buffer_Intel.dmg
+# Automatically computes SHA256 checksums from local DMGs (or remote release) and audits syntax:
+./scripts/generate_homebrew_cask.sh
 ```
-
-That writes `Casks/buffer.rb` using:
-
-- `https://github.com/samirpatil2000/Buffer/releases/download/buffer-v#{version}/Buffer_Silicon.dmg`
-- `https://github.com/samirpatil2000/Buffer/releases/download/buffer-v#{version}/Buffer_Intel.dmg`
 
 Typical release flow:
-
 ```bash
-# 1. Build and notarize both DMGs
+# 1. Bump version in Info.plist & README.md
+# 2. Compile, sign, and notarize DMGs
 ./build_dmg.sh
 
-# 2. Generate the Homebrew cask with real SHA256 values
-./scripts/generate_homebrew_cask.sh 1.6 Buffer_Silicon.dmg Buffer_Intel.dmg
+# 3. Update Casks/buffer.rb with verified SHA256 hashes
+./scripts/generate_homebrew_cask.sh
 
-# 3. Commit Casks/buffer.rb to your tap repo
-# 4. Push the release assets and the cask update
+# 4. Commit and push release
+git add Info.plist README.md Casks/buffer.rb
 ```
-
-If you want to use this repo itself as the tap, users can still install from the full tap name or URL, but a dedicated `homebrew-buffer` repository is the standard Homebrew layout.
 
 ---
 
