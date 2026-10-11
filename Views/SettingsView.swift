@@ -56,6 +56,7 @@ struct SettingsView: View {
             settings.save()
             isRecording = false
         })
+        .preferredColorScheme(settingsManager.appTheme.colorScheme)
     }
     
     private var generalSettingsTab: some View {
@@ -114,6 +115,26 @@ struct SettingsView: View {
                     presetButton(label: "⌥⌘V", mods: HotkeyModifiers(command: true, option: true), keyCode: 9)
                     presetButton(label: "⌃⇧V", mods: HotkeyModifiers(shift: true, control: true), keyCode: 9)
                     presetButton(label: "⌘B", mods: HotkeyModifiers(command: true), keyCode: 11)
+                }
+            }
+            
+            Divider()
+            
+            // Appearance section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Appearance")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                Picker("", selection: $settings.appTheme) {
+                    ForEach(AppTheme.allCases, id: \.self) { theme in
+                        Text(theme.label).tag(theme)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: settings.appTheme) { _ in
+                    settings.save()
                 }
             }
             
@@ -383,6 +404,7 @@ class SettingsViewModel: ObservableObject {
     @Published var hideStatusBar: Bool
     @Published var minTextLength: Int
     @Published var deduplicateHistory: Bool
+    @Published var appTheme: AppTheme
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -415,6 +437,9 @@ class SettingsViewModel: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = SettingsManager.shared.minTextLength
         self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
+
+        // Load app theme
+        self.appTheme = SettingsManager.shared.appTheme
     }
     
     func save() {
@@ -431,10 +456,13 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.hideStatusBar = hideStatusBar
         SettingsManager.shared.minTextLength = minTextLength
         SettingsManager.shared.deduplicateHistory = deduplicateHistory
+        SettingsManager.shared.appTheme = appTheme
         SettingsManager.shared.save()
+        SettingsManager.shared.applyTheme(appTheme)
 
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
         NotificationCenter.default.post(name: .bufferHistoryLimitChanged, object: nil)
         NotificationCenter.default.post(name: .bufferStatusBarVisibilityChanged, object: nil)
+        NotificationCenter.default.post(name: .bufferThemeChanged, object: nil)
     }
 }

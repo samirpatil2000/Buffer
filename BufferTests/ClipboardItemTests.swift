@@ -351,5 +351,41 @@ class ClipboardItemTests: XCTestCase {
         let emptyResult = SelectionRangeHelper.resolveAnchorIndex(anchorID: items[0].id, fallbackIndex: 0, items: empty)
         XCTAssertNil(emptyResult)
     }
+
+    func testAppThemeCasesAndProperties() {
+        XCTAssertEqual(AppTheme.allCases, [.system, .light, .dark])
+
+        XCTAssertEqual(AppTheme.system.label, "System")
+        XCTAssertNil(AppTheme.system.colorScheme)
+        XCTAssertNil(AppTheme.system.nsAppearance)
+
+        XCTAssertEqual(AppTheme.light.label, "Light")
+        XCTAssertEqual(AppTheme.light.colorScheme, .light)
+        XCTAssertEqual(AppTheme.light.nsAppearance?.name, NSAppearance.Name.aqua)
+
+        XCTAssertEqual(AppTheme.dark.label, "Dark")
+        XCTAssertEqual(AppTheme.dark.colorScheme, .dark)
+        XCTAssertEqual(AppTheme.dark.nsAppearance?.name, NSAppearance.Name.darkAqua)
+    }
+
+    func testAppThemeSettingsPersistenceAndNotification() {
+        let initialTheme = SettingsManager.shared.appTheme
+        let expectation = expectation(forNotification: .bufferThemeChanged, object: nil)
+
+        let viewModel = SettingsViewModel()
+        let targetTheme: AppTheme = (initialTheme == .dark) ? .light : .dark
+        viewModel.appTheme = targetTheme
+        viewModel.save()
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(SettingsManager.shared.appTheme, targetTheme)
+
+        let savedRaw = UserDefaults.standard.string(forKey: "appTheme")
+        XCTAssertEqual(savedRaw, targetTheme.rawValue)
+
+        // Restore initial theme
+        viewModel.appTheme = initialTheme
+        viewModel.save()
+    }
 }
 
