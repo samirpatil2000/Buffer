@@ -56,7 +56,6 @@ struct SettingsView: View {
             settings.save()
             isRecording = false
         })
-        .preferredColorScheme(settingsManager.appTheme.colorScheme)
     }
     
     private var generalSettingsTab: some View {

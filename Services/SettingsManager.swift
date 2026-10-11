@@ -189,6 +189,7 @@ class SettingsManager: ObservableObject {
             NSApp.appearance = targetTheme.nsAppearance
             for window in NSApp.windows {
                 window.appearance = targetTheme.nsAppearance
+                window.contentView?.appearance = targetTheme.nsAppearance
             }
         }
         if Thread.isMainThread {

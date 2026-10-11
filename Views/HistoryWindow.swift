@@ -574,7 +574,6 @@ struct HistoryContentView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(Color(NSColor.windowBackgroundColor))
-        .preferredColorScheme(settings.appTheme.colorScheme)
         .ignoresSafeArea()
         .onChange(of: settings.contentZoomScale) { _ in
             withAnimation(.easeInOut(duration: 0.15)) {

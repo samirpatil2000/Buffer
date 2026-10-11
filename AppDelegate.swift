@@ -65,6 +65,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showSettingsWindow()
         }
 
+        NotificationCenter.default.addObserver(forName: .bufferThemeChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.settingsWindowController?.window?.appearance = SettingsManager.shared.appTheme.nsAppearance
+            self?.settingsWindowController?.window?.contentView?.appearance = SettingsManager.shared.appTheme.nsAppearance
+        }
+
         UpdateService.shared.checkIfJustUpdated()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
