@@ -544,6 +544,42 @@ struct HistoryContentView: View {
         }
     }
     
+    /// Download all selected text items to a folder as individual files
+    private func downloadAllTexts() {
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.title = "Select Folder to Save Text Files"
+        openPanel.prompt = "Select"
+        
+        if let window = NSApplication.shared.windows.first {
+            openPanel.beginSheetModal(for: window) { response in
+                if response == .OK, let folderURL = openPanel.url {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let textItems = self.selectedItems.filter { $0.type == .text }
+                        
+                        for (index, item) in textItems.enumerated() {
+                            if let text = self.store.fullText(for: item) {
+                                let detection = SyntaxDetector.detect(text: text)
+                                let paddedNumber = String(format: "%04d", index + 1)
+                                let fileName = "snippet-\(paddedNumber).\(detection.fileExtension)"
+                                let fileURL = folderURL.appendingPathComponent(fileName)
+                                
+                                do {
+                                    try text.write(to: fileURL, atomically: true, encoding: .utf8)
+                                    print("✅ Saved text snippet to \(fileURL.lastPathComponent)")
+                                } catch {
+                                    print("❌ Error saving text snippet to \(fileURL): \(error)")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Search bar
@@ -920,6 +956,8 @@ struct HistoryContentView: View {
                 guard !isEditing else { return }
                 if selectedItem?.type == .image, let img = previewImage {
                     PasteController.saveImageToDisk(img)
+                } else if selectedItem?.type == .text, let item = selectedItem, let text = store.fullText(for: item) {
+                    PasteController.saveTextToDisk(text)
                 }
             },
             onAddTag: {
@@ -1293,7 +1331,17 @@ struct HistoryContentView: View {
                                     Image(systemName: "arrow.down.to.line")
                                 }
                                 .buttonStyle(.plain)
-                                .help("Save image")
+                                .help("Save image (⌘S)")
+                            } else if selectedItem?.type == .text {
+                                Button(action: {
+                                    if let item = selectedItem, let text = store.fullText(for: item) {
+                                        PasteController.saveTextToDisk(text)
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.down.to.line")
+                                }
+                                .buttonStyle(.plain)
+                                .help("Save text to file (⌘S)")
                             }
                             
                             // OCR button — only for image items without existing OCR text
@@ -1444,6 +1492,19 @@ struct HistoryContentView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.down.to.line")
                         Text("Download All (\(imageCount))")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Divider()
+            } else if imageCount == 0 && textCount > 1 {
+                Button(action: downloadAllTexts) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("Save All as Files (\(textCount))")
                         Spacer()
                     }
                     .frame(maxWidth: .infinity)

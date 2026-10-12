@@ -387,5 +387,64 @@ class ClipboardItemTests: XCTestCase {
         viewModel.appTheme = initialTheme
         viewModel.save()
     }
+    
+    // MARK: - SyntaxDetector Tests
+    
+    func testSyntaxDetectorShebangShell() {
+        let text = "#!/bin/bash\necho 'hello world'"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "sh")
+        XCTAssertEqual(result.contentType, .shellScript)
+    }
+    
+    func testSyntaxDetectorJSON() {
+        let text = "{\n  \"name\": \"Buffer\",\n  \"version\": 1\n}"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "json")
+        XCTAssertEqual(result.contentType, .json)
+    }
+    
+    func testSyntaxDetectorGitAndBuildLog() {
+        let text = """
+        7d52315..b24cfa1 main -> origin/main
+        Updating 7d52315..b24cfa1
+        Fast-forward
+        colab_runner.ipynb | 48 +++++++++++++++++
+        4 files changed, 87 insertions(+), 8 deletions(-)
+        === Setting up Qwen-Image-2.1 Standalone Runner ===
+        cmake version 3.28
+        """
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "log")
+    }
+    
+    func testSyntaxDetectorMarkdown() {
+        let text = "# Release Notes\n\n- Fix issue with paste\n- Add save feature"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "md")
+        XCTAssertEqual(result.suggestedFileName, "Release Notes.md")
+    }
+    
+    func testSyntaxDetectorPython() {
+        let text = "def calculate_total(items):\n    return sum(item.price for item in items)"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "py")
+        XCTAssertEqual(result.contentType, .pythonScript)
+    }
+    
+    func testSyntaxDetectorSwift() {
+        let text = "import SwiftUI\n\nstruct CustomBadge: View {\n    var body: some View { Text(\"Hi\") }\n}"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "swift")
+        XCTAssertEqual(result.contentType, .swiftSource)
+    }
+    
+    func testSyntaxDetectorPlainTextFallback() {
+        let text = "Hello this is a regular clipboard snippet with some random words."
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "txt")
+        XCTAssertEqual(result.contentType, .plainText)
+    }
 }
+
 

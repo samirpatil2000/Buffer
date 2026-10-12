@@ -253,4 +253,35 @@ class PasteController {
             }
         }
     }
+    
+    /// Save a text snippet to disk using NSSavePanel with intelligent syntax detection
+    static func saveTextToDisk(_ text: String, suggestedFileName: String? = nil) {
+        DispatchQueue.main.async {
+            let panel = NSSavePanel()
+            
+            let detection = SyntaxDetector.detect(text: text)
+            var allowedTypes: [UTType] = [detection.contentType]
+            if !allowedTypes.contains(.plainText) {
+                allowedTypes.append(.plainText)
+            }
+            if !allowedTypes.contains(.utf8PlainText) {
+                allowedTypes.append(.utf8PlainText)
+            }
+            panel.allowedContentTypes = allowedTypes
+            panel.allowsOtherFileTypes = true
+            panel.canCreateDirectories = true
+            
+            panel.nameFieldStringValue = suggestedFileName ?? detection.suggestedFileName
+            
+            if panel.runModal() == .OK, let url = panel.url {
+                do {
+                    try text.write(to: url, atomically: true, encoding: .utf8)
+                    print("[Buffer] Saved text snippet to \(url.lastPathComponent)")
+                } catch {
+                    print("[Buffer] Failed to save text to disk: \(error)")
+                }
+            }
+        }
+    }
 }
+

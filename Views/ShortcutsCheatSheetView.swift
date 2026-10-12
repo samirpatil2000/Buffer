@@ -69,7 +69,7 @@ struct ShortcutsCheatSheetView: View {
                 ShortcutEntry(keys: ["⌘", "P"], title: "Pin to top"),
                 ShortcutEntry(keys: ["⌘", "B"], title: "Bookmark item"),
                 ShortcutEntry(keys: ["⌘", "E"], title: "Edit snippet"),
-                ShortcutEntry(keys: ["⌘", "S"], title: "Save image to disk"),
+                ShortcutEntry(keys: ["⌘", "S"], title: "Save item to disk (image/text)"),
                 ShortcutEntry(keys: ["⌘", "⌫"], title: "Delete item (or selected)")
             ]
         ),
