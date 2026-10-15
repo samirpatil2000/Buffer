@@ -1890,12 +1890,14 @@ struct HistoryContentView: View {
                                     .font(.system(size: max(11, previewFontSize - 2)))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             } else {
                                 Text(link.url)
                                     .font(.system(size: max(11, previewFontSize - 2)))
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
