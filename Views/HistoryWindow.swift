@@ -768,8 +768,9 @@ struct HistoryContentView: View {
                     // for link-bearing items (so hyperlinks show as classic blue underlined
                     // clickable links within the text, as in the source).
                     if item.isCombined || item.hasLinks {
+                        let size = previewFontSize
                         let rich = await Task.detached(priority: .userInitiated) {
-                            RichContentRenderer.attributedString(for: item)
+                            RichContentRenderer.attributedString(for: item, fontSize: size)
                         }.value
                         if selectedItem?.id == item.id {
                             if let rich = rich {

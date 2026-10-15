@@ -93,14 +93,14 @@ import SwiftUI
 /// references (inline base64 data: images are fine). RTFD/RTF embed their images and never fetch.
 enum RichContentRenderer {
 
-    static func attributedString(for item: ClipboardItem) -> NSAttributedString? {
+    static func attributedString(for item: ClipboardItem, fontSize: CGFloat) -> NSAttributedString? {
         if let rtfd = item.rtfdData,
            let s = NSAttributedString(rtfd: rtfd, documentAttributes: nil) {
-            return normalizedForDarkablePane(s)
+            return normalizedForDarkablePane(s, fontSize: fontSize)
         }
         if let rtf = item.rtfData,
            let s = NSAttributedString(rtf: rtf, documentAttributes: nil) {
-            return normalizedForDarkablePane(s)
+            return normalizedForDarkablePane(s, fontSize: fontSize)
         }
         if let html = item.htmlData, !htmlReferencesRemoteImages(html) {
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
@@ -108,7 +108,7 @@ enum RichContentRenderer {
                 .characterEncoding: String.Encoding.utf8.rawValue
             ]
             if let s = try? NSAttributedString(data: html, options: options, documentAttributes: nil) {
-                return normalizedForDarkablePane(s)
+                return normalizedForDarkablePane(s, fontSize: fontSize)
             }
         }
         return nil
@@ -119,7 +119,7 @@ enum RichContentRenderer {
     ///   which reads as a highlight on the preview's dark pane).
     /// - Replace explicit foreground colors with the control's label color so text stays readable
     ///   in both light and dark appearance. Images (text attachments) are left untouched.
-    private static func normalizedForDarkablePane(_ input: NSAttributedString) -> NSAttributedString {
+    private static func normalizedForDarkablePane(_ input: NSAttributedString, fontSize: CGFloat) -> NSAttributedString {
         let output = NSMutableAttributedString(attributedString: input)
         let full = NSRange(location: 0, length: output.length)
         output.removeAttribute(.backgroundColor, range: full)
@@ -128,6 +128,14 @@ enum RichContentRenderer {
         // which would otherwise render black (invisible on the dark pane). Attachment runs (images)
         // ignore foreground color, so this is safe to apply across the full range.
         output.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
+        // Match the plain-text preview: use the same monospaced system font and size on every
+        // text run. Image attachment runs are left untouched so inline pictures keep their size.
+        let monoFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        output.enumerateAttribute(.attachment, in: full) { value, range, _ in
+            if value == nil {
+                output.addAttribute(.font, value: monoFont, range: range)
+            }
+        }
         // Style hyperlinks as classic blue + underline so they stand out within the text, the way
         // they appear in the source. Applied AFTER the label-color pass so links are not flattened.
         output.enumerateAttribute(.link, in: full) { value, range, _ in
