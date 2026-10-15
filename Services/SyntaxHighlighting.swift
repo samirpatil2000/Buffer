@@ -107,28 +107,93 @@ enum RichContentRenderer {
             return normalizedForDarkablePane(s, fontSize: fontSize)
         }
         if let htmlData = item.htmlData {
-            // If the HTML has remote images, rewrite each to its mapped local file (dropping any
-            // that are unmapped) so nothing is fetched over the network. If there are remote imgs
-            // but no map at all, fall back rather than show broken images.
-            let resolvedHTML: Data?
             if htmlReferencesRemoteImages(htmlData) {
-                resolvedHTML = remoteToLocalURL.isEmpty
-                    ? nil
-                    : rewriteRemoteImagesByMap(htmlData, remoteToLocalURL: remoteToLocalURL)
-            } else {
-                resolvedHTML = htmlData
+                // Remote-image article. AppKit's HTML importer cannot load local file images
+                // through <img src> (it substitutes a 16x16 placeholder), so instead each mapped
+                // remote <img> is replaced with a unique text marker, the HTML is parsed without
+                // images, and real image attachments (built from the PNG bytes) are spliced in at
+                // the marker positions. Unmapped remote imgs are dropped. If nothing can be mapped,
+                // return nil so the caller falls back to stacked images below the text.
+                guard !remoteToLocalURL.isEmpty else { return nil }
+                return renderHTMLWithSplicedImages(htmlData, remoteToLocalURL: remoteToLocalURL, fontSize: fontSize)
             }
-            if let html = resolvedHTML {
-                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ]
-                if let s = try? NSAttributedString(data: html, options: options, documentAttributes: nil) {
-                    return normalizedForDarkablePane(s, fontSize: fontSize)
-                }
+            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ]
+            if let s = try? NSAttributedString(data: htmlData, options: options, documentAttributes: nil) {
+                return normalizedForDarkablePane(s, fontSize: fontSize)
             }
         }
         return nil
+    }
+
+    /// Marker base used to locate where each image belongs after HTML parsing. Private-use
+    /// scalar + index keeps it unique and extremely unlikely to collide with real content.
+    private static let imageMarkerPrefix = "\u{E000}BUFIMG"
+    private static let imageMarkerSuffix = "\u{E001}"
+
+    /// Replace mapped remote <img> tags with unique markers, parse the HTML (no images loaded),
+    /// then splice real NSTextAttachment images (from local PNG bytes) at each marker position.
+    private static func renderHTMLWithSplicedImages(_ htmlData: Data, remoteToLocalURL: [String: URL], fontSize: CGFloat) -> NSAttributedString? {
+        var html = String(decoding: htmlData, as: UTF8.self)
+        guard let regex = try? NSRegularExpression(
+            pattern: "<img\\b[^>]*?\\bsrc\\s*=\\s*[\"']([^\"']+)[\"'][^>]*>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else { return nil }
+
+        // Assign a marker per mapped remote img, in document order; drop unmapped remote imgs.
+        let ns = html as NSString
+        let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
+        var markerURLs: [URL] = []
+        var replacements: [(range: NSRange, text: String)] = []
+        for m in matches {
+            let src = ns.substring(with: m.range(at: 1))
+            let lower = src.lowercased()
+            guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { continue }
+            if let localURL = remoteToLocalURL[src] {
+                let marker = "\(imageMarkerPrefix)\(markerURLs.count)\(imageMarkerSuffix)"
+                replacements.append((m.range, marker))
+                markerURLs.append(localURL)
+            } else {
+                replacements.append((m.range, ""))   // unmapped remote img: remove
+            }
+        }
+        guard !markerURLs.isEmpty else { return nil }
+
+        let mutableHTML = NSMutableString(string: html)
+        for r in replacements.reversed() { mutableHTML.replaceCharacters(in: r.range, with: r.text) }
+        html = mutableHTML as String
+
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        guard let parsed = try? NSAttributedString(data: Data(html.utf8), options: options, documentAttributes: nil) else {
+            return nil
+        }
+        let output = NSMutableAttributedString(attributedString: parsed)
+
+        // Splice a real image attachment at each marker (search from the end so ranges stay valid).
+        let maxImageWidth: CGFloat = 480
+        for index in stride(from: markerURLs.count - 1, through: 0, by: -1) {
+            let marker = "\(imageMarkerPrefix)\(index)\(imageMarkerSuffix)"
+            let found = (output.string as NSString).range(of: marker)
+            guard found.location != NSNotFound else { continue }
+            guard let data = try? Data(contentsOf: markerURLs[index]),
+                  let img = NSImage(data: data), img.size.width > 1, img.size.height > 1 else {
+                output.replaceCharacters(in: found, with: "")   // image gone: drop the marker
+                continue
+            }
+            let attachment = NSTextAttachment()
+            attachment.image = img
+            var w = img.size.width, h = img.size.height
+            if w > maxImageWidth { let s = maxImageWidth / w; w = maxImageWidth; h = (h * s).rounded() }
+            attachment.bounds = NSRect(x: 0, y: 0, width: w, height: h)
+            output.replaceCharacters(in: found, with: NSAttributedString(attachment: attachment))
+        }
+
+        return normalizedForDarkablePane(output, fontSize: fontSize)
     }
 
     /// Strip source-document colors so the content sits cleanly on Buffer's own pane:
@@ -160,16 +225,18 @@ enum RichContentRenderer {
             output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
             output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         }
-        // Give image attachments a real display size. NSAttributedString(html:) loads the image
-        // but leaves bounds at zero, so inline images would be invisible. Size each to its image's
-        // natural dimensions, scaled down to fit a sensible preview width.
+        // Ensure every image attachment has a real, sized image. Spliced attachments (from the
+        // remote-article path) already carry a correctly-sized image and are left as-is. Any
+        // attachment that still has zero bounds (e.g. an RTFD/RTF-embedded image) is reloaded
+        // from its file bytes and sized to fit the preview width.
         let maxImageWidth: CGFloat = 480
-        output.enumerateAttribute(.attachment, in: full) { value, range, _ in
+        output.enumerateAttribute(.attachment, in: full) { value, _, _ in
             guard let attachment = value as? NSTextAttachment else { return }
-            let image = attachment.image
-                ?? attachment.fileWrapper?.regularFileContents.flatMap { NSImage(data: $0) }
-            guard let img = image, img.size.width > 0, img.size.height > 0 else { return }
-            if attachment.image == nil { attachment.image = img }
+            if attachment.bounds.width > 1 && attachment.bounds.height > 1 { return }  // already sized
+            let realImage: NSImage? = attachment.fileWrapper?.regularFileContents.flatMap { NSImage(data: $0) }
+                ?? attachment.image
+            guard let img = realImage, img.size.width > 1, img.size.height > 1 else { return }
+            attachment.image = img
             var w = img.size.width
             var h = img.size.height
             if w > maxImageWidth {
@@ -178,42 +245,8 @@ enum RichContentRenderer {
                 h = (h * scale).rounded()
             }
             attachment.bounds = NSRect(x: 0, y: 0, width: w, height: h)
-            _ = range
         }
         return output
-    }
-
-    /// Replace each remote (http/https) <img ...> in the HTML by exact-src lookup in
-    /// `remoteToLocalURL`. A mapped img gets its src rewritten to the local file URL; an unmapped
-    /// remote img is removed entirely (so it never fetches and never shows a broken icon).
-    /// Non-remote srcs (data:, already-local) are left untouched.
-    private static func rewriteRemoteImagesByMap(_ html: Data, remoteToLocalURL: [String: URL]) -> Data? {
-        let text = String(decoding: html, as: UTF8.self)
-        guard let regex = try? NSRegularExpression(
-            pattern: "<img\\b[^>]*?\\bsrc\\s*=\\s*[\"']([^\"']+)[\"'][^>]*>",
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
-        ) else { return nil }
-
-        let ns = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        var assignments: [(range: NSRange, replacement: String)] = []
-        for m in matches {
-            let src = ns.substring(with: m.range(at: 1))
-            let lower = src.lowercased()
-            guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { continue }
-            if let localURL = remoteToLocalURL[src] {
-                // Replace the whole <img> tag with a clean one pointing at the local file.
-                assignments.append((m.range, "<img src=\"\(localURL.absoluteString)\">"))
-            } else {
-                // Unmapped remote image: remove the tag so nothing is fetched or shown broken.
-                assignments.append((m.range, ""))
-            }
-        }
-        let mutable = NSMutableString(string: text)
-        for a in assignments.reversed() {
-            mutable.replaceCharacters(in: a.range, with: a.replacement)
-        }
-        return (mutable as String).data(using: .utf8)
     }
 
     /// True if the HTML contains an <img> whose src is a remote http(s) URL (would trigger a
