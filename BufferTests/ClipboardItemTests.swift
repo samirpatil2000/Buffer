@@ -651,4 +651,62 @@ class ClipboardItemTests: XCTestCase {
         let html = "<img src=\"data:image/png;base64,iVBORw0KGgo=\">"
         XCTAssertTrue(ClipboardWatcher.remoteImageURLs(fromHTML: html).isEmpty)
     }
+
+    // MARK: - Hyperlink extraction
+
+    func testLinkExtractionFromHTML() {
+        let html = """
+        <p>See <a href="https://example.com/a">Ticket A</a> and
+        <a href='http://example.com/b'>Ticket B</a> or email
+        <a href="mailto:x@example.com">us</a>.</p>
+        <a href="#frag">skip</a>
+        <a href="/relative">skip</a>
+        <a href="javascript:void(0)">skip</a>
+        """
+        let links = ClipboardWatcher.extractLinks(fromHTML: html)
+        XCTAssertEqual(links, [
+            WebLink(text: "Ticket A", url: "https://example.com/a"),
+            WebLink(text: "Ticket B", url: "http://example.com/b"),
+            WebLink(text: "us", url: "mailto:x@example.com"),
+        ])
+    }
+
+    func testLinkExtractionStripsInnerTagsAndDeDupes() {
+        let html = """
+        <a href="https://example.com"><b>Bold</b> label</a>
+        <a href="https://example.com"><b>Bold</b> label</a>
+        """
+        let links = ClipboardWatcher.extractLinks(fromHTML: html)
+        XCTAssertEqual(links, [WebLink(text: "Bold label", url: "https://example.com")])
+    }
+
+    func testLinkExtractionEmptyWhenNoAnchors() {
+        XCTAssertTrue(ClipboardWatcher.extractLinks(fromHTML: "<p>no links here</p>").isEmpty)
+    }
+
+    func testLinksMatchSearch() {
+        let item = ClipboardItem(type: .text, textContent: "see ticket",
+                                 links: [WebLink(text: "FIQS-1909", url: "https://jira/browse/FIQS-1909")])
+        XCTAssertTrue(ClipboardItem.matches(item: item, query: "FIQS-1909"))  // anchor text
+        XCTAssertTrue(ClipboardItem.matches(item: item, query: "jira"))       // url
+        XCTAssertFalse(ClipboardItem.matches(item: item, query: "nope"))
+    }
+
+    func testLinksRoundTripCodable() throws {
+        let item = ClipboardItem(type: .text, textContent: "x",
+                                 links: [WebLink(text: "A", url: "https://a.com")])
+        let data = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: data)
+        XCTAssertEqual(decoded.links, [WebLink(text: "A", url: "https://a.com")])
+    }
+
+    func testOldPayloadWithoutLinksDecodesToEmpty() throws {
+        let json = """
+        { "id": "\(UUID().uuidString)", "type": "text", "timestamp": 760000000,
+          "textContent": "hi", "isPinned": false, "isBookmarked": false,
+          "tags": [], "isTruncated": false }
+        """
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
+        XCTAssertTrue(decoded.links.isEmpty)
+    }
 }

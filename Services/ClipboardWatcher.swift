@@ -26,6 +26,9 @@ class ClipboardWatcher: ObservableObject {
     private let maxAttributedParseBytes = 10_000_000 // refuse to materialise a document larger than this
     private let maxAttachmentBytes = 5_000_000       // per attachment, measured on the PNG we would write
 
+    // Cap how many hyperlinks a single copied item may store, so a large page cannot bloat it.
+    private static let maxCapturedLinks = 50
+
     // Opt-in remote-image download budgets (only used when downloadRemoteImages is enabled).
     private let maxRemoteImageDownloads = 8          // cap how many URLs we fetch per copy
     private let remoteImageTimeout: TimeInterval = 5 // per-request timeout; copy must not hang
@@ -128,6 +131,11 @@ class ClipboardWatcher: ObservableObject {
             let rtfdFlavour = SettingsManager.shared.preserveRichText ? pasteboard.data(forType: .rtfd) : nil
             let rtfFlavour = SettingsManager.shared.preserveRichText ? pasteboard.data(forType: .rtf) : nil
 
+            // Capture hyperlinks (read on the main thread while the pasteboard is current).
+            // Cheap synchronous string parsing, so it is computed once here and threaded into
+            // whichever build path runs.
+            let links = Self.captureLinks(from: pasteboard, rich: rich, plainText: text)
+
             // The async attachment path runs when there is a styled flavour to parse for embedded
             // images, OR when HTML is present and could yield images: inline base64 data: images
             // (always) or remote http(s) images (only if the user opted in). Browser copies have
@@ -138,7 +146,7 @@ class ClipboardWatcher: ObservableObject {
                 let hash = hashSource.hashValue
                 if hash != lastContentHash {
                     lastContentHash = hash
-                    if let item = buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd) {
+                    if let item = buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, links: links) {
                         store.add(item)
                     }
                 }
@@ -175,7 +183,7 @@ class ClipboardWatcher: ObservableObject {
                 let filenames = attachments.compactMap { self.store.saveImage($0) }
 
                 // 4. Build. On failure, roll back the files we just wrote.
-                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames) else {
+                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames, links: links) else {
                     self.removeImageFiles(filenames)
                     return
                 }
@@ -233,11 +241,13 @@ class ClipboardWatcher: ObservableObject {
     /// large-text file could not be written (matching today's behaviour of skipping the capture).
     private func buildTextItem(text: String, sourceApp: String?,
                                 rtf: Data?, html: Data?, rtfd: Data? = nil,
-                                imageFilenames: [String] = []) -> ClipboardItem? {
+                                imageFilenames: [String] = [],
+                                links: [WebLink] = []) -> ClipboardItem? {
         let textSize = text.utf8.count
         if textSize <= inlineTextLimit {
             var item = ClipboardItem.text(text, sourceApp: sourceApp, rtfData: rtf, htmlData: html, rtfdData: rtfd)
             item.imageFilenames = imageFilenames
+            item.links = links
             return item
         }
         guard let filename = store.saveText(text) else { return nil }
@@ -246,7 +256,35 @@ class ClipboardWatcher: ObservableObject {
                                             filename: filename, sourceApp: sourceApp,
                                             rtfData: rtf, htmlData: html, rtfdData: rtfd)
         item.imageFilenames = imageFilenames
+        item.links = links
         return item
+    }
+
+    /// Collect hyperlinks from the current copy: every <a href> in the HTML flavour, plus the
+    /// single-URL pasteboard flavour (public.url) when the whole copy is one link that HTML did
+    /// not already surface. Bounded to a sane maximum so a huge page cannot bloat an item.
+    private static func captureLinks(from pasteboard: NSPasteboard,
+                                     rich: (rtf: Data?, html: Data?, rtfd: Data?),
+                                     plainText: String) -> [WebLink] {
+        var links: [WebLink] = []
+
+        if let htmlData = rich.html {
+            let html = String(decoding: htmlData, as: UTF8.self)
+            links = extractLinks(fromHTML: html)
+        }
+
+        // Single-URL flavour: present when you copy one link (e.g. a URL field or a "copy link"
+        // action). Add it if the HTML did not already capture that URL.
+        if let urlString = pasteboard.string(forType: NSPasteboard.PasteboardType("public.url"))?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !urlString.isEmpty,
+           !links.contains(where: { $0.url == urlString }) {
+            // Use the plain text as the anchor label when it is short enough to be a caption.
+            let label = plainText.count <= 200 ? plainText : urlString
+            links.append(WebLink(text: label, url: urlString))
+        }
+
+        return Array(links.prefix(maxCapturedLinks))
     }
 
     /// Extract image attachments from an attributed pasteboard flavour. Never performs network I/O.
@@ -318,6 +356,50 @@ class ClipboardWatcher: ObservableObject {
             print("[Buffer] Extracted \(out.count) inline data: image(s) from copied HTML")
         }
         return out
+    }
+
+    /// Extract hyperlinks (<a href="...">visible text</a>) from copied HTML. Pure string
+    /// parsing, no network. Returns anchor text + URL pairs in document order, de-duplicated by
+    /// (text, url). Only http(s) and mailto URLs are kept; fragment/relative/javascript anchors
+    /// are skipped. Exposed for unit testing.
+    static func extractLinks(fromHTML html: String) -> [WebLink] {
+        guard let regex = try? NSRegularExpression(
+            pattern: "<a\\b[^>]*?\\bhref\\s*=\\s*[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else { return [] }
+
+        let range = NSRange(html.startIndex..., in: html)
+        var links: [WebLink] = []
+        var seen = Set<String>()
+        regex.enumerateMatches(in: html, range: range) { match, _, _ in
+            guard let match = match, match.numberOfRanges >= 3,
+                  let hrefRange = Range(match.range(at: 1), in: html),
+                  let textRange = Range(match.range(at: 2), in: html) else { return }
+            let url = String(html[hrefRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Keep only real, followable links.
+            let lower = url.lowercased()
+            guard lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("mailto:") else { return }
+            // Strip inner HTML tags from the anchor text and decode a few common entities.
+            let text = Self.strippedPlainText(String(html[textRange]))
+            let key = text + "\u{1}" + url
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
+            links.append(WebLink(text: text, url: url))
+        }
+        return links
+    }
+
+    /// Remove HTML tags and decode a minimal set of entities from an anchor's inner text.
+    private static func strippedPlainText(_ html: String) -> String {
+        let noTags = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        return noTags
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extract absolute http(s) image URLs from copied HTML. Pure string parsing, no network.

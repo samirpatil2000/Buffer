@@ -1560,6 +1560,7 @@ struct HistoryContentView: View {
                     }
                 }
                 ocrSection(item)
+                linksSection(item)
             }
         case .image:
             VStack(spacing: 12) {
@@ -1825,6 +1826,63 @@ struct HistoryContentView: View {
         }
     }
     
+    /// Links captured from the copied content, shown as a labelled, clickable list below the
+    /// preview. Each row opens in the browser and offers a copy-URL action.
+    @ViewBuilder
+    private func linksSection(_ item: ClipboardItem) -> some View {
+        if item.hasLinks {
+            VStack(alignment: .leading, spacing: 6) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.15))
+                    .frame(height: 0.5)
+                    .padding(.top, 4)
+
+                Text(item.links.count == 1 ? "Link" : "\(item.links.count) Links")
+                    .font(.system(size: 10, weight: .medium).smallCaps())
+                    .foregroundColor(.secondary.opacity(0.7))
+
+                ForEach(Array(item.links.enumerated()), id: \.offset) { _, link in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            if !link.text.isEmpty && link.text != link.url {
+                                Text(link.text)
+                                    .font(.system(size: previewFontSize))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+                            }
+                            if let url = URL(string: link.url) {
+                                Link(link.url, destination: url)
+                                    .font(.system(size: max(11, previewFontSize - 2)))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            } else {
+                                Text(link.url)
+                                    .font(.system(size: max(11, previewFontSize - 2)))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button(action: {
+                            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(link.url, forType: .string)
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy link URL")
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func textContent(_ item: ClipboardItem) -> some View {
         LazyVStack(spacing: 8, pinnedViews: []) {

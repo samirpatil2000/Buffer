@@ -51,7 +51,12 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // nil means auto-detect; "" (empty) means the user forced Plain Text (no highlighting).
     var language: String?
 
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil) {
+    // Hyperlinks extracted from the copied content's HTML/RTF (every <a href>), in document
+    // order. Empty for plain copies with no links. Captured so a copied hyperlink is not
+    // reduced to its visible text.
+    var links: [WebLink] = []
+
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = []) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -70,12 +75,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.rtfdData = rtfdData
         self.imageFilenames = imageFilenames
         self.language = language
+        self.links = links
     }
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
         case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
-        case rtfData, htmlData, rtfdData, imageFilenames, language
+        case rtfData, htmlData, rtfdData, imageFilenames, language, links
     }
 
     init(from decoder: Decoder) throws {
@@ -98,6 +104,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.rtfdData = try container.decodeIfPresent(Data.self, forKey: .rtfdData)
         self.imageFilenames = try container.decodeIfPresent([String].self, forKey: .imageFilenames) ?? []
         self.language = try container.decodeIfPresent(String.self, forKey: .language)
+        self.links = try container.decodeIfPresent([WebLink].self, forKey: .links) ?? []
     }
     
     func encode(to encoder: Encoder) throws {
@@ -120,6 +127,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(rtfdData, forKey: .rtfdData)
         if !imageFilenames.isEmpty { try container.encode(imageFilenames, forKey: .imageFilenames) }
         try container.encodeIfPresent(language, forKey: .language)
+        if !links.isEmpty { try container.encode(links, forKey: .links) }
     }
     
     /// Create a text clipboard item
@@ -236,8 +244,19 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         if let ocrText = item.ocrText, !ocrText.isEmpty, ocrText.localizedCaseInsensitiveContains(query) {
             return true
         }
+        // Match on captured hyperlinks, by both the visible anchor text and the URL itself,
+        // so an item is findable by a word in the link or by part of the address.
+        for link in item.links {
+            if link.text.localizedCaseInsensitiveContains(query)
+                || link.url.localizedCaseInsensitiveContains(query) {
+                return true
+            }
+        }
         return false
     }
+
+    /// Whether this item carries any captured hyperlinks.
+    var hasLinks: Bool { !links.isEmpty }
 
     /// Content hash for duplicate detection
     var contentHash: Int {
@@ -255,4 +274,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
 enum ClipboardItemType: String, Codable {
     case text
     case image
+}
+
+/// A hyperlink extracted from copied rich content: the visible anchor text and its URL.
+struct WebLink: Codable, Equatable {
+    let text: String
+    let url: String
 }
