@@ -1885,24 +1885,21 @@ struct HistoryContentView: View {
                                     .foregroundColor(.primary)
                                     .lineLimit(2)
                             }
-                            if let url = URL(string: link.url) {
-                                Link(link.url, destination: url)
-                                    .font(.system(size: max(11, previewFontSize - 2)))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            } else {
-                                Text(link.url)
-                                    .font(.system(size: max(11, previewFontSize - 2)))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            // Single-line, middle-truncated, left-aligned URL. Rendered as a
+                            // styled Text with a tap gesture rather than SwiftUI `Link`, because
+                            // `Link` ignores lineLimit/alignment and centers wrapped lines.
+                            Text(link.url)
+                                .font(.system(size: max(11, previewFontSize - 2)))
+                                .foregroundColor(URL(string: link.url) != nil ? .accentColor : .secondary)
+                                .underline(URL(string: link.url) != nil)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
+                                }
+                                .help(link.url)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 

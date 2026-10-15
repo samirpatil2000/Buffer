@@ -401,7 +401,7 @@ class ClipboardWatcher: ObservableObject {
             guard let match = match, match.numberOfRanges >= 3,
                   let hrefRange = Range(match.range(at: 1), in: html),
                   let textRange = Range(match.range(at: 2), in: html) else { return }
-            let url = String(html[hrefRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let url = decodeEntities(String(html[hrefRange]).trimmingCharacters(in: .whitespacesAndNewlines))
             // Keep only real, followable links.
             let lower = url.lowercased()
             guard lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("mailto:") else { return }
@@ -418,14 +418,18 @@ class ClipboardWatcher: ObservableObject {
     /// Remove HTML tags and decode a minimal set of entities from an anchor's inner text.
     private static func strippedPlainText(_ html: String) -> String {
         let noTags = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        return noTags
-            .replacingOccurrences(of: "&amp;", with: "&")
+        return decodeEntities(noTags).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Decode the common HTML entities that appear in hrefs and anchor text. Crucially decodes
+    /// `&amp;` back to `&` so captured URLs are valid and clickable (and not artificially long).
+    private static func decodeEntities(_ s: String) -> String {
+        s.replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&quot;", with: "\"")
             .replacingOccurrences(of: "&#39;", with: "'")
             .replacingOccurrences(of: "&nbsp;", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extract absolute http(s) image URLs from copied HTML. Pure string parsing, no network.
