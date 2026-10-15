@@ -129,6 +129,14 @@ enum RichContentRenderer {
                 output.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
             }
         }
+        // Style hyperlinks as classic blue + underline so they stand out within the text, the way
+        // they appear in the source. Applied AFTER the foreground normalization above so link
+        // runs are not flattened to the label color.
+        output.enumerateAttribute(.link, in: full) { value, range, _ in
+            guard value != nil else { return }
+            output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+            output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        }
         return output
     }
 
@@ -185,6 +193,13 @@ struct HighlightedTextView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [NSView.AutoresizingMask.width]
+        // Make embedded links clickable and styled as classic blue underlined links.
+        textView.isAutomaticLinkDetectionEnabled = false   // use only the links present in the markup
+        textView.linkTextAttributes = [
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .cursor: NSCursor.pointingHand
+        ]
         // Hug content vertically so SwiftUI gives it exactly the height the text needs.
         textView.setContentHuggingPriority(.required, for: .vertical)
         textView.setContentCompressionResistancePriority(.required, for: .vertical)

@@ -764,16 +764,17 @@ struct HistoryContentView: View {
                         chunkedText.reachedEOF = true
                         await loadHighlight(for: item)
                     }
-                    if item.isCombined {
-                        // Prefer faithful inline rendering from the stored rich payload; fall back
-                        // to stacked images below the text if it can't be reconstructed.
+                    // Render from the stored rich payload for combined items (inline images) and
+                    // for link-bearing items (so hyperlinks show as classic blue underlined
+                    // clickable links within the text, as in the source).
+                    if item.isCombined || item.hasLinks {
                         let rich = await Task.detached(priority: .userInitiated) {
                             RichContentRenderer.attributedString(for: item)
                         }.value
                         if selectedItem?.id == item.id {
                             if let rich = rich {
                                 richContentPreview = rich
-                            } else {
+                            } else if item.isCombined {
                                 attachedPreviewImages = await loadImages(item.imageFilenames)
                             }
                         }
@@ -1545,9 +1546,10 @@ struct HistoryContentView: View {
         switch item.type {
         case .text:
             VStack(alignment: .leading, spacing: 12) {
-                if item.isCombined, let rich = richContentPreview {
-                    // Render the stored rich payload so images appear inline in their original
-                    // position, with formatting. This is the faithful representation.
+                if let rich = richContentPreview {
+                    // Render the stored rich payload so formatting is faithful: combined items
+                    // show images inline in position, and hyperlinks render as classic blue
+                    // underlined clickable links within the text, as in the source.
                     HighlightedTextView(attributedText: rich, searchQuery: activeSearchQuery)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 } else {
