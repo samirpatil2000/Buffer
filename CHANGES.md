@@ -117,6 +117,16 @@ upstream v3.0.0+. This document describes everything in the
 - Images that could not be downloaded are omitted from the preview rather than
   shown as broken icons.
 
+## 10. Filter by type
+
+- A chip row under the search bar filters history by content category:
+  **All / Text / Image / Link / Code**.
+- The same filter is available as a search token (`type:image`, `type:link`,
+  `type:code`, `type:text`); a token takes precedence and the chips reflect it.
+- Combined text+image items match both the Text and Image filters. Code is
+  detected heuristically from the item's content.
+- The filter resets to All each time the window opens.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of
