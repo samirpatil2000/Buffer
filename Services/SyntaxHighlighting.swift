@@ -123,15 +123,13 @@ enum RichContentRenderer {
         let output = NSMutableAttributedString(attributedString: input)
         let full = NSRange(location: 0, length: output.length)
         output.removeAttribute(.backgroundColor, range: full)
-        output.enumerateAttribute(.foregroundColor, in: full) { value, range, _ in
-            // Only recolor runs that actually carry a foreground color; leave attachment runs alone.
-            if value != nil {
-                output.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
-            }
-        }
+        // Force the whole string to the control's label color so text is readable on the pane in
+        // both light and dark appearance. Source HTML often leaves text with no explicit color,
+        // which would otherwise render black (invisible on the dark pane). Attachment runs (images)
+        // ignore foreground color, so this is safe to apply across the full range.
+        output.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
         // Style hyperlinks as classic blue + underline so they stand out within the text, the way
-        // they appear in the source. Applied AFTER the foreground normalization above so link
-        // runs are not flattened to the label color.
+        // they appear in the source. Applied AFTER the label-color pass so links are not flattened.
         output.enumerateAttribute(.link, in: full) { value, range, _ in
             guard value != nil else { return }
             output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
