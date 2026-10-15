@@ -15,6 +15,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide dock icon - we're menu bar only
         NSApp.setActivationPolicy(.accessory)
         
+        // Apply saved theme preference
+        SettingsManager.shared.applyTheme()
+        
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: "hasLaunchedBefore") {
             // Give it a tiny delay to ensure everything is loaded before registering SMAppService
@@ -62,6 +65,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showSettingsWindow()
         }
 
+        NotificationCenter.default.addObserver(forName: .bufferThemeChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.settingsWindowController?.window?.appearance = SettingsManager.shared.appTheme.nsAppearance
+            self?.settingsWindowController?.window?.contentView?.appearance = SettingsManager.shared.appTheme.nsAppearance
+        }
+
         UpdateService.shared.checkIfJustUpdated()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -105,6 +113,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hostingController = NSHostingController(rootView: SettingsView())
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Settings"
+        window.appearance = SettingsManager.shared.appTheme.nsAppearance
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.center()

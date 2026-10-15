@@ -105,6 +105,16 @@ class HistoryWindowController: NSWindowController {
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         
+        panel.appearance = SettingsManager.shared.appTheme.nsAppearance
+        
+        NotificationCenter.default.addObserver(
+            forName: .bufferThemeChanged,
+            object: nil,
+            queue: .main
+        ) { [weak panel] _ in
+            panel?.appearance = SettingsManager.shared.appTheme.nsAppearance
+        }
+
         // Notify content view when window becomes key so it can reset state
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
@@ -212,6 +222,44 @@ extension Notification.Name {
     static let bufferUpdateAvailable = Notification.Name("bufferUpdateAvailable")
     static let bufferOpenHistoryWindow = Notification.Name("bufferOpenHistoryWindow")
     static let bufferOpenSettingsWindow = Notification.Name("bufferOpenSettingsWindow")
+    static let bufferThemeChanged = Notification.Name("bufferThemeChanged")
+}
+
+/// Pure helper for contiguous selection range calculations
+enum SelectionRangeHelper {
+    /// Computes the contiguous index range between an anchor and target index.
+    static func indexRange(anchor: Int, target: Int) -> ClosedRange<Int> {
+        min(anchor, target)...max(anchor, target)
+    }
+
+    /// Resolves the effective anchor index and ID. If anchorID is provided and found, returns its index.
+    /// Otherwise falls back to fallbackIndex.
+    static func resolveAnchorIndex<T: Identifiable>(
+        anchorID: T.ID?,
+        fallbackIndex: Int,
+        items: [T]
+    ) -> (index: Int, id: T.ID)? {
+        guard !items.isEmpty else { return nil }
+        if let anchorID = anchorID,
+           let found = items.firstIndex(where: { $0.id == anchorID }) {
+            return (found, anchorID)
+        }
+        let clamped = max(0, min(fallbackIndex, items.count - 1))
+        return (clamped, items[clamped].id)
+    }
+
+    /// Computes the contiguous range of selected item IDs between anchorIndex and targetIndex.
+    static func rangeSelectedIDs<T: Identifiable>(
+        anchorIndex: Int,
+        targetIndex: Int,
+        items: [T]
+    ) -> Set<T.ID> {
+        guard !items.isEmpty else { return [] }
+        guard anchorIndex >= 0, anchorIndex < items.count,
+              targetIndex >= 0, targetIndex < items.count else { return [] }
+        let range = indexRange(anchor: anchorIndex, target: targetIndex)
+        return Set(items[range].map { $0.id })
+    }
 }
 
 /// Main content view - Split pane with list and detail
@@ -366,64 +414,67 @@ struct HistoryContentView: View {
         }
     }
     
+    /// Extend selection from anchor to target index (used by keyboard range navigation and mouse Shift+click)
+    private func extendSelection(to targetIndex: Int) {
+        guard !filteredItems.isEmpty else { return }
+        guard targetIndex >= 0, targetIndex < filteredItems.count else { return }
+        guard selectedIndex >= 0, selectedIndex < filteredItems.count else { return }
+        
+        let anchorIndex: Int
+        if let anchorID = selectionAnchor,
+           let foundIndex = filteredItems.firstIndex(where: { $0.id == anchorID }) {
+            anchorIndex = foundIndex
+        } else {
+            anchorIndex = selectedIndex
+            selectionAnchor = filteredItems[selectedIndex].id
+        }
+        
+        let range = SelectionRangeHelper.indexRange(anchor: anchorIndex, target: targetIndex)
+        selectedIDs = Set(filteredItems[range].map { $0.id })
+        selectedIndex = targetIndex
+        selectedID = filteredItems[targetIndex].id
+    }
+    
     /// Extend selection from anchor to target item (Shift+click behavior)
     private func extendSelectionTo(_ targetID: UUID) {
-        guard let anchorID = selectionAnchor else {
+        guard let targetIndex = filteredItems.firstIndex(where: { $0.id == targetID }) else {
+            return
+        }
+        if selectionAnchor == nil || selectedIDs.isEmpty {
             selectSingle(targetID)
             return
         }
-        
-        guard let anchorIndex = filteredItems.firstIndex(where: { $0.id == anchorID }),
-              let targetIndex = filteredItems.firstIndex(where: { $0.id == targetID }) else {
-            return
-        }
-        
-        let range = min(anchorIndex, targetIndex)...max(anchorIndex, targetIndex)
-        selectedIDs = Set(filteredItems[range].map { $0.id })
-        selectedIndex = targetIndex
-        // selectedID will be synced via onChange(of: selectedIndex)
+        extendSelection(to: targetIndex)
     }
     
     /// Extend selection upward (Shift+↑ behavior)
     private func extendSelectionUp() {
-        guard selectedIndex > 0 else { return }
-        
-        let currentItem = filteredItems[selectedIndex]
-        let previousIndex = selectedIndex - 1
-        let previousItem = filteredItems[previousIndex]
+        guard selectedIndex > 0, selectedIndex < filteredItems.count else { return }
         
         if selectedIDs.isEmpty {
-            selectSingle(currentItem.id)
+            if let current = filteredItems[safe: selectedIndex] {
+                selectSingle(current.id)
+            }
             return
         }
         
-        // If moving up, always include the new item
-        selectedIDs.insert(previousItem.id)
-        selectionAnchor = selectionAnchor ?? currentItem.id
-        
-        selectedIndex = previousIndex
-        // selectedID will be synced via onChange(of: selectedIndex)
+        let previousIndex = selectedIndex - 1
+        extendSelection(to: previousIndex)
     }
     
     /// Extend selection downward (Shift+↓ behavior)
     private func extendSelectionDown() {
-        guard selectedIndex < filteredItems.count - 1 else { return }
-        
-        let currentItem = filteredItems[selectedIndex]
-        let nextIndex = selectedIndex + 1
-        let nextItem = filteredItems[nextIndex]
+        guard selectedIndex >= 0, selectedIndex < filteredItems.count - 1 else { return }
         
         if selectedIDs.isEmpty {
-            selectSingle(currentItem.id)
+            if let current = filteredItems[safe: selectedIndex] {
+                selectSingle(current.id)
+            }
             return
         }
         
-        // If moving down, always include the new item
-        selectedIDs.insert(nextItem.id)
-        selectionAnchor = selectionAnchor ?? currentItem.id
-        
-        selectedIndex = nextIndex
-        // selectedID will be synced via onChange(of: selectedIndex)
+        let nextIndex = selectedIndex + 1
+        extendSelection(to: nextIndex)
     }
     
     /// Select all visible items
@@ -487,6 +538,42 @@ struct HistoryContentView: View {
                                     } catch {
                                         print("❌ Error saving image to \(fileURL): \(error)")
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Download all selected text items to a folder as individual files
+    private func downloadAllTexts() {
+        let openPanel = NSOpenPanel()
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.title = "Select Folder to Save Text Files"
+        openPanel.prompt = "Select"
+        
+        if let window = NSApplication.shared.windows.first {
+            openPanel.beginSheetModal(for: window) { response in
+                if response == .OK, let folderURL = openPanel.url {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let textItems = self.selectedItems.filter { $0.type == .text }
+                        
+                        for (index, item) in textItems.enumerated() {
+                            if let text = self.store.fullText(for: item) {
+                                let detection = SyntaxDetector.detect(text: text)
+                                let paddedNumber = String(format: "%04d", index + 1)
+                                let fileName = "snippet-\(paddedNumber).\(detection.fileExtension)"
+                                let fileURL = folderURL.appendingPathComponent(fileName)
+                                
+                                do {
+                                    try text.write(to: fileURL, atomically: true, encoding: .utf8)
+                                    print("✅ Saved text snippet to \(fileURL.lastPathComponent)")
+                                } catch {
+                                    print("❌ Error saving text snippet to \(fileURL): \(error)")
                                 }
                             }
                         }
@@ -893,6 +980,8 @@ struct HistoryContentView: View {
                 guard !isEditing else { return }
                 if selectedItem?.hasImages == true, let img = previewImage ?? attachedPreviewImages.first {
                     PasteController.saveImageToDisk(img)
+                } else if selectedItem?.type == .text, let item = selectedItem, let text = store.fullText(for: item) {
+                    PasteController.saveTextToDisk(text)
                 }
             },
             onAddTag: {
@@ -1289,7 +1378,17 @@ struct HistoryContentView: View {
                                     Image(systemName: "arrow.down.to.line")
                                 }
                                 .buttonStyle(.plain)
-                                .help("Save image")
+                                .help("Save image (⌘S)")
+                            } else if selectedItem?.type == .text {
+                                Button(action: {
+                                    if let item = selectedItem, let text = store.fullText(for: item) {
+                                        PasteController.saveTextToDisk(text)
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.down.to.line")
+                                }
+                                .buttonStyle(.plain)
+                                .help("Save text to file (⌘S)")
                             }
                             
                             // OCR button - for any item carrying images (pure image or combined), without existing OCR text
@@ -1444,6 +1543,19 @@ struct HistoryContentView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.down.to.line")
                         Text("Download All (\(imageCount))")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                
+                Divider()
+            } else if imageCount == 0 && textCount > 1 {
+                Button(action: downloadAllTexts) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("Save All as Files (\(textCount))")
                         Spacer()
                     }
                     .frame(maxWidth: .infinity)

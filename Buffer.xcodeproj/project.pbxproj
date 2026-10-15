@@ -34,6 +34,7 @@
 		AAA00024 /* SyntaxHighlighting.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00024 /* SyntaxHighlighting.swift */; };
 		AAA00025 /* Highlighter in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00002 /* Highlighter */; };
 		AAA00026 /* CodeFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00025 /* CodeFormatter.swift */; };
+		AAA00030 /* SyntaxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00030 /* SyntaxDetector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +77,7 @@
 		BBB00023 /* LanguageDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageDetector.swift; sourceTree = "<group>"; };
 		BBB00024 /* SyntaxHighlighting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighting.swift; sourceTree = "<group>"; };
 		BBB00025 /* CodeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeFormatter.swift; sourceTree = "<group>"; };
+		BBB00030 /* SyntaxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxDetector.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -170,6 +172,7 @@
 				BBB00023 /* LanguageDetector.swift */,
 				BBB00024 /* SyntaxHighlighting.swift */,
 				BBB00025 /* CodeFormatter.swift */,
+				BBB00030 /* SyntaxDetector.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -333,6 +336,7 @@
 				AAA00023 /* LanguageDetector.swift in Sources */,
 				AAA00024 /* SyntaxHighlighting.swift in Sources */,
 				AAA00026 /* CodeFormatter.swift in Sources */,
+				AAA00030 /* SyntaxDetector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

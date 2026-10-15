@@ -119,6 +119,34 @@ struct SettingsView: View {
             
             Divider()
             
+            // Appearance section
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Appearance")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 12) {
+                    ForEach(AppTheme.allCases, id: \.self) { theme in
+                        Button(action: {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                settings.appTheme = theme
+                                settings.save()
+                            }
+                        }) {
+                            ThemePreviewThumbnail(
+                                theme: theme,
+                                isSelected: settings.appTheme == theme
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            
+            Divider()
+            
             // System section
             VStack(alignment: .leading, spacing: 12) {
                 Text("System")
@@ -451,6 +479,153 @@ class KeyRecorderView: NSView {
     }
 }
 
+/// Visual macOS-style appearance thumbnail preview (Steve Jobs / Apple System Settings design)
+struct ThemePreviewThumbnail: View {
+    let theme: AppTheme
+    let isSelected: Bool
+    @State private var isHovered = false
+    
+    var body: some View {
+        VStack(spacing: 7) {
+            // Mini window representation
+            ZStack {
+                switch theme {
+                case .light:
+                    lightWindow
+                case .dark:
+                    darkWindow
+                case .system:
+                    splitWindow
+                }
+            }
+            .frame(width: 86, height: 54)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(
+                        isSelected ? Color.accentColor : (isHovered ? Color.primary.opacity(0.24) : Color.primary.opacity(0.12)),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(isSelected ? 0.16 : (isHovered ? 0.08 : 0.04)), radius: isSelected ? 3 : 1.5, y: 1)
+            
+            // Label
+            Text(theme.label)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .primary : .secondary)
+        }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+    
+    // Light Window Preview
+    private var lightWindow: some View {
+        VStack(spacing: 0) {
+            // Window titlebar
+            HStack(spacing: 2.5) {
+                trafficLights
+                Spacer()
+            }
+            .padding(.horizontal, 5)
+            .frame(height: 12)
+            .background(Color(red: 0.90, green: 0.90, blue: 0.92))
+            
+            // Content
+            VStack(alignment: .leading, spacing: 3) {
+                mockRow(color: Color(red: 0.72, green: 0.72, blue: 0.76), width: 34)
+                mockRow(color: Color(red: 0.84, green: 0.84, blue: 0.87), width: 54)
+                mockRow(color: Color(red: 0.88, green: 0.88, blue: 0.90), width: 42)
+            }
+            .padding(5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.white)
+        }
+    }
+    
+    // Dark Window Preview
+    private var darkWindow: some View {
+        VStack(spacing: 0) {
+            // Window titlebar
+            HStack(spacing: 2.5) {
+                trafficLights
+                Spacer()
+            }
+            .padding(.horizontal, 5)
+            .frame(height: 12)
+            .background(Color(red: 0.22, green: 0.22, blue: 0.24))
+            
+            // Content
+            VStack(alignment: .leading, spacing: 3) {
+                mockRow(color: Color(red: 0.52, green: 0.52, blue: 0.56), width: 34)
+                mockRow(color: Color(red: 0.36, green: 0.36, blue: 0.40), width: 54)
+                mockRow(color: Color(red: 0.30, green: 0.30, blue: 0.34), width: 42)
+            }
+            .padding(5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(red: 0.13, green: 0.13, blue: 0.15))
+        }
+    }
+    
+    // Split Window Preview (Auto/System)
+    private var splitWindow: some View {
+        HStack(spacing: 0) {
+            // Left half: Light
+            VStack(spacing: 0) {
+                HStack(spacing: 2.5) {
+                    trafficLights
+                    Spacer()
+                }
+                .padding(.leading, 5)
+                .frame(height: 12)
+                .background(Color(red: 0.90, green: 0.90, blue: 0.92))
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    mockRow(color: Color(red: 0.72, green: 0.72, blue: 0.76), width: 22)
+                    mockRow(color: Color(red: 0.84, green: 0.84, blue: 0.87), width: 30)
+                    mockRow(color: Color(red: 0.88, green: 0.88, blue: 0.90), width: 18)
+                }
+                .padding(5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color.white)
+            }
+            .frame(width: 43)
+            
+            // Right half: Dark
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                }
+                .frame(height: 12)
+                .background(Color(red: 0.22, green: 0.22, blue: 0.24))
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    mockRow(color: Color(red: 0.52, green: 0.52, blue: 0.56), width: 22)
+                    mockRow(color: Color(red: 0.36, green: 0.36, blue: 0.40), width: 30)
+                    mockRow(color: Color(red: 0.30, green: 0.30, blue: 0.34), width: 18)
+                }
+                .padding(5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(red: 0.13, green: 0.13, blue: 0.15))
+            }
+            .frame(width: 43)
+        }
+    }
+    
+    private var trafficLights: some View {
+        HStack(spacing: 2.5) {
+            Circle().fill(Color(red: 1.0, green: 0.36, blue: 0.33)).frame(width: 3.5, height: 3.5)
+            Circle().fill(Color(red: 1.0, green: 0.74, blue: 0.18)).frame(width: 3.5, height: 3.5)
+            Circle().fill(Color(red: 0.16, green: 0.78, blue: 0.25)).frame(width: 3.5, height: 3.5)
+        }
+    }
+    
+    private func mockRow(color: Color, width: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 1.5)
+            .fill(color)
+            .frame(width: width, height: 4)
+    }
+}
+
 /// ViewModel wrapper for SettingsManager to avoid crashes
 class SettingsViewModel: ObservableObject {
     @Published var hotkeyModifiers: HotkeyModifiers
@@ -465,6 +640,7 @@ class SettingsViewModel: ObservableObject {
     @Published var autoOCR: Bool
     @Published var preserveRichText: Bool
     @Published var downloadRemoteImages: Bool
+    @Published var appTheme: AppTheme
     
     private let defaults = UserDefaults.standard
     private let hotkeyModifiersKey = "hotkeyModifiers"
@@ -501,6 +677,9 @@ class SettingsViewModel: ObservableObject {
         self.autoOCR = SettingsManager.shared.autoOCR
         self.preserveRichText = SettingsManager.shared.preserveRichText
         self.downloadRemoteImages = SettingsManager.shared.downloadRemoteImages
+
+        // Load app theme
+        self.appTheme = SettingsManager.shared.appTheme
     }
     
     func save() {
@@ -522,10 +701,13 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.autoOCR = autoOCR
         SettingsManager.shared.preserveRichText = preserveRichText
         SettingsManager.shared.downloadRemoteImages = downloadRemoteImages
+        SettingsManager.shared.appTheme = appTheme
         SettingsManager.shared.save()
+        SettingsManager.shared.applyTheme(appTheme)
 
         NotificationCenter.default.post(name: .bufferHotkeyChanged, object: nil)
         NotificationCenter.default.post(name: .bufferHistoryLimitChanged, object: nil)
         NotificationCenter.default.post(name: .bufferStatusBarVisibilityChanged, object: nil)
+        NotificationCenter.default.post(name: .bufferThemeChanged, object: nil)
     }
 }

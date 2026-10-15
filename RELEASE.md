@@ -60,12 +60,21 @@ Verify that the output files are present in the project root:
 
 ---
 
-## Step 4: Publish to GitHub
+## Step 4: Update Homebrew Cask
+
+Generate the updated `Casks/buffer.rb` with verified SHA256 checksums from the newly built DMGs:
+```bash
+./scripts/generate_homebrew_cask.sh
+```
+
+---
+
+## Step 5: Publish to GitHub
 
 1. **Commit and Push Changes**:
    ```bash
-   git add Info.plist README.md
-   git commit -m "release: bump version to v2.5.0"
+   git add Info.plist README.md Casks/buffer.rb
+   git commit -m "release: bump version to v3.0.0"
    # Push explicitly using refs/heads/main to avoid conflict with any 'main' tag
    git push origin refs/heads/main
    ```
@@ -73,10 +82,47 @@ Verify that the output files are present in the project root:
 2. **Create GitHub Release**:
    Prepare a markdown file `release_notes.md` containing the release description, then run:
    ```bash
-   gh release create buffer-v2.5.0 \
+   gh release create buffer-v3.0.0 \
      Buffer_Silicon.dmg Buffer_Silicon.zip \
      Buffer_Intel.dmg Buffer_Intel.zip \
-     --title "Buffer v2.5.0" \
+     --title "Buffer v3.0.0" \
      --notes-file release_notes.md
    ```
    *(Add `--prerelease` if publishing a pre-release).*
+
+   > [!TIP]
+   > Feature screenshots for release notes should be stored in `Assets/` and embedded with responsive centered tags:
+   >
+   > <p align="center">
+   >   <img width="500" alt="History Size Tiers" src="Assets/history-size-tiers.png" />
+   > </p>
+
+---
+
+## Step 6: Modifying or Updating an Existing Release
+
+If you need to update an existing release (e.g., retagging to a newer commit, replacing binary assets, or promoting a pre-release):
+
+1. **Update and Force Push Git Tag** (if re-targeting commit):
+   ```bash
+   git tag -fa buffer-v<version> -m "release: v<version>"
+   git push origin refs/tags/buffer-v<version> --force
+   ```
+
+2. **Re-upload Asset Binaries** (overwrites existing files):
+   ```bash
+   gh release upload buffer-v<version> \
+     Buffer_Silicon.dmg Buffer_Silicon.zip \
+     Buffer_Intel.dmg Buffer_Intel.zip \
+     --clobber
+   ```
+
+3. **Update Release Metadata & Notes**:
+   ```bash
+   gh release edit buffer-v<version> \
+     --title "Buffer v<version>" \
+     --notes-file release_notes.md \
+     --prerelease=false \
+     --latest
+   ```
+

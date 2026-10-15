@@ -1,6 +1,39 @@
 import Foundation
 import ServiceManagement
 import Combine
+import SwiftUI
+import AppKit
+
+/// Defines application theme preference
+enum AppTheme: String, CaseIterable, Codable {
+    case system = "system"
+    case light  = "light"
+    case dark   = "dark"
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light:  return NSAppearance(named: .aqua)
+        case .dark:   return NSAppearance(named: .darkAqua)
+        }
+    }
+}
 
 /// Define the tiers as a type
 enum HistoryLimit: Int, CaseIterable, Codable {
@@ -71,6 +104,7 @@ class SettingsManager: ObservableObject {
     private let autoOCRKey = "autoOCR"
     private let preserveRichTextKey = "preserveRichText"
     private let downloadRemoteImagesKey = "downloadRemoteImages"
+    private let appThemeKey = "appTheme"
 
     static let zoomLevels: [Double] = [0.8, 0.9, 1.0, 1.15, 1.3, 1.5]
     static let defaultZoomScale: Double = 1.0
@@ -86,6 +120,7 @@ class SettingsManager: ObservableObject {
     @Published var minTextLength: Int = 1
     @Published var deduplicateHistory: Bool = false
     @Published var contentZoomScale: Double = defaultZoomScale
+    @Published var appTheme: AppTheme = .system
     @Published var selectedSettingsTab: Int = 0
     @Published var customHistoryLimit: Int = 20_000
     @Published var autoOCR: Bool = true
@@ -163,6 +198,14 @@ class SettingsManager: ObservableObject {
         // returns false for a missing key)
         self.preserveRichText = defaults.object(forKey: preserveRichTextKey) as? Bool ?? true
         self.downloadRemoteImages = defaults.object(forKey: downloadRemoteImagesKey) as? Bool ?? false
+
+        // Load app theme
+        if let savedThemeString = defaults.string(forKey: appThemeKey),
+           let savedTheme = AppTheme(rawValue: savedThemeString) {
+            self.appTheme = savedTheme
+        } else {
+            self.appTheme = .system
+        }
     }
     
     func save() {
@@ -179,6 +222,23 @@ class SettingsManager: ObservableObject {
         defaults.set(autoOCR, forKey: autoOCRKey)
         defaults.set(preserveRichText, forKey: preserveRichTextKey)
         defaults.set(downloadRemoteImages, forKey: downloadRemoteImagesKey)
+        defaults.set(appTheme.rawValue, forKey: appThemeKey)
+    }
+
+    func applyTheme(_ theme: AppTheme? = nil) {
+        let targetTheme = theme ?? appTheme
+        let apply = {
+            NSApp.appearance = targetTheme.nsAppearance
+            for window in NSApp.windows {
+                window.appearance = targetTheme.nsAppearance
+                window.contentView?.appearance = targetTheme.nsAppearance
+            }
+        }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
+        }
     }
 
     func zoomIn() {

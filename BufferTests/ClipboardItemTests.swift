@@ -721,4 +721,180 @@ class ClipboardItemTests: XCTestCase {
     func testDetectBareURLsEmptyWhenNone() {
         XCTAssertTrue(ClipboardWatcher.detectURLs(in: "just some words, no links").isEmpty)
     }
+
+    func testSelectionRangeIndexCalculations() {
+        // Forward expansion
+        XCTAssertEqual(SelectionRangeHelper.indexRange(anchor: 2, target: 5), 2...5)
+        // Upward / reverse expansion
+        XCTAssertEqual(SelectionRangeHelper.indexRange(anchor: 5, target: 2), 2...5)
+        // Single item at anchor
+        XCTAssertEqual(SelectionRangeHelper.indexRange(anchor: 3, target: 3), 3...3)
+    }
+
+    func testSelectionRangeExpansionAndContraction() {
+        let items = [
+            ClipboardItem.text("item 0"),
+            ClipboardItem.text("item 1"),
+            ClipboardItem.text("item 2"),
+            ClipboardItem.text("item 3"),
+            ClipboardItem.text("item 4")
+        ]
+
+        let anchor = 2
+        // Initial state: anchor selected
+        let initialIDs = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 2, items: items)
+        XCTAssertEqual(initialIDs, [items[2].id])
+
+        // Shift + Down -> 2...3 (2 items)
+        let step1 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 3, items: items)
+        XCTAssertEqual(step1, [items[2].id, items[3].id])
+
+        // Shift + Down -> 2...4 (3 items)
+        let step2 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 4, items: items)
+        XCTAssertEqual(step2, [items[2].id, items[3].id, items[4].id])
+
+        // Shift + Up (Contracting!) -> 2...3 (item 4 is removed)
+        let step3 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 3, items: items)
+        XCTAssertEqual(step3, [items[2].id, items[3].id])
+        XCTAssertFalse(step3.contains(items[4].id), "Step 3 must not contain item 4 after shrinking upward")
+
+        // Shift + Up (Contracting to anchor) -> 2...2 (item 3 is removed)
+        let step4 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 2, items: items)
+        XCTAssertEqual(step4, [items[2].id])
+        XCTAssertFalse(step4.contains(items[3].id), "Step 4 must not contain item 3 after shrinking to anchor")
+
+        // Shift + Up (Crossing anchor upward!) -> 1...2 (item 1 and item 2)
+        let step5 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 1, items: items)
+        XCTAssertEqual(step5, [items[1].id, items[2].id])
+
+        // Shift + Down (Contracting back to anchor from above!) -> 2...2
+        let step6 = SelectionRangeHelper.rangeSelectedIDs(anchorIndex: anchor, targetIndex: 2, items: items)
+        XCTAssertEqual(step6, [items[2].id])
+        XCTAssertFalse(step6.contains(items[1].id), "Step 6 must not contain item 1 after shrinking back to anchor")
+    }
+
+    func testSelectionRangeResolveAnchorFallback() {
+        let items = [
+            ClipboardItem.text("first"),
+            ClipboardItem.text("second"),
+            ClipboardItem.text("third")
+        ]
+
+        // Valid anchor
+        let resolved = SelectionRangeHelper.resolveAnchorIndex(anchorID: items[1].id, fallbackIndex: 0, items: items)
+        XCTAssertEqual(resolved?.index, 1)
+        XCTAssertEqual(resolved?.id, items[1].id)
+
+        // Missing anchor falls back to fallbackIndex
+        let missingID = UUID()
+        let fallback = SelectionRangeHelper.resolveAnchorIndex(anchorID: missingID, fallbackIndex: 2, items: items)
+        XCTAssertEqual(fallback?.index, 2)
+        XCTAssertEqual(fallback?.id, items[2].id)
+
+        // Nil anchor falls back to clamped fallbackIndex
+        let nilAnchor = SelectionRangeHelper.resolveAnchorIndex(anchorID: nil, fallbackIndex: 10, items: items)
+        XCTAssertEqual(nilAnchor?.index, 2)
+        XCTAssertEqual(nilAnchor?.id, items[2].id)
+
+        // Empty list returns nil
+        let empty: [ClipboardItem] = []
+        let emptyResult = SelectionRangeHelper.resolveAnchorIndex(anchorID: items[0].id, fallbackIndex: 0, items: empty)
+        XCTAssertNil(emptyResult)
+    }
+
+    func testAppThemeCasesAndProperties() {
+        XCTAssertEqual(AppTheme.allCases, [.system, .light, .dark])
+
+        XCTAssertEqual(AppTheme.system.label, "System")
+        XCTAssertNil(AppTheme.system.colorScheme)
+        XCTAssertNil(AppTheme.system.nsAppearance)
+
+        XCTAssertEqual(AppTheme.light.label, "Light")
+        XCTAssertEqual(AppTheme.light.colorScheme, .light)
+        XCTAssertEqual(AppTheme.light.nsAppearance?.name, NSAppearance.Name.aqua)
+
+        XCTAssertEqual(AppTheme.dark.label, "Dark")
+        XCTAssertEqual(AppTheme.dark.colorScheme, .dark)
+        XCTAssertEqual(AppTheme.dark.nsAppearance?.name, NSAppearance.Name.darkAqua)
+    }
+
+    func testAppThemeSettingsPersistenceAndNotification() {
+        let initialTheme = SettingsManager.shared.appTheme
+        let expectation = expectation(forNotification: .bufferThemeChanged, object: nil)
+
+        let viewModel = SettingsViewModel()
+        let targetTheme: AppTheme = (initialTheme == .dark) ? .light : .dark
+        viewModel.appTheme = targetTheme
+        viewModel.save()
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(SettingsManager.shared.appTheme, targetTheme)
+
+        let savedRaw = UserDefaults.standard.string(forKey: "appTheme")
+        XCTAssertEqual(savedRaw, targetTheme.rawValue)
+
+        // Restore initial theme
+        viewModel.appTheme = initialTheme
+        viewModel.save()
+    }
+    
+    // MARK: - SyntaxDetector Tests
+    
+    func testSyntaxDetectorShebangShell() {
+        let text = "#!/bin/bash\necho 'hello world'"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "sh")
+        XCTAssertEqual(result.contentType, .shellScript)
+    }
+    
+    func testSyntaxDetectorJSON() {
+        let text = "{\n  \"name\": \"Buffer\",\n  \"version\": 1\n}"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "json")
+        XCTAssertEqual(result.contentType, .json)
+    }
+    
+    func testSyntaxDetectorGitAndBuildLog() {
+        let text = """
+        7d52315..b24cfa1 main -> origin/main
+        Updating 7d52315..b24cfa1
+        Fast-forward
+        colab_runner.ipynb | 48 +++++++++++++++++
+        4 files changed, 87 insertions(+), 8 deletions(-)
+        === Setting up Qwen-Image-2.1 Standalone Runner ===
+        cmake version 3.28
+        """
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "log")
+    }
+    
+    func testSyntaxDetectorMarkdown() {
+        let text = "# Release Notes\n\n- Fix issue with paste\n- Add save feature"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "md")
+        XCTAssertEqual(result.suggestedFileName, "Release Notes.md")
+    }
+    
+    func testSyntaxDetectorPython() {
+        let text = "def calculate_total(items):\n    return sum(item.price for item in items)"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "py")
+        XCTAssertEqual(result.contentType, .pythonScript)
+    }
+    
+    func testSyntaxDetectorSwift() {
+        let text = "import SwiftUI\n\nstruct CustomBadge: View {\n    var body: some View { Text(\"Hi\") }\n}"
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "swift")
+        XCTAssertEqual(result.contentType, .swiftSource)
+    }
+    
+    func testSyntaxDetectorPlainTextFallback() {
+        let text = "Hello this is a regular clipboard snippet with some random words."
+        let result = SyntaxDetector.detect(text: text)
+        XCTAssertEqual(result.fileExtension, "txt")
+        XCTAssertEqual(result.contentType, .plainText)
+    }
 }
+
+
