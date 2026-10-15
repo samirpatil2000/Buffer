@@ -159,6 +159,26 @@ enum RichContentRenderer {
             output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
             output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         }
+        // Give image attachments a real display size. NSAttributedString(html:) loads the image
+        // but leaves bounds at zero, so inline images would be invisible. Size each to its image's
+        // natural dimensions, scaled down to fit a sensible preview width.
+        let maxImageWidth: CGFloat = 480
+        output.enumerateAttribute(.attachment, in: full) { value, range, _ in
+            guard let attachment = value as? NSTextAttachment else { return }
+            let image = attachment.image
+                ?? attachment.fileWrapper?.regularFileContents.flatMap { NSImage(data: $0) }
+            guard let img = image, img.size.width > 0, img.size.height > 0 else { return }
+            if attachment.image == nil { attachment.image = img }
+            var w = img.size.width
+            var h = img.size.height
+            if w > maxImageWidth {
+                let scale = maxImageWidth / w
+                w = maxImageWidth
+                h = (h * scale).rounded()
+            }
+            attachment.bounds = NSRect(x: 0, y: 0, width: w, height: h)
+            _ = range
+        }
         return output
     }
 
