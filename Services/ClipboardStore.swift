@@ -357,6 +357,16 @@ class ClipboardStore: ObservableObject {
         item.imageFilenames.map { imagesDirectory.appendingPathComponent($0) }
     }
 
+    /// Resolve an item's remote-URL -> local-filename map into remote-URL -> local file URL, so
+    /// the preview can rewrite each remote <img> to the exact local file it was downloaded into.
+    func remoteImageLocalURLs(for item: ClipboardItem) -> [String: URL] {
+        var result: [String: URL] = [:]
+        for (remoteURL, filename) in item.remoteImageMap {
+            result[remoteURL] = imagesDirectory.appendingPathComponent(filename)
+        }
+        return result
+    }
+
     /// Images embedded in a combined item, in document order
     func attachedImages(for item: ClipboardItem) -> [NSImage] {
         item.imageFilenames.compactMap { attachedImage(filename: $0) }

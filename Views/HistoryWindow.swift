@@ -769,9 +769,9 @@ struct HistoryContentView: View {
                     // clickable links within the text, as in the source).
                     if item.isCombined || item.hasLinks {
                         let size = previewFontSize
-                        let localImageURLs = store.attachedImageURLs(for: item)
+                        let remoteToLocal = store.remoteImageLocalURLs(for: item)
                         let rich = await Task.detached(priority: .userInitiated) {
-                            RichContentRenderer.attributedString(for: item, fontSize: size, localImageURLs: localImageURLs)
+                            RichContentRenderer.attributedString(for: item, fontSize: size, remoteToLocalURL: remoteToLocal)
                         }.value
                         if selectedItem?.id == item.id {
                             if let rich = rich {

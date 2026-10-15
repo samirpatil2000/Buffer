@@ -163,13 +163,19 @@ class ClipboardWatcher: ObservableObject {
                 //     HTML flavour. Browser copies carry images either as inline data: URIs
                 //     (base64, already local - always extracted) or as remote http(s) URLs
                 //     (fetched only when the user opted in to remote download).
+                //
+                // `remoteDownloads` keeps the source URL alongside each downloaded image so the
+                // preview can later rewrite that exact <img src> to the local file (positional
+                // guessing is unreliable when the download count differs from the img count).
+                var remoteDownloads: [(url: String, png: Data)] = []
                 if attachments.isEmpty, let htmlData = rich.html {
                     let htmlString = String(decoding: htmlData, as: UTF8.self)
                     // Inline base64 images - no network, always safe to decode.
                     attachments = self.inlineDataImages(fromHTML: htmlString)
                     // Remote images - opt-in only, makes network requests.
                     if attachments.isEmpty, SettingsManager.shared.downloadRemoteImages {
-                        attachments = self.downloadRemoteImages(fromHTML: htmlString)
+                        remoteDownloads = self.downloadRemoteImages(fromHTML: htmlString)
+                        attachments = remoteDownloads.map { $0.png }
                     }
                 }
 
@@ -182,8 +188,18 @@ class ClipboardWatcher: ObservableObject {
                 // 3. Persist attachments.
                 let filenames = attachments.compactMap { self.store.saveImage($0) }
 
+                // 3b. Build the remote-URL -> local-filename map for the downloaded images, so the
+                //     preview can place each image at its exact <img> position. filenames line up
+                //     with attachments, which line up with remoteDownloads when that path ran.
+                var remoteImageMap: [String: String] = [:]
+                if !remoteDownloads.isEmpty {
+                    for (i, download) in remoteDownloads.enumerated() where i < filenames.count {
+                        remoteImageMap[download.url] = filenames[i]
+                    }
+                }
+
                 // 4. Build. On failure, roll back the files we just wrote.
-                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames, links: links) else {
+                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames, links: links, remoteImageMap: remoteImageMap) else {
                     self.removeImageFiles(filenames)
                     return
                 }
@@ -242,12 +258,14 @@ class ClipboardWatcher: ObservableObject {
     private func buildTextItem(text: String, sourceApp: String?,
                                 rtf: Data?, html: Data?, rtfd: Data? = nil,
                                 imageFilenames: [String] = [],
-                                links: [WebLink] = []) -> ClipboardItem? {
+                                links: [WebLink] = [],
+                                remoteImageMap: [String: String] = [:]) -> ClipboardItem? {
         let textSize = text.utf8.count
         if textSize <= inlineTextLimit {
             var item = ClipboardItem.text(text, sourceApp: sourceApp, rtfData: rtf, htmlData: html, rtfdData: rtfd)
             item.imageFilenames = imageFilenames
             item.links = links
+            item.remoteImageMap = remoteImageMap
             return item
         }
         guard let filename = store.saveText(text) else { return nil }
@@ -257,6 +275,7 @@ class ClipboardWatcher: ObservableObject {
                                             rtfData: rtf, htmlData: html, rtfdData: rtfd)
         item.imageFilenames = imageFilenames
         item.links = links
+        item.remoteImageMap = remoteImageMap
         return item
     }
 
@@ -461,9 +480,11 @@ class ClipboardWatcher: ObservableObject {
     /// Download the remote images referenced in `html`, bounded by count, per-request timeout, and
     /// response size. Returns PNG-encoded data for each image that downloads and decodes cleanly.
     /// Runs synchronously on the calling background queue; never called on the main thread.
-    private func downloadRemoteImages(fromHTML html: String) -> [Data] {
-        let urls = Array(Self.remoteImageURLs(fromHTML: html).prefix(maxRemoteImageDownloads))
-        guard !urls.isEmpty else { return [] }
+    /// Returns, for each image that downloaded and decoded cleanly, the raw <img src> string
+    /// exactly as it appears in the HTML (the map key the preview rewrites by) and the PNG data.
+    private func downloadRemoteImages(fromHTML html: String) -> [(url: String, png: Data)] {
+        let rawSrcs = Array(Self.rawRemoteImageSrcs(fromHTML: html).prefix(maxRemoteImageDownloads))
+        guard !rawSrcs.isEmpty else { return [] }
 
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = remoteImageTimeout
@@ -472,8 +493,10 @@ class ClipboardWatcher: ObservableObject {
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
 
-        var out: [Data] = []
-        for url in urls {
+        var out: [(url: String, png: Data)] = []
+        for rawSrc in rawSrcs {
+            // The HTML src may contain entities (e.g. &amp;); decode to form the real request URL.
+            guard let url = URL(string: Self.decodeEntities(rawSrc)) else { continue }
             let semaphore = DispatchSemaphore(value: 0)
             var pngResult: Data?
             let task = session.dataTask(with: url) { [weak self] data, response, _ in
@@ -491,12 +514,36 @@ class ClipboardWatcher: ObservableObject {
             task.resume()
             // Bound the wait so a slow server cannot stall capture beyond the timeout.
             _ = semaphore.wait(timeout: .now() + remoteImageTimeout + 1)
-            if let png = pngResult { out.append(png) }
+            if let png = pngResult { out.append((url: rawSrc, png: png)) }
         }
         if !out.isEmpty {
             print("[Buffer] Downloaded \(out.count) remote image(s) from copied HTML")
         }
         return out
+    }
+
+    /// Raw <img src> strings (exactly as written in the HTML, entities not decoded) for remote
+    /// http(s) images, in document order, de-duplicated. Used both to fetch and as the preview
+    /// rewrite key.
+    static func rawRemoteImageSrcs(fromHTML html: String) -> [String] {
+        guard let regex = try? NSRegularExpression(
+            pattern: "<img\\b[^>]*?\\bsrc\\s*=\\s*[\"']([^\"']+)[\"']",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else { return [] }
+        let range = NSRange(html.startIndex..., in: html)
+        var srcs: [String] = []
+        var seen = Set<String>()
+        regex.enumerateMatches(in: html, range: range) { match, _, _ in
+            guard let match = match, match.numberOfRanges >= 2,
+                  let r = Range(match.range(at: 1), in: html) else { return }
+            let src = String(html[r])
+            let lower = src.lowercased()
+            guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { return }
+            guard !seen.contains(src) else { return }
+            seen.insert(src)
+            srcs.append(src)
+        }
+        return srcs
     }
 
     /// Shared PNG re-encode used by both pasteboard-image capture and attachment extraction.

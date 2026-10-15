@@ -56,7 +56,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // reduced to its visible text.
     var links: [WebLink] = []
 
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = []) {
+    // Maps a remote image URL (as it appears in the stored HTML) to the local filename it was
+    // downloaded into. Lets the preview rewrite remote <img> tags to the exact local file by URL,
+    // so inline images render in the right place without a network fetch. Empty when no remote
+    // images were downloaded.
+    var remoteImageMap: [String: String] = [:]
+
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = [], remoteImageMap: [String: String] = [:]) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -76,12 +82,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.imageFilenames = imageFilenames
         self.language = language
         self.links = links
+        self.remoteImageMap = remoteImageMap
     }
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
         case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
-        case rtfData, htmlData, rtfdData, imageFilenames, language, links
+        case rtfData, htmlData, rtfdData, imageFilenames, language, links, remoteImageMap
     }
 
     init(from decoder: Decoder) throws {
@@ -105,6 +112,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.imageFilenames = try container.decodeIfPresent([String].self, forKey: .imageFilenames) ?? []
         self.language = try container.decodeIfPresent(String.self, forKey: .language)
         self.links = try container.decodeIfPresent([WebLink].self, forKey: .links) ?? []
+        self.remoteImageMap = try container.decodeIfPresent([String: String].self, forKey: .remoteImageMap) ?? [:]
     }
     
     func encode(to encoder: Encoder) throws {
@@ -128,6 +136,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         if !imageFilenames.isEmpty { try container.encode(imageFilenames, forKey: .imageFilenames) }
         try container.encodeIfPresent(language, forKey: .language)
         if !links.isEmpty { try container.encode(links, forKey: .links) }
+        if !remoteImageMap.isEmpty { try container.encode(remoteImageMap, forKey: .remoteImageMap) }
     }
     
     /// Create a text clipboard item
