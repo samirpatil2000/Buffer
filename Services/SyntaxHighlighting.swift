@@ -93,7 +93,11 @@ import SwiftUI
 /// references (inline base64 data: images are fine). RTFD/RTF embed their images and never fetch.
 enum RichContentRenderer {
 
-    static func attributedString(for item: ClipboardItem, fontSize: CGFloat) -> NSAttributedString? {
+    /// Build an attributed string from the item's rich payload. `localImageURLs` are file URLs of
+    /// images already downloaded for this item (combined-item attachments); when the HTML
+    /// references remote images, their `src` is rewritten to these local files in order so the
+    /// pictures render inline from disk - no network fetch during preview.
+    static func attributedString(for item: ClipboardItem, fontSize: CGFloat, localImageURLs: [URL] = []) -> NSAttributedString? {
         if let rtfd = item.rtfdData,
            let s = NSAttributedString(rtfd: rtfd, documentAttributes: nil) {
             return normalizedForDarkablePane(s, fontSize: fontSize)
@@ -102,13 +106,25 @@ enum RichContentRenderer {
            let s = NSAttributedString(rtf: rtf, documentAttributes: nil) {
             return normalizedForDarkablePane(s, fontSize: fontSize)
         }
-        if let html = item.htmlData, !htmlReferencesRemoteImages(html) {
-            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue
-            ]
-            if let s = try? NSAttributedString(data: html, options: options, documentAttributes: nil) {
-                return normalizedForDarkablePane(s, fontSize: fontSize)
+        if let htmlData = item.htmlData {
+            // If the HTML has remote images, only proceed when we can replace them with local
+            // files (so nothing is fetched over the network); otherwise fall back.
+            let resolvedHTML: Data?
+            if htmlReferencesRemoteImages(htmlData) {
+                resolvedHTML = localImageURLs.isEmpty
+                    ? nil
+                    : rewriteRemoteImagesToLocal(htmlData, localImageURLs: localImageURLs)
+            } else {
+                resolvedHTML = htmlData
+            }
+            if let html = resolvedHTML {
+                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ]
+                if let s = try? NSAttributedString(data: html, options: options, documentAttributes: nil) {
+                    return normalizedForDarkablePane(s, fontSize: fontSize)
+                }
             }
         }
         return nil
@@ -144,6 +160,47 @@ enum RichContentRenderer {
             output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         }
         return output
+    }
+
+    /// Replace each remote (http/https) <img src> in the HTML with a local file URL, in order,
+    /// drawing from `localImageURLs`. Non-remote srcs (data:, already-local) are left as-is.
+    /// Once the local images run out, remaining remote imgs are dropped (src emptied) so no
+    /// network fetch happens. Returns the rewritten HTML as UTF-8 data.
+    private static func rewriteRemoteImagesToLocal(_ html: Data, localImageURLs: [URL]) -> Data? {
+        var text = String(decoding: html, as: UTF8.self)
+        guard let regex = try? NSRegularExpression(
+            pattern: "(<img\\b[^>]*?\\bsrc\\s*=\\s*[\"'])([^\"']+)([\"'][^>]*>)",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else { return nil }
+
+        // Work right-to-left so replacement ranges stay valid as we mutate the string.
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        var localIndex = 0
+        // Pre-scan left-to-right to assign a local file to each remote img in document order.
+        var assignments: [(range: NSRange, replacement: String)] = []
+        for m in matches {
+            let src = ns.substring(with: m.range(at: 2))
+            let lower = src.lowercased()
+            guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { continue }
+            let prefix = ns.substring(with: m.range(at: 1))
+            let suffix = ns.substring(with: m.range(at: 3))
+            let newSrc: String
+            if localIndex < localImageURLs.count {
+                newSrc = localImageURLs[localIndex].absoluteString
+                localIndex += 1
+            } else {
+                newSrc = ""   // no local image left; blank the src so nothing is fetched
+            }
+            assignments.append((m.range, prefix + newSrc + suffix))
+        }
+        // Apply right-to-left.
+        let mutable = NSMutableString(string: text)
+        for a in assignments.reversed() {
+            mutable.replaceCharacters(in: a.range, with: a.replacement)
+        }
+        text = mutable as String
+        return text.data(using: .utf8)
     }
 
     /// True if the HTML contains an <img> whose src is a remote http(s) URL (would trigger a

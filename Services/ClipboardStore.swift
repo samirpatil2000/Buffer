@@ -351,6 +351,12 @@ class ClipboardStore: ObservableObject {
         NSImage(contentsOf: imagesDirectory.appendingPathComponent(filename))
     }
 
+    /// File URLs for an item's attachment images, in order. Used to render remote-image HTML
+    /// inline by pointing <img> tags at these local files instead of fetching over the network.
+    func attachedImageURLs(for item: ClipboardItem) -> [URL] {
+        item.imageFilenames.map { imagesDirectory.appendingPathComponent($0) }
+    }
+
     /// Images embedded in a combined item, in document order
     func attachedImages(for item: ClipboardItem) -> [NSImage] {
         item.imageFilenames.compactMap { attachedImage(filename: $0) }
