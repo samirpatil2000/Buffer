@@ -99,6 +99,23 @@ upstream v3.0.0+. This document describes everything in the
   clickable links**, matching how they appeared in the source, while the
   surrounding text keeps the standard preview color and the same monospaced
   font and size as plain-text entries (so it respects the zoom level).
+- **Bare URLs in plain text** (copied without any HTML markup) are detected,
+  stored, searchable, and rendered clickable inline too.
+- URLs in the Links section are left-aligned, single-line (middle-truncated),
+  and HTML entities in captured URLs are decoded so links are valid.
+
+## 9. Inline images in web-article previews
+
+- When a copied web article references remote images, Buffer (with the opt-in
+  remote-image download enabled) records a map of each remote image URL to the
+  local file it was downloaded into.
+- The preview renders those images **inline at their original position** by
+  splicing the real local image into the parsed text. Preview images are scaled
+  to fit the pane (up to 480px wide); this is display-only - **paste/copy still
+  carries the original full-size content** via the source HTML/RTF, so a rich
+  target receives images at native resolution.
+- Images that could not be downloaded are omitted from the preview rather than
+  shown as broken icons.
 
 ## Developer-facing
 
