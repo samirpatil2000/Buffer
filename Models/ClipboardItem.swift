@@ -267,6 +267,32 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Whether this item carries any captured hyperlinks.
     var hasLinks: Bool { !links.isEmpty }
 
+    /// Whether this text item's content was detected as source code (used by the type filter).
+    /// Computed on demand from the body; nil/empty text is never code.
+    var looksLikeCode: Bool {
+        guard type == .text, let text = textContent, !text.isEmpty else { return false }
+        if case .code = LanguageDetector.detect(text) { return true }
+        return false
+    }
+
+    /// Does this item belong to the given filter category? An item can match more than one
+    /// category (e.g. a combined text+image item matches both Text and Image).
+    func matchesKind(_ kind: ClipboardKind) -> Bool {
+        switch kind {
+        case .all:
+            return true
+        case .text:
+            // Any item carrying a text body (plain text, or combined text+image).
+            return type == .text && !(textContent ?? "").isEmpty
+        case .image:
+            return hasImages
+        case .link:
+            return hasLinks
+        case .code:
+            return looksLikeCode
+        }
+    }
+
     /// Content hash for duplicate detection
     var contentHash: Int {
         switch type {
@@ -289,4 +315,41 @@ enum ClipboardItemType: String, Codable {
 struct WebLink: Codable, Equatable {
     let text: String
     let url: String
+}
+
+/// A content category for filtering the history by type. An item may match several (for example
+/// a combined text+image item is both `.text` and `.image`).
+enum ClipboardKind: String, CaseIterable {
+    case all
+    case text
+    case image
+    case link
+    case code
+
+    /// Label for the filter chip.
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .text: return "Text"
+        case .image: return "Image"
+        case .link: return "Link"
+        case .code: return "Code"
+        }
+    }
+
+    /// SF Symbol for the chip.
+    var systemImage: String {
+        switch self {
+        case .all: return "square.grid.2x2"
+        case .text: return "doc.text"
+        case .image: return "photo"
+        case .link: return "link"
+        case .code: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    /// Parse a `type:` search token value (e.g. "image") into a kind, or nil if unrecognized.
+    static func fromToken(_ value: String) -> ClipboardKind? {
+        ClipboardKind(rawValue: value.lowercased())
+    }
 }

@@ -313,6 +313,7 @@ struct HistoryContentView: View {
 
     // Tag filter state
     @State private var activeTagFilter: String? = nil
+    @State private var activeKind: ClipboardKind = .all
     @State private var showTagAutocomplete: Bool = false
     @State private var showTagInput: Bool = false
     @State private var tagInputText: String = ""
@@ -336,13 +337,43 @@ struct HistoryContentView: View {
         if let tag = activeTagFilter {
             base = base.filter { $0.tags.contains(tag) }
         }
-        let query = debouncedSearchText.trimmingCharacters(in: .whitespaces)
+
+        // Resolve the effective type filter: a `type:` search token (if present) wins over the
+        // chip, otherwise the chip's selection applies. The token's text is stripped from the
+        // free-text query so it is not also matched as literal content.
+        let (tokenKind, textQuery) = Self.parseTypeToken(from: debouncedSearchText)
+        let effectiveKind = tokenKind ?? activeKind
+        if effectiveKind != .all {
+            base = base.filter { $0.matchesKind(effectiveKind) }
+        }
+
+        let query = textQuery.trimmingCharacters(in: .whitespaces)
         if !query.isEmpty && !query.hasPrefix("#") {
             base = base.filter { item in
                 ClipboardItem.matches(item: item, query: query)
             }
         }
         return base.sorted { $0.isPinned && !$1.isPinned }
+    }
+
+    /// Extract a leading-or-anywhere `type:<kind>` token from the search text. Returns the parsed
+    /// kind (if any) and the remaining free-text query with the token removed.
+    static func parseTypeToken(from text: String) -> (kind: ClipboardKind?, remaining: String) {
+        guard let regex = try? NSRegularExpression(pattern: "\\btype:(\\w+)", options: [.caseInsensitive]) else {
+            return (nil, text)
+        }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
+              match.numberOfRanges >= 2 else {
+            return (nil, text)
+        }
+        let value = ns.substring(with: match.range(at: 1))
+        let kind = ClipboardKind.fromToken(value)
+        // Only strip the token if it names a real kind; otherwise leave the text untouched.
+        guard kind != nil else { return (nil, text) }
+        let remaining = ns.replacingCharacters(in: match.range, with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return (kind, remaining)
     }
     
     private func updateFilteredItems() {
@@ -588,6 +619,9 @@ struct HistoryContentView: View {
             // Search bar
             searchBar
 
+            // Type filter chips
+            filterChips
+
             // Tag autocomplete (when typing #...)
             if showTagAutocomplete && !store.allTags.isEmpty {
                 tagAutocompleteBar
@@ -676,6 +710,24 @@ struct HistoryContentView: View {
             self.filteredItems = currentFiltered
             
             // Reset selection to the first item of the new tag filter
+            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
+            selectedID = defaultItem?.id
+            if let id = defaultItem?.id {
+                selectedIDs = [id]
+                selectionAnchor = id
+            } else {
+                selectedIDs = []
+                selectionAnchor = nil
+            }
+            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
+                selectedIndex = index
+            } else {
+                selectedIndex = 0
+            }
+        }
+        .onChange(of: activeKind) { _ in
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
             let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
             selectedID = defaultItem?.id
             if let id = defaultItem?.id {
@@ -784,6 +836,7 @@ struct HistoryContentView: View {
             self.filteredItems = currentFiltered
             
             // Transient UI state always resets
+            activeKind = .all
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
@@ -1100,6 +1153,43 @@ struct HistoryContentView: View {
         return formattedByteCount(bytes)
     }
     
+    /// Horizontal row of type-filter chips (All / Text / Image / Link / Code). The selected chip
+    /// reflects either a `type:` search token (if present) or the manual chip selection.
+    private var filterChips: some View {
+        // A type: token in the search text takes visual precedence over the manual chip.
+        let tokenKind = Self.parseTypeToken(from: debouncedSearchText).kind
+        let selected = tokenKind ?? activeKind
+        let tokenActive = tokenKind != nil
+        return HStack(spacing: 6) {
+            ForEach(ClipboardKind.allCases, id: \.self) { kind in
+                let isOn = kind == selected
+                Button(action: {
+                    guard !tokenActive else { return }   // token drives selection; chip is read-only then
+                    activeKind = kind
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: kind.systemImage)
+                            .font(.system(size: 9))
+                        Text(kind.label)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(isOn ? Color.accentColor.opacity(0.9) : Color.primary.opacity(0.06))
+                    .foregroundColor(isOn ? .white : .secondary)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .help(tokenActive ? "Filtered by search token type:\(selected.rawValue)" : "Show \(kind.label) items")
+            }
+            Spacer()
+        }
+        .opacity(tokenActive ? 0.7 : 1.0)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+
     private var searchBar: some View {
         HStack(spacing: 8) {
             // App branding
@@ -1142,7 +1232,7 @@ struct HistoryContentView: View {
                     .stroke(TagChip.color(for: tag).opacity(0.2), lineWidth: 0.5))
             }
 
-            TextField(store.allTags.isEmpty ? "Search clipboard…" : "Search or #tag…", text: $searchText)
+            TextField("Search, #tag, or type:image…", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($isSearchFocused)
@@ -1200,7 +1290,7 @@ struct HistoryContentView: View {
             if filteredItems.isEmpty {
                 VStack {
                     Spacer()
-                    Text(searchText.isEmpty && activeTagFilter == nil ? "No clipboard history" : "No matches")
+                    Text(searchText.isEmpty && activeTagFilter == nil && activeKind == .all ? "No clipboard history" : "No matches")
                         .foregroundColor(.secondary)
                     Spacer()
                 }

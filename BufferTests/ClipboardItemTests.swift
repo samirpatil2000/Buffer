@@ -895,6 +895,57 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(result.fileExtension, "txt")
         XCTAssertEqual(result.contentType, .plainText)
     }
+
+    // MARK: - Type filter
+
+    func testKindClassificationTextAndImageAndLink() {
+        let plain = ClipboardItem.text("just some words here")
+        XCTAssertTrue(plain.matchesKind(.text))
+        XCTAssertFalse(plain.matchesKind(.image))
+        XCTAssertFalse(plain.matchesKind(.link))
+        XCTAssertTrue(plain.matchesKind(.all))
+
+        let image = ClipboardItem.image(filename: "x.png")
+        XCTAssertTrue(image.matchesKind(.image))
+        XCTAssertFalse(image.matchesKind(.text))
+
+        var withLink = ClipboardItem.text("see the ticket")
+        withLink.links = [WebLink(text: "T", url: "https://x.com")]
+        XCTAssertTrue(withLink.matchesKind(.link))
+        XCTAssertTrue(withLink.matchesKind(.text))
+    }
+
+    func testCombinedItemMatchesBothTextAndImage() {
+        var combined = ClipboardItem.text("caption text")
+        combined.imageFilenames = ["a.png"]
+        XCTAssertTrue(combined.matchesKind(.text))
+        XCTAssertTrue(combined.matchesKind(.image))
+    }
+
+    func testKindClassificationCode() {
+        let code = ClipboardItem.text("func greet(name: String) -> String {\n  return name\n}")
+        XCTAssertTrue(code.matchesKind(.code))
+        let prose = ClipboardItem.text("This is an ordinary English sentence with no code in it at all.")
+        XCTAssertFalse(prose.matchesKind(.code))
+    }
+
+    func testParseTypeToken() {
+        let (kind1, rest1) = HistoryContentView.parseTypeToken(from: "type:image invoice")
+        XCTAssertEqual(kind1, .image)
+        XCTAssertEqual(rest1, "invoice")
+
+        let (kind2, rest2) = HistoryContentView.parseTypeToken(from: "report type:link")
+        XCTAssertEqual(kind2, .link)
+        XCTAssertEqual(rest2, "report")
+
+        let (kind3, rest3) = HistoryContentView.parseTypeToken(from: "no token here")
+        XCTAssertNil(kind3)
+        XCTAssertEqual(rest3, "no token here")
+
+        let (kind4, rest4) = HistoryContentView.parseTypeToken(from: "type:banana")
+        XCTAssertNil(kind4)
+        XCTAssertEqual(rest4, "type:banana")
+    }
 }
 
 
