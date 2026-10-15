@@ -10,7 +10,7 @@
 
 ---
 
-> ### ⚡ This is a customized fork (`3.0.5 - Custom`)
+> ### ⚡ This is a customized fork (`3.0.19 - Custom`)
 >
 > This branch adds several enhancements on top of upstream Buffer. See
 > **[CHANGES.md](CHANGES.md)** for the full write-up. Summary:
@@ -21,7 +21,9 @@
 > - **Code syntax highlighting** — ~190 languages (HighlighterSwift) with auto-detection and a manual override
 > - **In-place JSON / XML formatter** — a Format button that pretty-prints in place
 > - **Browser image capture** — inline base64 images automatically; remote images via an opt-in, off-by-default setting
+> - **Hyperlink capture** — links (and bare URLs in plain text) are captured, searchable, listed, and rendered clickable inline
 > - **Search highlighting** — the search term is highlighted across text, OCR, rich, and code previews
+> - **Filter by type** — chips and `type:` search tokens to filter history by Text / Image / Link / Code
 >
 > Build it with Xcode (⌘R). Note: builds here are ad-hoc signed, not notarized.
 
