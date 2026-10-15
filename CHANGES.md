@@ -85,6 +85,21 @@ upstream v3.0.0+. This document describes everything in the
   plain text, OCR text, rich/combined content, and syntax-highlighted code.
   It updates live as you type and is case-insensitive.
 
+## 8. Hyperlink capture
+
+- Copying hyperlinked content captures **every `<a href>`** from the source's
+  HTML (anchor text + URL), in document order, plus the single-URL pasteboard
+  flavour when the whole copy is one link. Only http(s) and mailto links are
+  kept; fragment, relative, and javascript anchors are skipped, and the count
+  is capped per item.
+- Captured links are **searchable** by both the visible anchor text and the URL.
+- A **Links** section in the preview lists each link, clickable (opens in the
+  browser) with a copy-URL action.
+- Within the text body, hyperlinks render **inline as classic blue underlined
+  clickable links**, matching how they appeared in the source, while the
+  surrounding text keeps the standard preview color and the same monospaced
+  font and size as plain-text entries (so it respects the zoom level).
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of

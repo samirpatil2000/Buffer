@@ -284,7 +284,33 @@ class ClipboardWatcher: ObservableObject {
             links.append(WebLink(text: label, url: urlString))
         }
 
+        // Bare URLs typed/pasted as plain text (no HTML anchor, no URL flavour). Detect them so
+        // a copied link is recognised even when it arrives as plain text.
+        for detected in detectURLs(in: plainText) {
+            if !links.contains(where: { $0.url == detected }) {
+                links.append(WebLink(text: detected, url: detected))
+            }
+        }
+
         return Array(links.prefix(maxCapturedLinks))
+    }
+
+    /// Detect bare http(s) URLs in plain text using NSDataDetector. Returns absolute URL strings
+    /// in order of appearance. Pure, no network. Exposed for unit testing.
+    static func detectURLs(in text: String) -> [String] {
+        guard !text.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        var urls: [String] = []
+        detector.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let url = match?.url else { return }
+            let scheme = url.scheme?.lowercased()
+            guard scheme == "http" || scheme == "https" || scheme == "mailto" else { return }
+            urls.append(url.absoluteString)
+        }
+        return urls
     }
 
     /// Extract image attachments from an attributed pasteboard flavour. Never performs network I/O.

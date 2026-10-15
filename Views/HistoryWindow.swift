@@ -1664,11 +1664,43 @@ struct HistoryContentView: View {
         if let attributed = highlightedPreview {
             HighlightedTextView(attributedText: attributed, searchQuery: activeSearchQuery)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+        } else if item.hasLinks, let linked = Self.plainTextWithClickableLinks(text, links: item.links, fontSize: previewFontSize) {
+            // Plain text that contains URLs (no HTML markup): render through the text view so the
+            // URLs are blue, underlined, and clickable, matching hyperlinked items.
+            HighlightedTextView(attributedText: linked, searchQuery: activeSearchQuery)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         } else {
             Text(highlightedSearchText(text, size: previewFontSize, monospaced: true))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    /// Build an attributed string from plain text where each captured link's URL substring is
+    /// turned into a clickable, blue, underlined link. Returns nil if no link substring is found
+    /// in the text (then the caller uses the plain path).
+    private static func plainTextWithClickableLinks(_ text: String, links: [WebLink], fontSize: CGFloat) -> NSAttributedString? {
+        let output = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+            .foregroundColor: NSColor.labelColor
+        ])
+        let ns = text as NSString
+        var applied = false
+        for link in links {
+            guard let url = URL(string: link.url) else { continue }
+            // Prefer matching the URL text in the body; fall back to the anchor label.
+            for needle in [link.url, link.text] where !needle.isEmpty {
+                let range = ns.range(of: needle)
+                if range.location != NSNotFound {
+                    output.addAttribute(.link, value: url, range: range)
+                    output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                    output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                    applied = true
+                    break
+                }
+            }
+        }
+        return applied ? output : nil
     }
 
     /// The active plain-text search query (empty for no search or a #tag filter), used to

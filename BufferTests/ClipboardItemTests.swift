@@ -709,4 +709,16 @@ class ClipboardItemTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
         XCTAssertTrue(decoded.links.isEmpty)
     }
+
+    func testDetectBareURLsInPlainText() {
+        let text = "see https://example.com/a and http://example.com/b plus mailto:x@y.com, not ftp://z"
+        let urls = ClipboardWatcher.detectURLs(in: text)
+        XCTAssertTrue(urls.contains("https://example.com/a"))
+        XCTAssertTrue(urls.contains("http://example.com/b"))
+        XCTAssertFalse(urls.contains(where: { $0.hasPrefix("ftp") }))
+    }
+
+    func testDetectBareURLsEmptyWhenNone() {
+        XCTAssertTrue(ClipboardWatcher.detectURLs(in: "just some words, no links").isEmpty)
+    }
 }
