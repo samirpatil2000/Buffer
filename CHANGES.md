@@ -119,13 +119,33 @@ upstream v3.0.0+. This document describes everything in the
 
 ## 10. Filter by type
 
-- A chip row under the search bar filters history by content category:
-  **All / Text / Image / Link / Code**.
-- The same filter is available as a search token (`type:image`, `type:link`,
-  `type:code`, `type:text`); a token takes precedence and the chips reflect it.
-- Combined text+image items match both the Text and Image filters. Code is
-  detected heuristically from the item's content.
+Filter the history down to a single content category. Works alongside search and
+tag filters.
+
+**Categories (plus All):**
+
+- **Text** - any item with a text body (plain text, and combined text+image items)
+- **Image** - any item carrying an image (pure images, and combined text+image items)
+- **Link** - items that captured one or more hyperlinks (or bare URLs in plain text)
+- **Code** - items whose content was detected as source code (JSON, shell, SQL, Swift, etc.)
+
+**Two ways to filter:**
+
+1. **Chips** - a row under the search bar (`All / Text / Image / Link / Code`).
+   Click one to filter; click All to clear.
+2. **Search tokens** - type `type:` and a category in the search box:
+   `type:image`, `type:link`, `type:code`, `type:text`. A token overrides the
+   chips (which dim and reflect it) and combines with free text, so
+   `type:link invoice` shows link items that also match "invoice".
+
+**Notes:**
+
+- An item can match more than one category - a combined text+image item shows
+  under both Text and Image.
 - The filter resets to All each time the window opens.
+- It stacks with text search and `#tag` filters.
+- Code and Link classification only applies to items captured after those
+  features existed; Text and Image are accurate for all history.
 
 ## Developer-facing
 
