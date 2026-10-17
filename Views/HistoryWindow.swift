@@ -1864,10 +1864,18 @@ struct HistoryContentView: View {
     @ViewBuilder
     private func highlightedTextBody(_ item: ClipboardItem) -> some View {
         let text = item.textContent ?? ""
+        // Resolve the links to render clickable: captured links if present, otherwise detect
+        // URLs live from the text. The live fallback makes URLs clickable even in items captured
+        // before link detection existed, without storing anything.
+        let effectiveLinks: [WebLink] = item.hasLinks
+            ? item.links
+            : ClipboardWatcher.detectURLs(in: text).map { WebLink(text: $0, url: $0) }
+
         if let attributed = highlightedPreview {
             HighlightedTextView(attributedText: attributed, searchQuery: activeSearchQuery)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-        } else if item.hasLinks, let linked = Self.plainTextWithClickableLinks(text, links: item.links, fontSize: previewFontSize) {
+        } else if !effectiveLinks.isEmpty,
+                  let linked = Self.plainTextWithClickableLinks(text, links: effectiveLinks, fontSize: previewFontSize) {
             // Plain text that contains URLs (no HTML markup): render through the text view so the
             // URLs are blue, underlined, and clickable, matching hyperlinked items.
             HighlightedTextView(attributedText: linked, searchQuery: activeSearchQuery)
