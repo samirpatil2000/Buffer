@@ -193,7 +193,7 @@ class HistoryWindowController: NSWindowController {
         // Compute reset decision *before* super.showWindow fires didBecomeKeyNotification
         // → bufferWindowDidOpen, so the content view onReceive handler sees the right value.
         shouldResetOnOpen = shouldResetSearch
-        ensureWindowIsVisibleOnScreen()
+        moveWindowToActiveScreen()
         super.showWindow(sender)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -201,15 +201,139 @@ class HistoryWindowController: NSWindowController {
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }
 
-    private func ensureWindowIsVisibleOnScreen() {
-        guard let window = window else { return }
-        let currentFrame = window.frame
-        let isVisible = NSScreen.screens.contains { screen in
-            screen.visibleFrame.intersects(currentFrame)
-        }
-        if !isVisible {
+    /// Repositions the window onto the screen the user is currently working on.
+    /// If the window already sits on that screen, its position is untouched.
+    /// Otherwise its position and size — kept as ratios of the screen it was
+    /// on — are translated onto the active screen so it reappears in the same
+    /// relative spot, proportionally sized.
+    private func moveWindowToActiveScreen() {
+        guard let window = window, let targetScreen = activeScreen() else { return }
+        guard let currentScreen = screenContainingWindowFrame(window.frame) else {
+            // Saved frame isn't on any connected screen — center as a fallback.
             window.center()
+            return
         }
+        guard displayID(of: currentScreen) != displayID(of: targetScreen) else { return }
+
+        let fromFrame = currentScreen.visibleFrame
+        let toFrame = targetScreen.visibleFrame
+        guard fromFrame.width > 0, fromFrame.height > 0 else { return }
+        let frame = window.frame
+
+        // Same size ratio relative to the screen, clamped to fit it.
+        let scaledSize = NSSize(
+            width: min(frame.width / fromFrame.width * toFrame.width, toFrame.width),
+            height: min(frame.height / fromFrame.height * toFrame.height, toFrame.height)
+        )
+        // Same relative center position within the screen.
+        let center = NSPoint(
+            x: toFrame.minX + (frame.midX - fromFrame.minX) / fromFrame.width * toFrame.width,
+            y: toFrame.minY + (frame.midY - fromFrame.minY) / fromFrame.height * toFrame.height
+        )
+        window.setFrame(NSRect(
+            x: center.x - scaledSize.width / 2,
+            y: center.y - scaledSize.height / 2,
+            width: scaledSize.width,
+            height: scaledSize.height
+        ), display: true)
+    }
+
+    private func screenContainingWindowFrame(_ frame: NSRect) -> NSScreen? {
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) {
+            return screen
+        }
+        // Off-screen frame (e.g. saved from a since-disconnected display):
+        // use the screen with the largest overlap.
+        func overlapArea(_ screen: NSScreen) -> CGFloat {
+            let intersection = screen.frame.intersection(frame)
+            return max(0, intersection.width) * max(0, intersection.height)
+        }
+        return NSScreen.screens.max { overlapArea($0) < overlapArea($1) }
+    }
+
+    private func displayID(of screen: NSScreen) -> CGDirectDisplayID {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+    }
+
+    /// The screen the user is working on: the screen of the frontmost
+    /// application's focused window, falling back to its frontmost on-screen
+    /// window, the screen under the mouse cursor, then the main screen.
+    private func activeScreen() -> NSScreen? {
+        if let focusedFrame = focusedWindowFrameOfFrontmostApp(),
+           let screen = screenContainingWindowFrame(focusedFrame) {
+            return screen
+        }
+        if let frontmostFrame = frontmostApplicationWindowFrame(),
+           let screen = screenContainingWindowFrame(frontmostFrame) {
+            return screen
+        }
+        let mouseLocation = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) {
+            return screen
+        }
+        return NSScreen.main
+    }
+
+    /// Frame of the frontmost application's focused window in AppKit global
+    /// coordinates, via the Accessibility API.
+    private func focusedWindowFrameOfFrontmostApp() -> NSRect? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedWindow: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindow
+        ) == .success, let focusedWindow = focusedWindow else { return nil }
+        let window = focusedWindow as! AXUIElement
+
+        var positionValue: CFTypeRef?
+        var sizeValue: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,
+            AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
+            let position = positionValue, let size = sizeValue
+        else { return nil }
+
+        var topLeft = CGPoint.zero
+        var windowSize = CGSize.zero
+        guard AXValueGetValue(position as! AXValue, .cgPoint, &topLeft),
+              AXValueGetValue(size as! AXValue, .cgSize, &windowSize) else { return nil }
+
+        // AX reports the top-left corner in top-left-origin global coordinates;
+        // convert to AppKit's bottom-left-origin global coordinates.
+        let primaryHeight = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? 0
+        return NSRect(
+            x: topLeft.x,
+            y: primaryHeight - topLeft.y - windowSize.height,
+            width: windowSize.width,
+            height: windowSize.height
+        )
+    }
+
+    /// Frame of the frontmost application's frontmost on-screen window in
+    /// AppKit global coordinates, via the CG window list. Fallback for when
+    /// the Accessibility API can't provide the focused window.
+    private func frontmostApplicationWindowFrame() -> NSRect? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        guard let bounds = windowList.first(where: {
+            ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier
+        })?[kCGWindowBounds as String] as? [String: CGFloat],
+        let width = bounds["Width"], let height = bounds["Height"] else { return nil }
+        // CG window bounds use a top-left origin; convert to AppKit's
+        // bottom-left-origin global coordinates.
+        let primaryHeight = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height ?? 0
+        return NSRect(
+            x: bounds["X"] ?? 0,
+            y: primaryHeight - (bounds["Y"] ?? 0) - height,
+            width: width,
+            height: height
+        )
     }
 }
 
