@@ -66,8 +66,12 @@ upstream v3.0.0+. This document describes everything in the
 
 - A **Format** button in the preview pretty-prints JSON and XML/HTML **in place**
   (dependency-free, using Foundation).
+- The button is a **toggle**: click once to pretty-print (expand), click again
+  to minify (compact) the content back to a single line. The icon and tooltip
+  switch to show which action the next click performs.
 - The button appears only for content that can actually be formatted. JSON key
-  order is preserved.
+  order is preserved in both directions, and the pretty / compact round trip is
+  lossless.
 
 ## 6. Browser image capture
 

@@ -624,6 +624,29 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(CodeFormatter.canFormat(language: nil, text: "just some prose here"))
     }
 
+    func testFormatterMinifiesPrettyJSONToSingleLine() {
+        let pretty = "{\n  \"b\" : 2,\n  \"a\" : [\n    1,\n    2\n  ]\n}"
+        let result = CodeFormatter.minify(pretty, language: "json")
+        XCTAssertNotNil(result)
+        XCTAssertFalse(result!.contains("\n"), "minified JSON should be single-line")
+        XCTAssertEqual(result, "{\"b\":2,\"a\":[1,2]}")
+    }
+
+    func testFormatterJSONRoundTripsPrettyAndCompact() {
+        let compact = "{\"b\":2,\"a\":[1,2,3]}"
+        let pretty = CodeFormatter.format(compact, language: "json")
+        XCTAssertNotNil(pretty)
+        let backToCompact = CodeFormatter.minify(pretty!, language: "json")
+        XCTAssertEqual(backToCompact, compact)
+    }
+
+    func testFormatterIsPrettyReflectsLayout() {
+        // Multi-line formattable content is "pretty" (next toggle minifies); single-line is not.
+        XCTAssertTrue(CodeFormatter.isPretty(language: "json", text: "{\n  \"a\" : 1\n}"))
+        XCTAssertFalse(CodeFormatter.isPretty(language: "json", text: "{\"a\":1}"))
+        XCTAssertFalse(CodeFormatter.isPretty(language: nil, text: "just prose\nover two lines"))
+    }
+
     // MARK: - Remote image URL extraction (opt-in download feature)
 
     func testRemoteImageURLExtraction() {

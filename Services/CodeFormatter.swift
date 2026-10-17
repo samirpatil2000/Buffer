@@ -26,6 +26,28 @@ enum CodeFormatter {
         }
     }
 
+    /// Collapse `text` to its most compact single-line form for the given language, or nil if it
+    /// cannot be minified. The inverse of `format`, so the UI button can toggle between the two.
+    static func minify(_ text: String, language: String?) -> String? {
+        switch resolve(language: language, text: text) {
+        case .json: return minifyJSON(text)
+        case .xml: return minifyXML(text)
+        case .none: return nil
+        }
+    }
+
+    /// Whether `text` already appears pretty-printed (multi-line with indentation), so the UI can
+    /// decide whether the next toggle action should minify (true) or pretty-print (false).
+    /// Conservative: only reports true for formattable content that contains a newline.
+    static func isPretty(language: String?, text: String) -> Bool {
+        switch resolve(language: language, text: text) {
+        case .json, .xml:
+            return text.contains("\n")
+        case .none:
+            return false
+        }
+    }
+
     // MARK: - Private
 
     private enum Formattable {
@@ -89,5 +111,33 @@ enum CodeFormatter {
         let out = doc.xmlData(options: [.nodePrettyPrint])
         let formatted = String(decoding: out, as: UTF8.self)
         return formatted.isEmpty ? nil : formatted
+    }
+
+    private static func minifyJSON(_ text: String) -> String? {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+        // No .prettyPrinted option gives the compact single-line form. Preserve key order and
+        // keep slashes unescaped so the round trip matches the pretty-printer.
+        guard let compact = try? JSONSerialization.data(
+            withJSONObject: object,
+            options: [.withoutEscapingSlashes]
+        ) else {
+            return nil
+        }
+        return String(decoding: compact, as: UTF8.self)
+    }
+
+    private static func minifyXML(_ text: String) -> String? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        // Parse with pretty-print off and tidy on, then emit without pretty-print so inter-element
+        // whitespace is dropped. documentTidyXML drops the ignorable whitespace between nodes.
+        guard let doc = try? XMLDocument(data: data, options: [.documentTidyXML]) else {
+            return nil
+        }
+        let out = doc.xmlData()
+        let compact = String(decoding: out, as: UTF8.self)
+        return compact.isEmpty ? nil : compact
     }
 }

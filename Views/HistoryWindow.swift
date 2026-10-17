@@ -1442,12 +1442,18 @@ struct HistoryContentView: View {
                             }
 
                             if let item = selectedItem, formatButtonApplies(to: item) {
+                                let isPretty = CodeFormatter.isPretty(
+                                    language: item.language, text: item.textContent ?? "")
                                 Button(action: { formatSelected(item) }) {
-                                    Image(systemName: "text.alignleft")
+                                    Image(systemName: isPretty
+                                        ? "arrow.down.right.and.arrow.up.left"
+                                        : "text.alignleft")
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundColor(.primary)
-                                .help("Format (pretty-print JSON or XML)")
+                                .help(isPretty
+                                    ? "Compact (minify JSON or XML)"
+                                    : "Format (pretty-print JSON or XML)")
                             }
 
                             Button(action: {
@@ -1960,10 +1966,15 @@ struct HistoryContentView: View {
         return CodeFormatter.canFormat(language: item.language, text: text)
     }
 
-    /// Pretty-print the item's text in place and re-highlight the formatted result.
+    /// Toggle the item's text between pretty-printed and compact form in place, then re-highlight.
+    /// When the content is already pretty-printed it is minified back, otherwise it is
+    /// pretty-printed, so the one button round-trips JSON/XML between the two layouts.
     private func formatSelected(_ item: ClipboardItem) {
         let text = item.textContent ?? ""
-        guard let formatted = CodeFormatter.format(text, language: item.language), formatted != text else { return }
+        let transformed = CodeFormatter.isPretty(language: item.language, text: text)
+            ? CodeFormatter.minify(text, language: item.language)
+            : CodeFormatter.format(text, language: item.language)
+        guard let formatted = transformed, formatted != text else { return }
         store.updateText(formatted, for: item)
         // Reflect the change in the live preview and re-run highlighting on the new text.
         chunkedText.visibleText = formatted
