@@ -267,6 +267,7 @@ struct HistoryContentView: View {
     @ObservedObject var store: ClipboardStore
     @ObservedObject private var updateService = UpdateService.shared
     @ObservedObject private var settings = SettingsManager.shared
+    @Environment(\.colorScheme) private var colorScheme
     /// Set to true by HistoryWindowController when the window has been closed for more than
     /// 1.5 minutes (or on the very first open). The view resets search/tag state only when this
     /// is true, then writes false back so a second notification in the same session is a no-op.
@@ -294,6 +295,9 @@ struct HistoryContentView: View {
     @State private var searchDebounceTask: Task<Void, Never>? = nil
     @State private var selectedIndex = 0
     @State private var previewImage: NSImage?
+    @State private var attachedPreviewImages: [NSImage] = []
+    @State private var highlightedPreview: NSAttributedString?
+    @State private var richContentPreview: NSAttributedString?
     @State private var chunkedText = ChunkedTextState()
     @State private var scrollTrigger = false  // Triggers scroll on keyboard navigation
     @State private var itemSize: Int?         // Holds computed size of item
@@ -309,6 +313,7 @@ struct HistoryContentView: View {
 
     // Tag filter state
     @State private var activeTagFilter: String? = nil
+    @State private var activeKind: ClipboardKind = .all
     @State private var showTagAutocomplete: Bool = false
     @State private var showTagInput: Bool = false
     @State private var tagInputText: String = ""
@@ -332,14 +337,43 @@ struct HistoryContentView: View {
         if let tag = activeTagFilter {
             base = base.filter { $0.tags.contains(tag) }
         }
-        let query = debouncedSearchText.trimmingCharacters(in: .whitespaces)
+
+        // Resolve the effective type filter: a `type:` search token (if present) wins over the
+        // chip, otherwise the chip's selection applies. The token's text is stripped from the
+        // free-text query so it is not also matched as literal content.
+        let (tokenKind, textQuery) = Self.parseTypeToken(from: debouncedSearchText)
+        let effectiveKind = tokenKind ?? activeKind
+        if effectiveKind != .all {
+            base = base.filter { $0.matchesKind(effectiveKind) }
+        }
+
+        let query = textQuery.trimmingCharacters(in: .whitespaces)
         if !query.isEmpty && !query.hasPrefix("#") {
             base = base.filter { item in
-                guard item.type == .text else { return false }
-                return item.textContent?.localizedCaseInsensitiveContains(query) ?? false
+                ClipboardItem.matches(item: item, query: query)
             }
         }
         return base.sorted { $0.isPinned && !$1.isPinned }
+    }
+
+    /// Extract a leading-or-anywhere `type:<kind>` token from the search text. Returns the parsed
+    /// kind (if any) and the remaining free-text query with the token removed.
+    static func parseTypeToken(from text: String) -> (kind: ClipboardKind?, remaining: String) {
+        guard let regex = try? NSRegularExpression(pattern: "\\btype:(\\w+)", options: [.caseInsensitive]) else {
+            return (nil, text)
+        }
+        let ns = text as NSString
+        guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
+              match.numberOfRanges >= 2 else {
+            return (nil, text)
+        }
+        let value = ns.substring(with: match.range(at: 1))
+        let kind = ClipboardKind.fromToken(value)
+        // Only strip the token if it names a real kind; otherwise leave the text untouched.
+        guard kind != nil else { return (nil, text) }
+        let remaining = ns.replacingCharacters(in: match.range, with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return (kind, remaining)
     }
     
     private func updateFilteredItems() {
@@ -585,6 +619,9 @@ struct HistoryContentView: View {
             // Search bar
             searchBar
 
+            // Type filter chips
+            filterChips
+
             // Tag autocomplete (when typing #...)
             if showTagAutocomplete && !store.allTags.isEmpty {
                 tagAutocompleteBar
@@ -673,6 +710,24 @@ struct HistoryContentView: View {
             self.filteredItems = currentFiltered
             
             // Reset selection to the first item of the new tag filter
+            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
+            selectedID = defaultItem?.id
+            if let id = defaultItem?.id {
+                selectedIDs = [id]
+                selectionAnchor = id
+            } else {
+                selectedIDs = []
+                selectionAnchor = nil
+            }
+            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
+                selectedIndex = index
+            } else {
+                selectedIndex = 0
+            }
+        }
+        .onChange(of: activeKind) { _ in
+            let currentFiltered = computeFilteredItems()
+            self.filteredItems = currentFiltered
             let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
             selectedID = defaultItem?.id
             if let id = defaultItem?.id {
@@ -781,6 +836,7 @@ struct HistoryContentView: View {
             self.filteredItems = currentFiltered
             
             // Transient UI state always resets
+            activeKind = .all
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
@@ -822,9 +878,12 @@ struct HistoryContentView: View {
         .onAppear {
             updateFilteredItems()
         }
-        .task(id: selectedItem?.id) {
+        .task(id: highlightTaskID) {
             // Clear preview
             previewImage = nil
+            attachedPreviewImages = []
+            highlightedPreview = nil
+            richContentPreview = nil
             chunkedText = ChunkedTextState()
             isExtractingText = false
             itemSize = nil
@@ -838,11 +897,29 @@ struct HistoryContentView: View {
                 if item.type == .image {
                     previewImage = await loadPreviewImage(for: item)
                 } else if item.type == .text {
-                    if item.isFileBacked || (item.textContent?.count ?? 0) > 5000 {
+                    if item.isFileBacked || (item.textContent?.count ?? 0) > Self.inlineHighlightCharLimit {
                         await loadInitialChunk(for: item)
                     } else {
                         chunkedText.visibleText = item.textContent ?? ""
                         chunkedText.reachedEOF = true
+                        await loadHighlight(for: item)
+                    }
+                    // Render from the stored rich payload for combined items (inline images) and
+                    // for link-bearing items (so hyperlinks show as classic blue underlined
+                    // clickable links within the text, as in the source).
+                    if item.isCombined || item.hasLinks {
+                        let size = previewFontSize
+                        let remoteToLocal = store.remoteImageLocalURLs(for: item)
+                        let rich = await Task.detached(priority: .userInitiated) {
+                            RichContentRenderer.attributedString(for: item, fontSize: size, remoteToLocalURL: remoteToLocal)
+                        }.value
+                        if selectedItem?.id == item.id {
+                            if let rich = rich {
+                                richContentPreview = rich
+                            } else if item.isCombined {
+                                attachedPreviewImages = await loadImages(item.imageFilenames)
+                            }
+                        }
                     }
                 }
             }
@@ -954,7 +1031,7 @@ struct HistoryContentView: View {
             },
             onSaveImage: {
                 guard !isEditing else { return }
-                if selectedItem?.type == .image, let img = previewImage {
+                if selectedItem?.hasImages == true, let img = previewImage ?? attachedPreviewImages.first {
                     PasteController.saveImageToDisk(img)
                 } else if selectedItem?.type == .text, let item = selectedItem, let text = store.fullText(for: item) {
                     PasteController.saveTextToDisk(text)
@@ -1019,6 +1096,16 @@ struct HistoryContentView: View {
             }
         }
     }
+
+    /// Load images off the main thread. Mirrors loadPreviewImage's shape.
+    /// Called with item.imageFilenames for the attachment preview and item.allImageFilenames for OCR.
+    private func loadImages(_ filenames: [String]) async -> [NSImage] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: filenames.compactMap { store.attachedImage(filename: $0) })
+            }
+        }
+    }
     
     private func loadInitialChunk(for item: ClipboardItem) async {
         chunkedText.isLoadingMore = true // Initial load spinner
@@ -1066,6 +1153,43 @@ struct HistoryContentView: View {
         return formattedByteCount(bytes)
     }
     
+    /// Horizontal row of type-filter chips (All / Text / Image / Link / Code). The selected chip
+    /// reflects either a `type:` search token (if present) or the manual chip selection.
+    private var filterChips: some View {
+        // A type: token in the search text takes visual precedence over the manual chip.
+        let tokenKind = Self.parseTypeToken(from: debouncedSearchText).kind
+        let selected = tokenKind ?? activeKind
+        let tokenActive = tokenKind != nil
+        return HStack(spacing: 6) {
+            ForEach(ClipboardKind.allCases, id: \.self) { kind in
+                let isOn = kind == selected
+                Button(action: {
+                    guard !tokenActive else { return }   // token drives selection; chip is read-only then
+                    activeKind = kind
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: kind.systemImage)
+                            .font(.system(size: 9))
+                        Text(kind.label)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(isOn ? Color.accentColor.opacity(0.9) : Color.primary.opacity(0.06))
+                    .foregroundColor(isOn ? .white : .secondary)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .help(tokenActive ? "Filtered by search token type:\(selected.rawValue)" : "Show \(kind.label) items")
+            }
+            Spacer()
+        }
+        .opacity(tokenActive ? 0.7 : 1.0)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+
     private var searchBar: some View {
         HStack(spacing: 8) {
             // App branding
@@ -1108,7 +1232,7 @@ struct HistoryContentView: View {
                     .stroke(TagChip.color(for: tag).opacity(0.2), lineWidth: 0.5))
             }
 
-            TextField(store.allTags.isEmpty ? "Search clipboard…" : "Search or #tag…", text: $searchText)
+            TextField("Search, #tag, or type:image…", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($isSearchFocused)
@@ -1166,7 +1290,7 @@ struct HistoryContentView: View {
             if filteredItems.isEmpty {
                 VStack {
                     Spacer()
-                    Text(searchText.isEmpty && activeTagFilter == nil ? "No clipboard history" : "No matches")
+                    Text(searchText.isEmpty && activeTagFilter == nil && activeKind == .all ? "No clipboard history" : "No matches")
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -1223,7 +1347,7 @@ struct HistoryContentView: View {
                         .cornerRadius(4)
                     } else {
                         HStack(spacing: 6) {
-                            Text(item.type == .text ? "Text" : "Image")
+                            Text(item.typeLabel)
                             
                             if item.isFileBacked {
                                 Text("Large")
@@ -1248,7 +1372,11 @@ struct HistoryContentView: View {
                         .cornerRadius(4)
                     }
                 }
-                
+
+                if let item = selectedItem, languagePickerApplies(to: item) {
+                    languagePicker(for: item)
+                }
+
                 Spacer()
                 
                 if showZoomBadge {
@@ -1313,6 +1441,21 @@ struct HistoryContentView: View {
                                 .help("Edit item (⌘E)")
                             }
 
+                            if let item = selectedItem, formatButtonApplies(to: item) {
+                                let isPretty = CodeFormatter.isPretty(
+                                    language: item.language, text: item.textContent ?? "")
+                                Button(action: { formatSelected(item) }) {
+                                    Image(systemName: isPretty
+                                        ? "arrow.down.right.and.arrow.up.left"
+                                        : "text.alignleft")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(.primary)
+                                .help(isPretty
+                                    ? "Compact (minify JSON or XML)"
+                                    : "Format (pretty-print JSON or XML)")
+                            }
+
                             Button(action: {
                                 if let item = selectedItem {
                                     onCopyToClipboard(item)
@@ -1324,9 +1467,9 @@ struct HistoryContentView: View {
                             .buttonStyle(.plain)
                             .help("Copy (⌘C)")
                             
-                            if selectedItem?.type == .image && previewImage != nil {
+                            if selectedItem?.hasImages == true && (previewImage != nil || !attachedPreviewImages.isEmpty) {
                                 Button(action: {
-                                    if let img = previewImage { PasteController.saveImageToDisk(img) }
+                                    if let img = previewImage ?? attachedPreviewImages.first { PasteController.saveImageToDisk(img) }
                                 }) {
                                     Image(systemName: "arrow.down.to.line")
                                 }
@@ -1344,15 +1487,19 @@ struct HistoryContentView: View {
                                 .help("Save text to file (⌘S)")
                             }
                             
-                            // OCR button — only for image items without existing OCR text
-                            if selectedItem?.type == .image && previewImage != nil && selectedItem?.ocrText == nil {
+                            // OCR button - for any item carrying images (pure image or combined), without existing OCR text
+                            if selectedItem?.hasImages == true, selectedItem?.ocrText == nil {
                                 Button(action: {
                                     Task { @MainActor in
-                                        guard let img = previewImage, let item = selectedItem else { return }
+                                        guard let item = selectedItem else { return }
                                         isExtractingText = true
-                                        let result = await OCRService.shared.recognizeText(from: img)
-                                        let text = result ?? "No text found in this image."
-                                        store.setOCRText(text, for: item)
+                                        let images = await loadImages(item.allImageFilenames)
+                                        var parts: [String] = []
+                                        for image in images {
+                                            if let text = await OCRService.shared.recognizeText(from: image) { parts.append(text) }
+                                        }
+                                        store.setOCRText(parts.isEmpty ? "No text found in this image." : parts.joined(separator: "\n"),
+                                                         for: item)
                                         isExtractingText = false
                                     }
                                 }) {
@@ -1608,30 +1755,24 @@ struct HistoryContentView: View {
     private func itemContent(_ item: ClipboardItem) -> some View {
         switch item.type {
         case .text:
-            if item.isTruncated {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(item.textContent ?? "")
-                        .font(.system(size: previewFontSize, design: .monospaced))
-                        .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 12) {
+                if let rich = richContentPreview {
+                    // Render the stored rich payload so formatting is faithful: combined items
+                    // show images inline in position, and hyperlinks render as classic blue
+                    // underlined clickable links within the text, as in the source.
+                    HighlightedTextView(attributedText: rich, searchQuery: activeSearchQuery)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                    
-                    Label("Content was too large to store (\(formattedSize(bytes: item.originalSizeBytes ?? 0))). Showing first 500 characters.", systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
+                } else {
+                    // Fallback: plain text, then any images stacked below.
+                    textBody(item)
+                    if item.isCombined {
+                        ForEach(Array(attachedPreviewImages.enumerated()), id: \.offset) { _, image in
+                            ZoomableImageView(image: image)
+                        }
+                    }
                 }
-            } else if item.isFileBacked || (item.textContent?.count ?? 0) > 5000 {
-                textContent(item)
-            } else if isEditing {
-                TextEditor(text: $editText)
-                    .font(.system(size: previewFontSize, design: .monospaced))
-                    .frame(minHeight: 200, maxHeight: .infinity)
-                    .focused($isTextEditorFocused)
-            } else {
-                Text(item.textContent ?? "")
-                    .font(.system(size: previewFontSize, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                ocrSection(item)
+                linksSection(item)
             }
         case .image:
             VStack(spacing: 12) {
@@ -1642,44 +1783,371 @@ struct HistoryContentView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: 200)
                 }
+                ocrSection(item)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func textBody(_ item: ClipboardItem) -> some View {
+        if item.isTruncated {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(item.textContent ?? "")
+                    .font(.system(size: previewFontSize, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 
-                // OCR result
-                if isExtractingText {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(.vertical, 12)
-                } else if let ocrText = item.ocrText {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Rectangle()
-                            .fill(Color.primary.opacity(0.15))
-                            .frame(height: 0.5)
-                        
-                        HStack(alignment: .top) {
-                            Text(ocrText)
-                                .font(.system(size: previewFontSize))
-                                .textSelection(.enabled)
-                                .lineSpacing(4)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                            
-                            Button(action: {
-                                NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(ocrText, forType: .string)
-                            }) {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary.opacity(0.6))
-                            }
-                            .buttonStyle(.plain)
-                            .help("Copy extracted text")
-                        }
-                        .padding(.top, 12)
-                    }
+                Label("Content was too large to store (\(formattedSize(bytes: item.originalSizeBytes ?? 0))). Showing first 500 characters.", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
+            }
+        } else if item.isFileBacked || (item.textContent?.count ?? 0) > Self.inlineHighlightCharLimit {
+            textContent(item)
+        } else if isEditing {
+            TextEditor(text: $editText)
+                .font(.system(size: previewFontSize, design: .monospaced))
+                .frame(minHeight: 200, maxHeight: .infinity)
+                .focused($isTextEditorFocused)
+        } else {
+            highlightedTextBody(item)
+        }
+    }
+
+    /// Inline (non-file-backed) text at or below this character count is rendered directly in
+    /// the preview, where it is eligible for syntax highlighting. Above it, the lazy chunked
+    /// loader is used instead and the content stays plain. Chosen to comfortably cover real
+    /// code files while staying under the highlighter's own 100 KB byte cap.
+    static let inlineHighlightCharLimit = 20_000
+
+    /// Composite identity for the preview-loading task: re-run highlighting when the selected
+    /// item, its language override, the zoom level, or the system appearance changes.
+    private var highlightTaskID: String {
+        let item = selectedItem
+        let lang = item?.language ?? "~auto"
+        return "\(item?.id.uuidString ?? "none")|\(lang)|\(Int(previewFontSize))|\(colorScheme == .dark ? "d" : "l")"
+    }
+
+    /// Compute the highlighted preview for an inline text item off the main thread and store it
+    /// in `highlightedPreview`. Mirrors how `previewImage` is loaded, so SwiftUI reliably
+    /// re-renders when the result lands. Leaves `highlightedPreview` nil (plain fallback) for
+    /// rich-formatted content, forced-plain overrides, prose, or anything over the size cap.
+    private func loadHighlight(for item: ClipboardItem) async {
+        let text = item.textContent ?? ""
+        guard !text.isEmpty else { return }
+
+        // Resolve language: explicit override wins; "" = forced plain; otherwise detect.
+        // Note: an item may carry an HTML/RTF flavor just because it was copied from a browser
+        // (which attaches HTML to the pasteboard). That alone must NOT suppress highlighting -
+        // the detector decides based on whether the text itself looks like code vs prose.
+        let language: String?
+        if let override = item.language {
+            if override.isEmpty { return }
+            language = override
+        } else {
+            switch LanguageDetector.detect(text) {
+            case .plain: return
+            case .code(let hint): language = hint
+            }
+        }
+
+        let dark = colorScheme == .dark
+        let size = previewFontSize
+        let engine = HighlighterSwiftEngine.shared
+        let result = await Task.detached(priority: .userInitiated) {
+            engine.highlight(text, language: language, fontSize: size, dark: dark)
+        }.value
+
+        // Only apply if this is still the selected item (avoid a stale async result landing
+        // after the user navigated away).
+        if selectedItem?.id == item.id {
+            highlightedPreview = result
+        }
+    }
+
+    /// Small-text preview branch: syntax-highlighted when a highlighted representation has been
+    /// computed, otherwise plain monospaced. Rich-formatted items are never highlighted.
+    @ViewBuilder
+    private func highlightedTextBody(_ item: ClipboardItem) -> some View {
+        let text = item.textContent ?? ""
+        // Links to render clickable: captured links if present, otherwise URLs detected live from
+        // the body. Routed through the model's effectiveLinks so detection lives in one place and
+        // items captured before link detection existed still render clickable URLs.
+        let effectiveLinks = item.effectiveLinks
+
+        if let attributed = highlightedPreview {
+            HighlightedTextView(attributedText: attributed, searchQuery: activeSearchQuery)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        } else if !effectiveLinks.isEmpty,
+                  let linked = Self.plainTextWithClickableLinks(text, links: effectiveLinks, fontSize: previewFontSize) {
+            // Plain text that contains URLs (no HTML markup): render through the text view so the
+            // URLs are blue, underlined, and clickable, matching hyperlinked items.
+            HighlightedTextView(attributedText: linked, searchQuery: activeSearchQuery)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        } else {
+            Text(highlightedSearchText(text, size: previewFontSize, monospaced: true))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    /// Build an attributed string from plain text where each captured link's URL substring is
+    /// turned into a clickable, blue, underlined link. Returns nil if no link substring is found
+    /// in the text (then the caller uses the plain path).
+    private static func plainTextWithClickableLinks(_ text: String, links: [WebLink], fontSize: CGFloat) -> NSAttributedString? {
+        let output = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+            .foregroundColor: NSColor.labelColor
+        ])
+        let ns = text as NSString
+        var applied = false
+        for link in links {
+            guard let url = URL(string: link.url) else { continue }
+            // Prefer matching the URL text in the body; fall back to the anchor label.
+            for needle in [link.url, link.text] where !needle.isEmpty {
+                let range = ns.range(of: needle)
+                if range.location != NSNotFound {
+                    output.addAttribute(.link, value: url, range: range)
+                    output.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                    output.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                    applied = true
+                    break
                 }
+            }
+        }
+        return applied ? output : nil
+    }
+
+    /// The active plain-text search query (empty for no search or a #tag filter), used to
+    /// highlight matches in the preview.
+    private var activeSearchQuery: String {
+        let q = debouncedSearchText.trimmingCharacters(in: .whitespaces)
+        return q.hasPrefix("#") ? "" : q
+    }
+
+    /// Render `text` as an AttributedString with every case-insensitive occurrence of the active
+    /// search query highlighted. Returns plain styling when there is no query or no match.
+    private func highlightedSearchText(_ text: String, size: CGFloat, monospaced: Bool) -> AttributedString {
+        var attributed = AttributedString(text)
+        attributed.font = monospaced
+            ? .system(size: size, design: .monospaced)
+            : .system(size: size)
+
+        let query = activeSearchQuery
+        guard query.count >= 1 else { return attributed }
+
+        // Walk case-insensitive matches in the source string and map each to the AttributedString.
+        var searchStart = text.startIndex
+        while let range = text.range(of: query, options: .caseInsensitive, range: searchStart..<text.endIndex) {
+            if let attrRange = Range(range, in: attributed) {
+                attributed[attrRange].backgroundColor = .yellow.opacity(0.5)
+                attributed[attrRange].foregroundColor = .black
+            }
+            searchStart = range.upperBound
+        }
+        return attributed
+    }
+
+    /// The language picker is only meaningful for inline text items that are not rich-formatted
+    /// and not shown through the large-text chunked path (which stays plain for performance).
+    private func languagePickerApplies(to item: ClipboardItem) -> Bool {
+        guard item.type == .text, !item.isTruncated else { return false }
+        if item.isFileBacked || (item.textContent?.count ?? 0) > Self.inlineHighlightCharLimit { return false }
+        return !(item.textContent ?? "").isEmpty
+    }
+
+    /// The Format button shows for any inline text whose plain body can actually be pretty-printed
+    /// or minified (JSON or XML/HTML), so it never appears as a dead button. Items that also carry
+    /// a rich flavour qualify too: the formatter only ever rewrites the plain-text body, and
+    /// formatting then drops the now-stale rich flavour (see ClipboardStore.updateText), which is
+    /// the expected outcome for "reformat this JSON". Without this, JSON copied from a browser
+    /// (which attaches an HTML flavour) would never show the button.
+    private func formatButtonApplies(to item: ClipboardItem) -> Bool {
+        guard item.type == .text, !item.isTruncated, !item.isFileBacked else { return false }
+        guard !isEditing else { return false }
+        let text = item.textContent ?? ""
+        guard !text.isEmpty, text.count <= Self.inlineHighlightCharLimit else { return false }
+        return CodeFormatter.canFormat(language: item.language, text: text)
+    }
+
+    /// Toggle the item's text between pretty-printed and compact form in place, then re-highlight.
+    /// When the content is already pretty-printed it is minified back, otherwise it is
+    /// pretty-printed, so the one button round-trips JSON/XML between the two layouts.
+    private func formatSelected(_ item: ClipboardItem) {
+        let text = item.textContent ?? ""
+        let transformed = CodeFormatter.isPretty(language: item.language, text: text)
+            ? CodeFormatter.minify(text, language: item.language)
+            : CodeFormatter.format(text, language: item.language)
+        guard let formatted = transformed, formatted != text else { return }
+        store.updateText(formatted, for: item)
+        // Reflect the change in the live preview and re-run highlighting on the new text.
+        chunkedText.visibleText = formatted
+        chunkedText.reachedEOF = true
+        Task {
+            if let updated = store.items.first(where: { $0.id == item.id }) {
+                await loadHighlight(for: updated)
+            }
+        }
+    }
+
+    /// A compact menu to override the detected language for the selected item.
+    /// Auto (nil), Plain Text (""), or any supported language. The choice persists per item.
+    @ViewBuilder
+    private func languagePicker(for item: ClipboardItem) -> some View {
+        let current = item.language
+        Menu {
+            Button(action: { store.setLanguage(nil, for: item) }) {
+                languageMenuLabel("Auto", selected: current == nil)
+            }
+            Button(action: { store.setLanguage("", for: item) }) {
+                languageMenuLabel("Plain Text", selected: current == "")
+            }
+            Divider()
+            ForEach(HighlighterSwiftEngine.shared.supportedLanguages(), id: \.self) { lang in
+                Button(action: { store.setLanguage(lang, for: item) }) {
+                    languageMenuLabel(lang, selected: current == lang)
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 9))
+                Text(languagePickerTitle(current))
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.12))
+            .cornerRadius(4)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Syntax highlighting language")
+    }
+
+    private func languagePickerTitle(_ current: String?) -> String {
+        switch current {
+        case .none: return "Auto"
+        case .some(""): return "Plain"
+        case .some(let lang): return lang
+        }
+    }
+
+    @ViewBuilder
+    private func languageMenuLabel(_ title: String, selected: Bool) -> some View {
+        if selected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
+    }
+
+    @ViewBuilder
+    private func ocrSection(_ item: ClipboardItem) -> some View {
+        if isExtractingText {
+            ProgressView()
+                .controlSize(.small)
+                .padding(.vertical, 12)
+        } else if let ocrText = item.ocrText, !ocrText.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.15))
+                    .frame(height: 0.5)
+
+                // Label the extracted-text block for both pure image items and combined
+                // text+image items, so it reads as separate metadata rather than content.
+                Text("Text extracted from image")
+                    .font(.system(size: 20, weight: .medium).smallCaps())
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .padding(.top, 10)
+
+                HStack(alignment: .top) {
+                    Text(highlightedSearchText(ocrText, size: previewFontSize, monospaced: false))
+                        .textSelection(.enabled)
+                        .lineSpacing(4)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    
+                    Button(action: {
+                        NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(ocrText, forType: .string)
+                    }) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy extracted text")
+                }
+                .padding(.top, 6)
             }
         }
     }
     
+    /// Links captured from the copied content, shown as a labelled, clickable list below the
+    /// preview. Each row opens in the browser and offers a copy-URL action.
+    @ViewBuilder
+    private func linksSection(_ item: ClipboardItem) -> some View {
+        // effectiveLinks: captured links, or URLs detected live from the body for items saved
+        // before link capture existed. Lets those older URL items populate the Links section too.
+        let links = item.effectiveLinks
+        if !links.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.15))
+                    .frame(height: 0.5)
+                    .padding(.top, 4)
+
+                Text(links.count == 1 ? "Link" : "\(links.count) Links")
+                    .font(.system(size: 10, weight: .medium).smallCaps())
+                    .foregroundColor(.secondary.opacity(0.7))
+
+                ForEach(Array(links.enumerated()), id: \.offset) { _, link in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            if !link.text.isEmpty && link.text != link.url {
+                                Text(link.text)
+                                    .font(.system(size: previewFontSize))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+                            }
+                            // Single-line, middle-truncated, left-aligned URL. Rendered as a
+                            // styled Text with a tap gesture rather than SwiftUI `Link`, because
+                            // `Link` ignores lineLimit/alignment and centers wrapped lines.
+                            Text(link.url)
+                                .font(.system(size: max(11, previewFontSize - 2)))
+                                .foregroundColor(URL(string: link.url) != nil ? .accentColor : .secondary)
+                                .underline(URL(string: link.url) != nil)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
+                                }
+                                .help(link.url)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button(action: {
+                            NotificationCenter.default.post(name: .bufferIgnoreNextChange, object: nil)
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(link.url, forType: .string)
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy link URL")
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func textContent(_ item: ClipboardItem) -> some View {
         LazyVStack(spacing: 8, pinnedViews: []) {
@@ -2557,13 +3025,39 @@ struct RelativeTimestampView: View {
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        Text(timeAgo(from: timestamp, relativeTo: currentDate))
-            .font(.system(size: 11))
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .onReceive(timer) { input in
-                currentDate = input
-            }
+        HStack(spacing: 6) {
+            // Exact capture date and time (user locale), so the entry is not reduced to a vague
+            // relative label. The relative label stays alongside for a quick at-a-glance read.
+            Text(absoluteTimestamp(timestamp))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary.opacity(0.6))
+                .lineLimit(1)
+
+            Text(timeAgo(from: timestamp, relativeTo: currentDate))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .help(preciseTimestamp(timestamp))
+        .onReceive(timer) { input in
+            currentDate = input
+        }
+    }
+
+    /// Medium date + short time in the user's locale, for example "17 Oct 2026 at 13:48".
+    private func absoluteTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    /// Full precision including seconds, shown as a hover tooltip.
+    private func preciseTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
     }
     
     private func timeAgo(from date: Date, relativeTo now: Date) -> String {

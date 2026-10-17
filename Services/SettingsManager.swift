@@ -40,12 +40,19 @@ enum HistoryLimit: Int, CaseIterable, Codable {
     case essential  = 200
     case deep       = 1000
     case unlimited  = 0
-    
+    case custom     = -1
+
+    /// Live mirror of SettingsManager's customHistoryLimit. Enum cases cannot hold other
+    /// instances' mutable state, so this static value is the single point of truth that
+    /// maxCount/subtitle read for the .custom case.
+    static var customHistoryLimit: Int = 20_000
+
     var label: String {
         switch self {
         case .essential: return "Essential"
         case .deep:      return "Deep"
         case .unlimited: return "Unlimited"
+        case .custom:    return "Custom"
         }
     }
     
@@ -54,6 +61,7 @@ enum HistoryLimit: Int, CaseIterable, Codable {
         case .essential: return "200 items"
         case .deep:      return "1,000 items"
         case .unlimited: return "No limit"
+        case .custom:    return "\(Self.customHistoryLimit.formatted()) items"
         }
     }
 
@@ -62,9 +70,13 @@ enum HistoryLimit: Int, CaseIterable, Codable {
         case .essential: return 200
         case .deep:      return 1000
         case .unlimited: return nil
+        case .custom:    return Self.customHistoryLimit
         }
     }
 
+    // No code change needed here: the three guard/return lines below already produce the
+    // correct result for every pairing (including .custom) once maxCount is correct for
+    // .custom, because the logic compares live cap values, not cases.
     func isReduction(from current: HistoryLimit) -> Bool {
         guard let currentMax = current.maxCount else {
             return self != .unlimited
@@ -88,6 +100,10 @@ class SettingsManager: ObservableObject {
     private let minTextLengthKey = "minTextLength"
     private let deduplicateHistoryKey = "deduplicateHistory"
     private let contentZoomScaleKey = "contentZoomScale"
+    private let customHistoryLimitKey = "customHistoryLimit"
+    private let autoOCRKey = "autoOCR"
+    private let preserveRichTextKey = "preserveRichText"
+    private let downloadRemoteImagesKey = "downloadRemoteImages"
     private let appThemeKey = "appTheme"
 
     static let zoomLevels: [Double] = [0.8, 0.9, 1.0, 1.15, 1.3, 1.5]
@@ -106,6 +122,12 @@ class SettingsManager: ObservableObject {
     @Published var contentZoomScale: Double = defaultZoomScale
     @Published var appTheme: AppTheme = .system
     @Published var selectedSettingsTab: Int = 0
+    @Published var customHistoryLimit: Int = 20_000
+    @Published var autoOCR: Bool = true
+    @Published var preserveRichText: Bool = true
+    // Opt-in: download remote images referenced in copied HTML so browser text+image
+    // selections capture their pictures. Default OFF - it makes network requests on copy.
+    @Published var downloadRemoteImages: Bool = false
     
     private init() {
         // Initialize with defaults first, then load saved values
@@ -162,6 +184,21 @@ class SettingsManager: ObservableObject {
             self.contentZoomScale = Self.defaultZoomScale
         }
 
+        // Load custom history limit (backward compatible: missing key defaults to 20000)
+        self.customHistoryLimit = defaults.object(forKey: customHistoryLimitKey) as? Int ?? 20_000
+        HistoryLimit.customHistoryLimit = self.customHistoryLimit
+
+        // Load auto-OCR toggle (backward compatible: missing key defaults to true, so use
+        // defaults.object(forKey:) as? Bool, NOT defaults.bool(forKey:) which silently
+        // returns false for a missing key)
+        self.autoOCR = defaults.object(forKey: autoOCRKey) as? Bool ?? true
+
+        // Load preserve-rich-text toggle (backward compatible: missing key defaults to true,
+        // so use defaults.object(forKey:) as? Bool, NOT defaults.bool(forKey:) which silently
+        // returns false for a missing key)
+        self.preserveRichText = defaults.object(forKey: preserveRichTextKey) as? Bool ?? true
+        self.downloadRemoteImages = defaults.object(forKey: downloadRemoteImagesKey) as? Bool ?? false
+
         // Load app theme
         if let savedThemeString = defaults.string(forKey: appThemeKey),
            let savedTheme = AppTheme(rawValue: savedThemeString) {
@@ -180,6 +217,11 @@ class SettingsManager: ObservableObject {
         defaults.set(minTextLength, forKey: minTextLengthKey)
         defaults.set(deduplicateHistory, forKey: deduplicateHistoryKey)
         defaults.set(contentZoomScale, forKey: contentZoomScaleKey)
+        defaults.set(customHistoryLimit, forKey: customHistoryLimitKey)
+        HistoryLimit.customHistoryLimit = customHistoryLimit
+        defaults.set(autoOCR, forKey: autoOCRKey)
+        defaults.set(preserveRichText, forKey: preserveRichTextKey)
+        defaults.set(downloadRemoteImages, forKey: downloadRemoteImagesKey)
         defaults.set(appTheme.rawValue, forKey: appThemeKey)
     }
 

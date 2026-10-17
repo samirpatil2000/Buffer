@@ -30,7 +30,11 @@
 		AAA00020 /* PasteButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00020 /* PasteButton.swift */; };
 		AAA00021 /* ShortcutsCheatSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00021 /* ShortcutsCheatSheetView.swift */; };
 		AAA00022 /* ZoomableImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00022 /* ZoomableImageView.swift */; };
-		AAA00023 /* SyntaxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00023 /* SyntaxDetector.swift */; };
+		AAA00023 /* LanguageDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00023 /* LanguageDetector.swift */; };
+		AAA00024 /* SyntaxHighlighting.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00024 /* SyntaxHighlighting.swift */; };
+		AAA00025 /* Highlighter in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00002 /* Highlighter */; };
+		AAA00026 /* CodeFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00025 /* CodeFormatter.swift */; };
+		AAA00030 /* SyntaxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00030 /* SyntaxDetector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,7 +74,10 @@
 		BBB00020 /* PasteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteButton.swift; sourceTree = "<group>"; };
 		BBB00021 /* ShortcutsCheatSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsCheatSheetView.swift; sourceTree = "<group>"; };
 		BBB00022 /* ZoomableImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableImageView.swift; sourceTree = "<group>"; };
-		BBB00023 /* SyntaxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxDetector.swift; sourceTree = "<group>"; };
+		BBB00023 /* LanguageDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageDetector.swift; sourceTree = "<group>"; };
+		BBB00024 /* SyntaxHighlighting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighting.swift; sourceTree = "<group>"; };
+		BBB00025 /* CodeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeFormatter.swift; sourceTree = "<group>"; };
+		BBB00030 /* SyntaxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxDetector.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -87,6 +94,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAA00025 /* Highlighter in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -161,7 +169,10 @@
 				BBB00015 /* SettingsManager.swift */,
 				BBB00017 /* OCRService.swift */,
 				BBB00019 /* UpdateService.swift */,
-				BBB00023 /* SyntaxDetector.swift */,
+				BBB00023 /* LanguageDetector.swift */,
+				BBB00024 /* SyntaxHighlighting.swift */,
+				BBB00025 /* CodeFormatter.swift */,
+				BBB00030 /* SyntaxDetector.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -227,6 +238,9 @@
 			dependencies = (
 			);
 			name = Buffer;
+			packageProductDependencies = (
+				PKG00002 /* Highlighter */,
+			);
 			productName = Buffer;
 			productReference = BBB00000 /* Buffer.app */;
 			productType = "com.apple.product-type.application";
@@ -255,6 +269,9 @@
 				Base,
 			);
 			mainGroup = DDD00000;
+			packageReferences = (
+				PKG00001 /* XCRemoteSwiftPackageReference "HighlighterSwift" */,
+			);
 			productRefGroup = DDD00005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -316,7 +333,10 @@
 				AAA00020 /* PasteButton.swift in Sources */,
 				AAA00021 /* ShortcutsCheatSheetView.swift in Sources */,
 				AAA00022 /* ZoomableImageView.swift in Sources */,
-				AAA00023 /* SyntaxDetector.swift in Sources */,
+				AAA00023 /* LanguageDetector.swift in Sources */,
+				AAA00024 /* SyntaxHighlighting.swift in Sources */,
+				AAA00026 /* CodeFormatter.swift in Sources */,
+				AAA00030 /* SyntaxDetector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -604,6 +624,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		PKG00001 /* XCRemoteSwiftPackageReference "HighlighterSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/smittytone/HighlighterSwift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		PKG00002 /* Highlighter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKG00001 /* XCRemoteSwiftPackageReference "HighlighterSwift" */;
+			productName = Highlighter;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = GGG00001 /* Project object */;
 }

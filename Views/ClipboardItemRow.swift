@@ -92,6 +92,21 @@ struct ClipboardItemRow: View {
                     .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.yellow.opacity(0.8))
             }
+
+            // Rich-text badge: signals styled formatting is available for this item
+            if item.hasRichText {
+                Image(systemName: "textformat")
+                    .font(.system(size: 10 * zoomScale))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+
+            // Attached-images badge: signals a combined item carrying embedded images.
+            // Visually distinct glyph from hasRichText - both may show simultaneously.
+            if item.hasAttachedImages {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 10 * zoomScale))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6 * zoomScale)
@@ -102,7 +117,7 @@ struct ClipboardItemRow: View {
         }
         .task(id: item.id) {
             // Load thumbnail async off main thread
-            if item.type == .image && thumbnail == nil {
+            if item.hasImages && thumbnail == nil {
                 thumbnail = await loadThumbnail()
             }
         }
@@ -110,8 +125,9 @@ struct ClipboardItemRow: View {
     
     @ViewBuilder
     private var icon: some View {
-        // Check if text content is a pure color value
+        // Check if text content is a pure color value (never for a combined item - it has images)
         if item.type == .text,
+           item.imageFilenames.isEmpty,
            let text = item.textContent,
            text.count <= 100,
            let color = parseColor(text.trimmingCharacters(in: .whitespaces)) {
@@ -122,6 +138,32 @@ struct ClipboardItemRow: View {
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(Color.primary.opacity(0.15), lineWidth: 0.5)
                 )
+        } else if item.isCombined {
+            // Combined item: same tile the .image case renders, with a marker overlay so it's
+            // never mistaken for a pure image. Reuses the existing placeholder verbatim while loading.
+            if let img = thumbnail {
+                Image(nsImage: img)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: iconSize, height: iconSize)
+                    .clipped()
+                    .cornerRadius(2)
+                    .overlay(
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 8 * zoomScale))
+                            .foregroundColor(.white)
+                            .padding(1)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                            .opacity(0.6),
+                        alignment: .bottomTrailing
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: iconSize, height: iconSize)
+            }
         } else {
             switch item.type {
             case .text:
@@ -151,7 +193,7 @@ struct ClipboardItemRow: View {
     private func loadThumbnail() async -> NSImage? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let original = store.image(for: item) else {
+                guard let original = store.primaryImage(for: item) else {
                     continuation.resume(returning: nil)
                     return
                 }

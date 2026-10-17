@@ -242,7 +242,7 @@ class ClipboardItemTests: XCTestCase {
     }
 
     func testHistoryLimitTiersAndReduction() {
-        XCTAssertEqual(HistoryLimit.allCases.count, 3)
+        XCTAssertEqual(HistoryLimit.allCases.count, 4)
         XCTAssertEqual(HistoryLimit.essential.maxCount, 200)
         XCTAssertEqual(HistoryLimit.deep.maxCount, 1000)
         XCTAssertNil(HistoryLimit.unlimited.maxCount)
@@ -264,12 +264,485 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .unlimited))
     }
 
+    func testCustomHistoryLimitTier() {
+        let originalCustomLimit = HistoryLimit.customHistoryLimit
+        defer { HistoryLimit.customHistoryLimit = originalCustomLimit }
+
+        HistoryLimit.customHistoryLimit = 5000
+
+        XCTAssertEqual(HistoryLimit.custom.maxCount, 5000)
+        XCTAssertEqual(HistoryLimit.custom.label, "Custom")
+        // Grouping separator is locale-dependent (e.g. "5,000" vs "5.000"), so compare
+        // against the live formatted value rather than hardcoding a separator.
+        XCTAssertEqual(HistoryLimit.custom.subtitle, "\(5000.formatted()) items")
+    }
+
+    func testHistoryLimitIsReductionAllPairwiseCombinations() {
+        let originalCustomLimit = HistoryLimit.customHistoryLimit
+        defer { HistoryLimit.customHistoryLimit = originalCustomLimit }
+        HistoryLimit.customHistoryLimit = 20_000
+
+        // essential (200) vs itself and others
+        XCTAssertFalse(HistoryLimit.essential.isReduction(from: .essential), "essential->essential: equal caps, not a reduction")
+        XCTAssertTrue(HistoryLimit.essential.isReduction(from: .deep), "essential->deep: 200 < 1000, reduction")
+        XCTAssertTrue(HistoryLimit.essential.isReduction(from: .unlimited), "essential->unlimited: finite from nil, reduction")
+        XCTAssertTrue(HistoryLimit.essential.isReduction(from: .custom), "essential->custom: 200 < 20000, reduction")
+
+        // deep (1000) vs others
+        XCTAssertFalse(HistoryLimit.deep.isReduction(from: .essential), "deep->essential: 1000 is not < 200, not a reduction")
+        XCTAssertFalse(HistoryLimit.deep.isReduction(from: .deep), "deep->deep: equal caps, not a reduction")
+        XCTAssertTrue(HistoryLimit.deep.isReduction(from: .unlimited), "deep->unlimited: finite from nil, reduction")
+        XCTAssertTrue(HistoryLimit.deep.isReduction(from: .custom), "deep->custom: 1000 < 20000, reduction")
+
+        // unlimited (nil) vs others
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .essential), "unlimited->essential: target has no max, not a reduction")
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .deep), "unlimited->deep: target has no max, not a reduction")
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .unlimited), "unlimited->unlimited: target has no max, not a reduction")
+        XCTAssertFalse(HistoryLimit.unlimited.isReduction(from: .custom), "unlimited->custom: second guard returns false because target has no max")
+
+        // custom (20000) vs others
+        XCTAssertFalse(HistoryLimit.custom.isReduction(from: .essential), "custom->essential: 20000 is not < 200, not a reduction")
+        XCTAssertFalse(HistoryLimit.custom.isReduction(from: .deep), "custom->deep: 20000 is not < 1000, not a reduction")
+        XCTAssertTrue(HistoryLimit.custom.isReduction(from: .unlimited), "custom->unlimited: first guard returns self != .unlimited, which is true")
+        XCTAssertFalse(HistoryLimit.custom.isReduction(from: .custom), "custom->custom: targetMax < currentMax is false for equal caps")
+    }
+
+    func testSearchMatchesTextAndOCRButNotEmptySentinel() {
+        let textItem = ClipboardItem.text("hello world")
+        XCTAssertTrue(ClipboardItem.matches(item: textItem, query: "world"), "text item should match by textContent")
+
+        let imageWithOCR = ClipboardItem(type: .image, imageFilename: "img1.png", ocrText: "scanned receipt total")
+        XCTAssertTrue(ClipboardItem.matches(item: imageWithOCR, query: "receipt"), "image item should match by non-empty ocrText")
+
+        let imageWithEmptySentinel = ClipboardItem(type: .image, imageFilename: "img2.png", ocrText: "")
+        XCTAssertFalse(ClipboardItem.matches(item: imageWithEmptySentinel, query: "receipt"), "empty ocrText sentinel must never match a non-empty query")
+
+        let imageWithNilOCR = ClipboardItem(type: .image, imageFilename: "img3.png", ocrText: nil)
+        XCTAssertFalse(ClipboardItem.matches(item: imageWithNilOCR, query: "receipt"), "nil ocrText must never match")
+
+        // Feature 3 (combined items): matches() is type-agnostic by construction - a combined
+        // item (type == .text, non-empty imageFilenames) matches by textContent exactly like
+        // any other text item, with no special-casing required.
+        var combinedItem = ClipboardItem.text("combined item body text")
+        combinedItem.imageFilenames = ["attachment.png"]
+        XCTAssertTrue(ClipboardItem.matches(item: combinedItem, query: "body"), "combined item should match by textContent like any text item")
+    }
+
+    // MARK: - Rich-text preservation (feature 3, commit 3a)
+
+    func testLegacyDecodeWithoutRichTextKeys() throws {
+        // Build the exact JSON shape by encoding sample items first, then stripping the new
+        // keys this feature adds - this guarantees the date/UUID format matches exactly what
+        // JSONEncoder produces, without hand-guessing the format.
+        let textID = UUID()
+        let textTimestamp = Date()
+        let sampleText = ClipboardItem(
+            id: textID, type: .text, timestamp: textTimestamp, sourceApp: "TestApp",
+            textContent: "legacy text", isPinned: true, isBookmarked: false,
+            tags: ["tag1"], ocrText: nil, isTruncated: false, originalSizeBytes: nil
+        )
+        let imageID = UUID()
+        let imageTimestamp = Date()
+        let sampleImage = ClipboardItem(
+            id: imageID, type: .image, timestamp: imageTimestamp, sourceApp: nil,
+            imageFilename: "legacy.png", isPinned: false, isBookmarked: true,
+            tags: [], ocrText: "scanned text", isTruncated: false, originalSizeBytes: nil
+        )
+
+        let encoded = try JSONEncoder().encode([sampleText, sampleImage])
+        var jsonArray = try JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
+        // Strip the new keys this feature adds, to simulate a genuinely pre-feature payload.
+        for i in jsonArray.indices {
+            jsonArray[i].removeValue(forKey: "rtfData")
+            jsonArray[i].removeValue(forKey: "htmlData")
+            jsonArray[i].removeValue(forKey: "rtfdData")
+            jsonArray[i].removeValue(forKey: "imageFilenames")
+        }
+        let legacyData = try JSONSerialization.data(withJSONObject: jsonArray)
+
+        let decoded = try JSONDecoder().decode([ClipboardItem].self, from: legacyData)
+        XCTAssertEqual(decoded.count, 2)
+
+        let decodedText = decoded[0]
+        XCTAssertEqual(decodedText.id, textID)
+        XCTAssertEqual(decodedText.type, .text)
+        XCTAssertEqual(decodedText.textContent, "legacy text")
+        XCTAssertEqual(decodedText.sourceApp, "TestApp")
+        XCTAssertTrue(decodedText.isPinned)
+        XCTAssertEqual(decodedText.tags, ["tag1"])
+        XCTAssertNil(decodedText.ocrText)
+        XCTAssertNil(decodedText.rtfData, "legacy item without rtfData key must decode to nil")
+        XCTAssertNil(decodedText.htmlData, "legacy item without htmlData key must decode to nil")
+        XCTAssertNil(decodedText.rtfdData, "legacy item without rtfdData key must decode to nil")
+        XCTAssertEqual(decodedText.imageFilenames, [], "legacy item without imageFilenames key must decode to []")
+
+        let decodedImage = decoded[1]
+        XCTAssertEqual(decodedImage.id, imageID)
+        XCTAssertEqual(decodedImage.type, .image)
+        XCTAssertEqual(decodedImage.imageFilename, "legacy.png")
+        XCTAssertTrue(decodedImage.isBookmarked)
+        XCTAssertEqual(decodedImage.ocrText, "scanned text")
+        XCTAssertNil(decodedImage.rtfData)
+        XCTAssertNil(decodedImage.htmlData)
+        XCTAssertNil(decodedImage.rtfdData)
+        XCTAssertEqual(decodedImage.imageFilenames, [])
+    }
+
+    func testRichTextDataRoundTrip() throws {
+        let rtf = "sample rtf".data(using: .utf8)!
+        let html = "<p>sample html</p>".data(using: .utf8)!
+        let rtfd = "sample rtfd".data(using: .utf8)!
+        var item = ClipboardItem.text("styled text", sourceApp: "Notes", rtfData: rtf, htmlData: html, rtfdData: rtfd)
+        item.imageFilenames = ["attachment1.png", "attachment2.png"]
+
+        let encoded = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: encoded)
+
+        XCTAssertEqual(decoded, item)
+        XCTAssertEqual(decoded.rtfData, rtf)
+        XCTAssertEqual(decoded.htmlData, html)
+        XCTAssertEqual(decoded.rtfdData, rtfd)
+        XCTAssertEqual(decoded.imageFilenames, ["attachment1.png", "attachment2.png"])
+    }
+
+    func testLegacyItemsEncodeWithoutNewKeys() throws {
+        let item = ClipboardItem.text("x")
+        let encoded = try JSONEncoder().encode(item)
+        let json = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        XCTAssertNil(json["rtfData"], "an item with no rich data must not add rtfData to the JSON")
+        XCTAssertNil(json["htmlData"], "an item with no rich data must not add htmlData to the JSON")
+        XCTAssertNil(json["rtfdData"], "an item with no rich data must not add rtfdData to the JSON")
+        XCTAssertNil(json["imageFilenames"], "an item with no attachments must not add imageFilenames to the JSON")
+    }
+
+    func testHasRichTextCombinations() {
+        let neither = ClipboardItem.text("a")
+        XCTAssertFalse(neither.hasRichText)
+
+        let rtfOnly = ClipboardItem.text("a", rtfData: Data([0x01]))
+        XCTAssertTrue(rtfOnly.hasRichText)
+
+        let htmlOnly = ClipboardItem.text("a", htmlData: Data([0x01]))
+        XCTAssertTrue(htmlOnly.hasRichText)
+
+        let both = ClipboardItem.text("a", rtfData: Data([0x01]), htmlData: Data([0x01]))
+        XCTAssertTrue(both.hasRichText)
+    }
+
+    // MARK: - Combined items (feature 3, commit 3b)
+
+    func testPreviewTextForAllShapes() {
+        var combinedWithBody = ClipboardItem.text("some body text")
+        combinedWithBody.imageFilenames = ["a.png"]
+        XCTAssertEqual(combinedWithBody.previewText, "some body text")
+
+        var combinedEmptyBody = ClipboardItem.text("")
+        combinedEmptyBody.imageFilenames = ["a.png"]
+        XCTAssertEqual(combinedEmptyBody.previewText, "Image", "combined item with an empty body should render as Image, not blank")
+
+        let pureImage = ClipboardItem.image(filename: "pure.png")
+        XCTAssertEqual(pureImage.previewText, "Image")
+
+        let pureText = ClipboardItem.text("plain text")
+        XCTAssertEqual(pureText.previewText, "plain text")
+
+        let emptyPureText = ClipboardItem.text("")
+        XCTAssertEqual(emptyPureText.previewText, "", "empty pure text item should render as an empty string, exactly as today")
+    }
+
+    func testTypeLabelAndImageAggregationForAllShapes() {
+        let pureText = ClipboardItem.text("x")
+        XCTAssertEqual(pureText.typeLabel, "Text")
+        XCTAssertFalse(pureText.hasImages)
+        XCTAssertFalse(pureText.isCombined)
+        XCTAssertFalse(pureText.hasAttachedImages)
+
+        let pureImage = ClipboardItem.image(filename: "pure.png")
+        XCTAssertEqual(pureImage.typeLabel, "Image")
+        XCTAssertEqual(pureImage.allImageFilenames, ["pure.png"])
+        XCTAssertTrue(pureImage.hasImages)
+        XCTAssertFalse(pureImage.isCombined, "a pure image item is never isCombined - that predicate requires type == .text")
+        XCTAssertFalse(pureImage.hasAttachedImages, "pure image uses imageFilename, not imageFilenames")
+
+        var combinedOne = ClipboardItem.text("x")
+        combinedOne.imageFilenames = ["attachment.png"]
+        XCTAssertEqual(combinedOne.typeLabel, "Text + Image")
+        XCTAssertEqual(combinedOne.allImageFilenames, ["attachment.png"])
+        XCTAssertTrue(combinedOne.hasImages)
+        XCTAssertTrue(combinedOne.isCombined)
+        XCTAssertTrue(combinedOne.hasAttachedImages)
+
+        var combinedMany = ClipboardItem.text("x")
+        combinedMany.imageFilenames = ["a1.png", "a2.png", "a3.png"]
+        XCTAssertEqual(combinedMany.typeLabel, "Text + 3 Images")
+        XCTAssertTrue(combinedMany.isCombined)
+
+        // allImageFilenames ordering: pure imageFilename first, then attachments in order.
+        // This combination (both imageFilename and imageFilenames set) is never produced by the
+        // capture path, but the computed property must still order correctly if it ever occurs.
+        var withBoth = ClipboardItem(type: .text, textContent: "x", imageFilename: "first.png")
+        withBoth.imageFilenames = ["second.png", "third.png"]
+        XCTAssertEqual(withBoth.allImageFilenames, ["first.png", "second.png", "third.png"])
+    }
+
+    func testDuplicateInlineTextIndexExcludesCombinedItems() {
+        let pureText = ClipboardItem.text("same body")
+        var combined = ClipboardItem.text("same body")
+        combined.imageFilenames = ["attachment.png"]
+        let items = [pureText, combined]
+
+        // A combined item is never considered a duplicate of a pure-text item with the same body.
+        XCTAssertNil(
+            ClipboardStore.duplicateInlineTextIndex(for: combined, in: items),
+            "a combined item must never match as a duplicate, even with identical text"
+        )
+
+        // Existing pure-text duplicate detection still works unchanged.
+        XCTAssertEqual(
+            ClipboardStore.duplicateInlineTextIndex(for: .text("same body"), in: items),
+            0,
+            "a pure-text item should still match an existing pure-text duplicate"
+        )
+    }
+
     func testZoomableImageViewConstantsAndPresets() {
         XCTAssertEqual(ZoomableImageView.minScale, 1.0)
         XCTAssertEqual(ZoomableImageView.maxScale, 4.0)
         XCTAssertEqual(ZoomableImageView.defaultDoubleTapScale, 2.5)
         XCTAssertGreaterThanOrEqual(ZoomableImageView.defaultDoubleTapScale, ZoomableImageView.minScale)
         XCTAssertLessThanOrEqual(ZoomableImageView.defaultDoubleTapScale, ZoomableImageView.maxScale)
+    }
+
+    // MARK: - Feature 4: LanguageDetector heuristics
+
+    func testDetectorLeavesProsePlain() {
+        let prose = "This is an ordinary paragraph of English text that a person might copy from an article or an email, with nothing code-like about it at all."
+        XCTAssertEqual(LanguageDetector.detect(prose), .plain)
+    }
+
+    func testDetectorIgnoresShortFragments() {
+        XCTAssertEqual(LanguageDetector.detect("hello"), .plain)
+        XCTAssertEqual(LanguageDetector.detect("a short line"), .plain)
+    }
+
+    func testDetectorRecognizesJSON() {
+        let json = "{\"name\": \"buffer\", \"version\": 2, \"tags\": [\"a\", \"b\"]}"
+        XCTAssertEqual(LanguageDetector.detect(json), .code(hint: "json"))
+    }
+
+    func testDetectorRejectsInvalidJSONAsPlainOrCode() {
+        // Looks brace-y but is not valid JSON; must not be reported as json.
+        let notJSON = "{ this is not json at all, just prose in braces maybe }"
+        if case .code(let hint) = LanguageDetector.detect(notJSON) {
+            XCTAssertNotEqual(hint, "json")
+        }
+    }
+
+    func testDetectorRecognizesShellShebang() {
+        XCTAssertEqual(LanguageDetector.detect("#!/bin/bash\necho hello world here"), .code(hint: "bash"))
+        XCTAssertEqual(LanguageDetector.detect("#!/usr/bin/env python\nprint('hi there')"), .code(hint: "python"))
+    }
+
+    func testDetectorRecognizesDiff() {
+        let diff = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new"
+        XCTAssertEqual(LanguageDetector.detect(diff), .code(hint: "diff"))
+    }
+
+    func testDetectorRecognizesSQL() {
+        let sql = "SELECT id, name FROM users WHERE active = 1 ORDER BY name;"
+        XCTAssertEqual(LanguageDetector.detect(sql), .code(hint: nil))
+    }
+
+    func testDetectorRecognizesXMLHTML() {
+        let html = "<!DOCTYPE html>\n<html><body><div>hi</div></body></html>"
+        XCTAssertEqual(LanguageDetector.detect(html), .code(hint: "xml"))
+    }
+
+    func testDetectorRecognizesGenericCode() {
+        let swift = "func greet(name: String) -> String {\n    return \"Hello, \\(name)\"\n}"
+        if case .plain = LanguageDetector.detect(swift) {
+            XCTFail("Expected code detection for a Swift function body")
+        }
+    }
+
+    // MARK: - Feature 4: language override Codable round-trip
+
+    func testLanguageFieldRoundTrips() throws {
+        let item = ClipboardItem(type: .text, textContent: "SELECT 1", language: "sql")
+        let data = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: data)
+        XCTAssertEqual(decoded.language, "sql")
+    }
+
+    func testForcedPlainEmptyLanguageRoundTrips() throws {
+        let item = ClipboardItem(type: .text, textContent: "not code", language: "")
+        let data = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: data)
+        XCTAssertEqual(decoded.language, "")
+    }
+
+    func testOldPayloadWithoutLanguageDecodes() throws {
+        // A history.json entry written before feature 4 existed: no "language" key.
+        let json = """
+        {
+            "id": "\(UUID().uuidString)",
+            "type": "text",
+            "timestamp": 760000000,
+            "textContent": "hello",
+            "isPinned": false,
+            "isBookmarked": false,
+            "tags": [],
+            "isTruncated": false
+        }
+        """
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.language)
+        XCTAssertEqual(decoded.textContent, "hello")
+    }
+
+    // MARK: - Format button: CodeFormatter
+
+    func testFormatterPrettyPrintsMinifiedJSON() {
+        let minified = "{\"b\":2,\"a\":[1,2,3]}"
+        let result = CodeFormatter.format(minified, language: "json")
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result!.contains("\n"), "formatted JSON should be multi-line")
+        // Key order is preserved (not sorted): b before a.
+        let bIndex = result!.range(of: "\"b\"")!.lowerBound
+        let aIndex = result!.range(of: "\"a\"")!.lowerBound
+        XCTAssertLessThan(bIndex, aIndex)
+    }
+
+    func testFormatterRejectsInvalidJSON() {
+        XCTAssertNil(CodeFormatter.format("{not valid json", language: "json"))
+    }
+
+    func testFormatterCanFormatDetectsJSONAndXML() {
+        XCTAssertTrue(CodeFormatter.canFormat(language: nil, text: "{\"a\":1}"))
+        XCTAssertTrue(CodeFormatter.canFormat(language: "xml", text: "<a><b/></a>"))
+        XCTAssertFalse(CodeFormatter.canFormat(language: "swift", text: "let x = 1"))
+        XCTAssertFalse(CodeFormatter.canFormat(language: nil, text: "just some prose here"))
+    }
+
+    func testFormatterMinifiesPrettyJSONToSingleLine() {
+        let pretty = "{\n  \"b\" : 2,\n  \"a\" : [\n    1,\n    2\n  ]\n}"
+        let result = CodeFormatter.minify(pretty, language: "json")
+        XCTAssertNotNil(result)
+        XCTAssertFalse(result!.contains("\n"), "minified JSON should be single-line")
+        XCTAssertEqual(result, "{\"b\":2,\"a\":[1,2]}")
+    }
+
+    func testFormatterJSONRoundTripsPrettyAndCompact() {
+        let compact = "{\"b\":2,\"a\":[1,2,3]}"
+        let pretty = CodeFormatter.format(compact, language: "json")
+        XCTAssertNotNil(pretty)
+        let backToCompact = CodeFormatter.minify(pretty!, language: "json")
+        XCTAssertEqual(backToCompact, compact)
+    }
+
+    func testFormatterIsPrettyReflectsLayout() {
+        // Multi-line formattable content is "pretty" (next toggle minifies); single-line is not.
+        XCTAssertTrue(CodeFormatter.isPretty(language: "json", text: "{\n  \"a\" : 1\n}"))
+        XCTAssertFalse(CodeFormatter.isPretty(language: "json", text: "{\"a\":1}"))
+        XCTAssertFalse(CodeFormatter.isPretty(language: nil, text: "just prose\nover two lines"))
+    }
+
+    // MARK: - Remote image URL extraction (opt-in download feature)
+
+    func testRemoteImageURLExtraction() {
+        let html = """
+        <div>
+          <img src="https://example.com/a.png" alt="a">
+          <img src='http://example.com/b.jpg'>
+          <img src="/relative/c.png">
+          <img src="data:image/png;base64,AAAA">
+          <img src="https://example.com/a.png">
+        </div>
+        """
+        let urls = ClipboardWatcher.remoteImageURLs(fromHTML: html)
+        let strings = urls.map { $0.absoluteString }
+        // Absolute http(s) only, de-duplicated, relative and data: skipped.
+        XCTAssertEqual(strings, ["https://example.com/a.png", "http://example.com/b.jpg"])
+    }
+
+    func testRemoteImageURLExtractionEmptyWhenNoImages() {
+        XCTAssertTrue(ClipboardWatcher.remoteImageURLs(fromHTML: "<p>no images here</p>").isEmpty)
+    }
+
+    func testRemoteImageURLExtractionIgnoresDataURIs() {
+        // data: images are handled by the inline-data path, not the remote-download path.
+        let html = "<img src=\"data:image/png;base64,iVBORw0KGgo=\">"
+        XCTAssertTrue(ClipboardWatcher.remoteImageURLs(fromHTML: html).isEmpty)
+    }
+
+    // MARK: - Hyperlink extraction
+
+    func testLinkExtractionFromHTML() {
+        let html = """
+        <p>See <a href="https://example.com/a">Ticket A</a> and
+        <a href='http://example.com/b'>Ticket B</a> or email
+        <a href="mailto:x@example.com">us</a>.</p>
+        <a href="#frag">skip</a>
+        <a href="/relative">skip</a>
+        <a href="javascript:void(0)">skip</a>
+        """
+        let links = ClipboardWatcher.extractLinks(fromHTML: html)
+        XCTAssertEqual(links, [
+            WebLink(text: "Ticket A", url: "https://example.com/a"),
+            WebLink(text: "Ticket B", url: "http://example.com/b"),
+            WebLink(text: "us", url: "mailto:x@example.com"),
+        ])
+    }
+
+    func testLinkExtractionStripsInnerTagsAndDeDupes() {
+        let html = """
+        <a href="https://example.com"><b>Bold</b> label</a>
+        <a href="https://example.com"><b>Bold</b> label</a>
+        """
+        let links = ClipboardWatcher.extractLinks(fromHTML: html)
+        XCTAssertEqual(links, [WebLink(text: "Bold label", url: "https://example.com")])
+    }
+
+    func testLinkExtractionEmptyWhenNoAnchors() {
+        XCTAssertTrue(ClipboardWatcher.extractLinks(fromHTML: "<p>no links here</p>").isEmpty)
+    }
+
+    func testLinksMatchSearch() {
+        let item = ClipboardItem(type: .text, textContent: "see ticket",
+                                 links: [WebLink(text: "FIQS-1909", url: "https://jira/browse/FIQS-1909")])
+        XCTAssertTrue(ClipboardItem.matches(item: item, query: "FIQS-1909"))  // anchor text
+        XCTAssertTrue(ClipboardItem.matches(item: item, query: "jira"))       // url
+        XCTAssertFalse(ClipboardItem.matches(item: item, query: "nope"))
+    }
+
+    func testLinksRoundTripCodable() throws {
+        let item = ClipboardItem(type: .text, textContent: "x",
+                                 links: [WebLink(text: "A", url: "https://a.com")])
+        let data = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: data)
+        XCTAssertEqual(decoded.links, [WebLink(text: "A", url: "https://a.com")])
+    }
+
+    func testOldPayloadWithoutLinksDecodesToEmpty() throws {
+        let json = """
+        { "id": "\(UUID().uuidString)", "type": "text", "timestamp": 760000000,
+          "textContent": "hi", "isPinned": false, "isBookmarked": false,
+          "tags": [], "isTruncated": false }
+        """
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
+        XCTAssertTrue(decoded.links.isEmpty)
+    }
+
+    func testDetectBareURLsInPlainText() {
+        let text = "see https://example.com/a and http://example.com/b plus mailto:x@y.com, not ftp://z"
+        let urls = ClipboardWatcher.detectURLs(in: text)
+        XCTAssertTrue(urls.contains("https://example.com/a"))
+        XCTAssertTrue(urls.contains("http://example.com/b"))
+        XCTAssertFalse(urls.contains(where: { $0.hasPrefix("ftp") }))
+    }
+
+    func testDetectBareURLsEmptyWhenNone() {
+        XCTAssertTrue(ClipboardWatcher.detectURLs(in: "just some words, no links").isEmpty)
     }
 
     func testSelectionRangeIndexCalculations() {
@@ -444,6 +917,81 @@ class ClipboardItemTests: XCTestCase {
         let result = SyntaxDetector.detect(text: text)
         XCTAssertEqual(result.fileExtension, "txt")
         XCTAssertEqual(result.contentType, .plainText)
+    }
+
+    // MARK: - Type filter
+
+    func testKindClassificationTextAndImageAndLink() {
+        let plain = ClipboardItem.text("just some words here")
+        XCTAssertTrue(plain.matchesKind(.text))
+        XCTAssertFalse(plain.matchesKind(.image))
+        XCTAssertFalse(plain.matchesKind(.link))
+        XCTAssertTrue(plain.matchesKind(.all))
+
+        let image = ClipboardItem.image(filename: "x.png")
+        XCTAssertTrue(image.matchesKind(.image))
+        XCTAssertFalse(image.matchesKind(.text))
+
+        var withLink = ClipboardItem.text("see the ticket")
+        withLink.links = [WebLink(text: "T", url: "https://x.com")]
+        XCTAssertTrue(withLink.matchesKind(.link))
+        XCTAssertTrue(withLink.matchesKind(.text))
+    }
+
+    func testEffectiveLinksDetectsURLInBodyForOldItems() {
+        // An item saved before link capture existed: no stored links, but a URL in the body.
+        let old = ClipboardItem.text("open https://example.com/report for details")
+        XCTAssertTrue(old.links.isEmpty)
+        XCTAssertEqual(old.effectiveLinks.map { $0.url }, ["https://example.com/report"])
+        XCTAssertTrue(old.hasLinks)
+        XCTAssertTrue(old.matchesKind(.link))
+        XCTAssertTrue(ClipboardItem.matches(item: old, query: "example.com"))
+    }
+
+    func testEffectiveLinksPrefersStoredLinks() {
+        // When links were captured, they win over live detection (even if the body also has URLs).
+        var item = ClipboardItem.text("see https://body.example.com")
+        item.links = [WebLink(text: "Captured", url: "https://captured.example.com")]
+        XCTAssertEqual(item.effectiveLinks.map { $0.url }, ["https://captured.example.com"])
+    }
+
+    func testEffectiveLinksEmptyForPlainTextWithoutURLs() {
+        let plain = ClipboardItem.text("just some ordinary words, nothing linkable here")
+        XCTAssertTrue(plain.effectiveLinks.isEmpty)
+        XCTAssertFalse(plain.hasLinks)
+        XCTAssertFalse(plain.matchesKind(.link))
+    }
+
+    func testCombinedItemMatchesBothTextAndImage() {
+        var combined = ClipboardItem.text("caption text")
+        combined.imageFilenames = ["a.png"]
+        XCTAssertTrue(combined.matchesKind(.text))
+        XCTAssertTrue(combined.matchesKind(.image))
+    }
+
+    func testKindClassificationCode() {
+        let code = ClipboardItem.text("func greet(name: String) -> String {\n  return name\n}")
+        XCTAssertTrue(code.matchesKind(.code))
+        let prose = ClipboardItem.text("This is an ordinary English sentence with no code in it at all.")
+        XCTAssertFalse(prose.matchesKind(.code))
+    }
+
+    func testParseTypeToken() {
+        let (kind1, rest1) = HistoryContentView.parseTypeToken(from: "type:image invoice")
+        XCTAssertEqual(kind1, .image)
+        XCTAssertEqual(rest1, "invoice")
+
+        let (kind2, rest2) = HistoryContentView.parseTypeToken(from: "report type:link")
+        XCTAssertEqual(kind2, .link)
+        XCTAssertEqual(rest2, "report")
+
+        let (kind3, rest3) = HistoryContentView.parseTypeToken(from: "no token here")
+        XCTAssertNil(kind3)
+        XCTAssertEqual(rest3, "no token here")
+
+        let (kind4, rest4) = HistoryContentView.parseTypeToken(from: "type:banana")
+        XCTAssertNil(kind4)
+        XCTAssertEqual(rest4, "type:banana")
     }
 }
 

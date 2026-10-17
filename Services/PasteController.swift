@@ -26,6 +26,20 @@ class PasteController {
         return nil
     }
     
+    /// Write a text item's representations as a single pasteboard item (richest flavour first).
+    /// Caller must have called `clearContents()` - `writeObjects` appends to the current owner.
+    /// .rtfd is written first (resolution 2 fallback): pasting via .rtf alone does not preserve
+    /// inline images, empirically verified - see feature3-design.md section 4.8.
+    private static func writeTextPayload(_ item: ClipboardItem, store: ClipboardStore, to pasteboard: NSPasteboard) {
+        guard let text = store.fullText(for: item) else { return }
+        let pbItem = NSPasteboardItem()
+        if let rtfd = item.rtfdData { pbItem.setData(rtfd, forType: .rtfd) }
+        if let rtf = item.rtfData { pbItem.setData(rtf, forType: .rtf) }
+        if let html = item.htmlData { pbItem.setData(html, forType: .html) }
+        pbItem.setString(text, forType: .string)
+        pasteboard.writeObjects([pbItem])
+    }
+
     /// Copy item content back to system clipboard
     static func copyToClipboard(_ item: ClipboardItem, store: ClipboardStore) {
         let pasteboard = NSPasteboard.general
@@ -33,10 +47,7 @@ class PasteController {
         
         switch item.type {
         case .text:
-            // Use full text from file if file-backed, otherwise use inline content
-            if let text = store.fullText(for: item) {
-                pasteboard.setString(text, forType: .string)
-            }
+            writeTextPayload(item, store: store, to: pasteboard)
         case .image:
             if let image = store.image(for: item),
                let tiffData = image.tiffRepresentation {
@@ -86,9 +97,7 @@ class PasteController {
         
         switch item.type {
         case .text:
-            if let text = store.fullText(for: item) {
-                pasteboard.setString(text, forType: .string)
-            }
+            writeTextPayload(item, store: store, to: pasteboard)
         case .image:
             if let image = store.image(for: item) {
                 // Save image to temp with proper name
@@ -116,12 +125,16 @@ class PasteController {
     /// Text items are joined with newlines, images are handled individually
     static func pasteMultiple(_ items: [ClipboardItem], store: ClipboardStore, previousApp: NSRunningApplication? = nil) {
         guard !items.isEmpty else { return }
+        if items.count == 1, let first = items.first, first.type == .text {
+            paste(first, store: store, previousApp: previousApp)
+            return
+        }
         
         let pasteboard = NSPasteboard.general
         
         // Separate items by type
         let textItems = items.filter { $0.type == .text }
-        let imageItems = items.filter { $0.type == .image }
+        let hasImages = items.contains { $0.hasImages }      // replaces the imageItems binding
         
         // If we have text items, paste them first
         if !textItems.isEmpty {
@@ -130,7 +143,7 @@ class PasteController {
             pasteboard.setString(joinedText, forType: .string)
             
             // If all items are text, paste once and done
-            if imageItems.isEmpty {
+            if !hasImages {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
                 simulatePasteWithCustomDelay(0.1)
                 return
@@ -144,15 +157,13 @@ class PasteController {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 pasteboard.clearContents()
                 
-                // Save all images and collect URLs
+                // Save all images (pure images and combined-item attachments alike) and collect URLs
                 var imageURLs: [URL] = []
-                for (index, imageItem) in imageItems.enumerated() {
-                    if let image = store.image(for: imageItem) {
-                        let paddedNumber = String(format: "%04d", index + 1)
-                        let fileName = "image-\(paddedNumber).png"
-                        if let fileURL = saveImageToTemp(image, fileName: fileName) {
-                            imageURLs.append(fileURL)
-                        }
+                let images = items.flatMap { store.allImages(for: $0) }
+                for (index, image) in images.enumerated() {
+                    let fileName = "image-\(String(format: "%04d", index + 1)).png"
+                    if let fileURL = saveImageToTemp(image, fileName: fileName) {
+                        imageURLs.append(fileURL)
                     }
                 }
                 
@@ -162,7 +173,7 @@ class PasteController {
                     simulatePasteWithCustomDelay(0.05)
                 }
             }
-        } else if !imageItems.isEmpty {
+        } else if hasImages {
             // Images only - paste all together at once (like Finder multi-select)
             previousApp?.activate(options: .activateIgnoringOtherApps)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -170,13 +181,11 @@ class PasteController {
                 
                 // Save all images and collect URLs
                 var imageURLs: [URL] = []
-                for (index, imageItem) in imageItems.enumerated() {
-                    if let image = store.image(for: imageItem) {
-                        let paddedNumber = String(format: "%04d", index + 1)
-                        let fileName = "image-\(paddedNumber).png"
-                        if let fileURL = saveImageToTemp(image, fileName: fileName) {
-                            imageURLs.append(fileURL)
-                        }
+                let images = items.flatMap { store.allImages(for: $0) }
+                for (index, image) in images.enumerated() {
+                    let fileName = "image-\(String(format: "%04d", index + 1)).png"
+                    if let fileURL = saveImageToTemp(image, fileName: fileName) {
+                        imageURLs.append(fileURL)
                     }
                 }
                 
