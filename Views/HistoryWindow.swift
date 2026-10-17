@@ -1956,10 +1956,14 @@ struct HistoryContentView: View {
         return !(item.textContent ?? "").isEmpty
     }
 
-    /// The Format button shows only for inline, non-rich text whose content can actually be
-    /// pretty-printed (JSON or XML/HTML), so it never appears as a dead button.
+    /// The Format button shows for any inline text whose plain body can actually be pretty-printed
+    /// or minified (JSON or XML/HTML), so it never appears as a dead button. Items that also carry
+    /// a rich flavour qualify too: the formatter only ever rewrites the plain-text body, and
+    /// formatting then drops the now-stale rich flavour (see ClipboardStore.updateText), which is
+    /// the expected outcome for "reformat this JSON". Without this, JSON copied from a browser
+    /// (which attaches an HTML flavour) would never show the button.
     private func formatButtonApplies(to item: ClipboardItem) -> Bool {
-        guard item.type == .text, !item.hasRichText, !item.isTruncated, !item.isFileBacked else { return false }
+        guard item.type == .text, !item.isTruncated, !item.isFileBacked else { return false }
         guard !isEditing else { return false }
         let text = item.textContent ?? ""
         guard !text.isEmpty, text.count <= Self.inlineHighlightCharLimit else { return false }
