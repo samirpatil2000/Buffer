@@ -3010,13 +3010,39 @@ struct RelativeTimestampView: View {
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        Text(timeAgo(from: timestamp, relativeTo: currentDate))
-            .font(.system(size: 11))
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .onReceive(timer) { input in
-                currentDate = input
-            }
+        HStack(spacing: 6) {
+            // Exact capture date and time (user locale), so the entry is not reduced to a vague
+            // relative label. The relative label stays alongside for a quick at-a-glance read.
+            Text(absoluteTimestamp(timestamp))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary.opacity(0.6))
+                .lineLimit(1)
+
+            Text(timeAgo(from: timestamp, relativeTo: currentDate))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .help(preciseTimestamp(timestamp))
+        .onReceive(timer) { input in
+            currentDate = input
+        }
+    }
+
+    /// Medium date + short time in the user's locale, for example "17 Oct 2026 at 13:48".
+    private func absoluteTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    /// Full precision including seconds, shown as a hover tooltip.
+    private func preciseTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
     }
     
     private func timeAgo(from date: Date, relativeTo now: Date) -> String {
