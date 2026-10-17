@@ -1864,12 +1864,10 @@ struct HistoryContentView: View {
     @ViewBuilder
     private func highlightedTextBody(_ item: ClipboardItem) -> some View {
         let text = item.textContent ?? ""
-        // Resolve the links to render clickable: captured links if present, otherwise detect
-        // URLs live from the text. The live fallback makes URLs clickable even in items captured
-        // before link detection existed, without storing anything.
-        let effectiveLinks: [WebLink] = item.hasLinks
-            ? item.links
-            : ClipboardWatcher.detectURLs(in: text).map { WebLink(text: $0, url: $0) }
+        // Links to render clickable: captured links if present, otherwise URLs detected live from
+        // the body. Routed through the model's effectiveLinks so detection lives in one place and
+        // items captured before link detection existed still render clickable URLs.
+        let effectiveLinks = item.effectiveLinks
 
         if let attributed = highlightedPreview {
             HighlightedTextView(attributedText: attributed, searchQuery: activeSearchQuery)
@@ -2076,18 +2074,21 @@ struct HistoryContentView: View {
     /// preview. Each row opens in the browser and offers a copy-URL action.
     @ViewBuilder
     private func linksSection(_ item: ClipboardItem) -> some View {
-        if item.hasLinks {
+        // effectiveLinks: captured links, or URLs detected live from the body for items saved
+        // before link capture existed. Lets those older URL items populate the Links section too.
+        let links = item.effectiveLinks
+        if !links.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Rectangle()
                     .fill(Color.primary.opacity(0.15))
                     .frame(height: 0.5)
                     .padding(.top, 4)
 
-                Text(item.links.count == 1 ? "Link" : "\(item.links.count) Links")
+                Text(links.count == 1 ? "Link" : "\(links.count) Links")
                     .font(.system(size: 10, weight: .medium).smallCaps())
                     .foregroundColor(.secondary.opacity(0.7))
 
-                ForEach(Array(item.links.enumerated()), id: \.offset) { _, link in
+                ForEach(Array(links.enumerated()), id: \.offset) { _, link in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         VStack(alignment: .leading, spacing: 1) {
                             if !link.text.isEmpty && link.text != link.url {

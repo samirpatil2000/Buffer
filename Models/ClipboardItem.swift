@@ -253,9 +253,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         if let ocrText = item.ocrText, !ocrText.isEmpty, ocrText.localizedCaseInsensitiveContains(query) {
             return true
         }
-        // Match on captured hyperlinks, by both the visible anchor text and the URL itself,
-        // so an item is findable by a word in the link or by part of the address.
-        for link in item.links {
+        // Match on hyperlinks (captured, or detected live from the body for older items), by
+        // both the visible anchor text and the URL itself.
+        for link in item.effectiveLinks {
             if link.text.localizedCaseInsensitiveContains(query)
                 || link.url.localizedCaseInsensitiveContains(query) {
                 return true
@@ -264,8 +264,37 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return false
     }
 
-    /// Whether this item carries any captured hyperlinks.
-    var hasLinks: Bool { !links.isEmpty }
+    /// Whether this item carries any hyperlinks (captured or detected from its text).
+    var hasLinks: Bool { !effectiveLinks.isEmpty }
+
+    /// The links to use for display, filtering, and search: the captured links when present,
+    /// otherwise URLs detected live from the text body. This makes URL-bearing items captured
+    /// before link detection existed behave like captured-link items, without altering storage.
+    var effectiveLinks: [WebLink] {
+        if !links.isEmpty { return links }
+        guard type == .text, let text = textContent, !text.isEmpty else { return [] }
+        return ClipboardItem.detectURLs(in: text).map { WebLink(text: $0, url: $0) }
+    }
+
+    /// Detect bare http(s)/mailto URLs in text using NSDataDetector. Pure, no network.
+    static func detectURLs(in text: String) -> [String] {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        var urls: [String] = []
+        var seen = Set<String>()
+        detector.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let url = match?.url else { return }
+            let scheme = url.scheme?.lowercased()
+            guard scheme == "http" || scheme == "https" || scheme == "mailto" else { return }
+            let s = url.absoluteString
+            guard !seen.contains(s) else { return }
+            seen.insert(s)
+            urls.append(s)
+        }
+        return urls
+    }
 
     /// Whether this text item's content was detected as source code (used by the type filter).
     /// Computed on demand from the body; nil/empty text is never code.

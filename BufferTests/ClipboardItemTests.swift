@@ -915,6 +915,30 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertTrue(withLink.matchesKind(.text))
     }
 
+    func testEffectiveLinksDetectsURLInBodyForOldItems() {
+        // An item saved before link capture existed: no stored links, but a URL in the body.
+        let old = ClipboardItem.text("open https://example.com/report for details")
+        XCTAssertTrue(old.links.isEmpty)
+        XCTAssertEqual(old.effectiveLinks.map { $0.url }, ["https://example.com/report"])
+        XCTAssertTrue(old.hasLinks)
+        XCTAssertTrue(old.matchesKind(.link))
+        XCTAssertTrue(ClipboardItem.matches(item: old, query: "example.com"))
+    }
+
+    func testEffectiveLinksPrefersStoredLinks() {
+        // When links were captured, they win over live detection (even if the body also has URLs).
+        var item = ClipboardItem.text("see https://body.example.com")
+        item.links = [WebLink(text: "Captured", url: "https://captured.example.com")]
+        XCTAssertEqual(item.effectiveLinks.map { $0.url }, ["https://captured.example.com"])
+    }
+
+    func testEffectiveLinksEmptyForPlainTextWithoutURLs() {
+        let plain = ClipboardItem.text("just some ordinary words, nothing linkable here")
+        XCTAssertTrue(plain.effectiveLinks.isEmpty)
+        XCTAssertFalse(plain.hasLinks)
+        XCTAssertFalse(plain.matchesKind(.link))
+    }
+
     func testCombinedItemMatchesBothTextAndImage() {
         var combined = ClipboardItem.text("caption text")
         combined.imageFilenames = ["a.png"]

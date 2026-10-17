@@ -103,6 +103,10 @@ upstream v3.0.0+. This document describes everything in the
   stored, searchable, and rendered clickable inline too.
 - URLs in the Links section are left-aligned, single-line (middle-truncated),
   and HTML entities in captured URLs are decoded so links are valid.
+- Items captured **before link detection existed** are handled too: any URL
+  found in their text body is detected live at display time, so those older
+  entries show up in the **Links** section, match the **Link** type filter, are
+  searchable by URL, and render clickable inline, with no change to stored data.
 
 ## 9. Inline images in web-article previews
 
