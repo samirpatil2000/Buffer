@@ -745,6 +745,25 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertTrue(ClipboardWatcher.detectURLs(in: "just some words, no links").isEmpty)
     }
 
+    func testDetectURLsIgnoresCodeTokensThatLookLikeHosts() {
+        // Property accesses and method calls in source code (current.id, first.id, entries.at)
+        // must NOT be treated as URLs just because .id / .at are real TLDs.
+        let code = """
+        let x = $0.id
+        let y = current.id
+        let z = first.id
+        for i in entries.at(-1) { }
+        """
+        XCTAssertTrue(ClipboardItem.detectURLs(in: code).isEmpty)
+        XCTAssertTrue(ClipboardWatcher.detectURLs(in: code).isEmpty)
+    }
+
+    func testDetectURLsStillCatchesSchemedURLAmongCode() {
+        // A real URL with an explicit scheme is still detected even next to code-like tokens.
+        let mixed = "call current.id then open https://example.com/x for the docs"
+        XCTAssertEqual(ClipboardItem.detectURLs(in: mixed), ["https://example.com/x"])
+    }
+
     func testSelectionRangeIndexCalculations() {
         // Forward expansion
         XCTAssertEqual(SelectionRangeHelper.indexRange(anchor: 2, target: 5), 2...5)

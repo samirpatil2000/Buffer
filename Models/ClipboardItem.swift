@@ -276,18 +276,30 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return ClipboardItem.detectURLs(in: text).map { WebLink(text: $0, url: $0) }
     }
 
-    /// Detect bare http(s)/mailto URLs in text using NSDataDetector. Pure, no network.
+    /// Detect URLs in text using NSDataDetector, but only when the original text wrote an explicit
+    /// scheme (`http://`, `https://`, `mailto:`). This is deliberately stricter than the detector,
+    /// which happily synthesizes `http://` for a bare host like `current.id` or `entries.at` - in
+    /// source code those are property accesses and method calls, not links. Requiring the scheme
+    /// to be present in the source keeps real pasted URLs while rejecting those false positives.
+    /// Pure, no network.
     static func detectURLs(in text: String) -> [String] {
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
             return []
         }
-        let range = NSRange(text.startIndex..., in: text)
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
         var urls: [String] = []
         var seen = Set<String>()
         detector.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let url = match?.url else { return }
+            guard let match = match, let url = match.url else { return }
             let scheme = url.scheme?.lowercased()
             guard scheme == "http" || scheme == "https" || scheme == "mailto" else { return }
+            // Only accept the match if the scheme was actually written in the source substring,
+            // not inferred by the detector. Rejects bare hostnames like "current.id".
+            let matched = nsText.substring(with: match.range).lowercased()
+            guard matched.hasPrefix("http://")
+                || matched.hasPrefix("https://")
+                || matched.hasPrefix("mailto:") else { return }
             let s = url.absoluteString
             guard !seen.contains(s) else { return }
             seen.insert(s)

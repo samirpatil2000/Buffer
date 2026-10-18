@@ -317,19 +317,10 @@ class ClipboardWatcher: ObservableObject {
     /// Detect bare http(s) URLs in plain text using NSDataDetector. Returns absolute URL strings
     /// in order of appearance. Pure, no network. Exposed for unit testing.
     static func detectURLs(in text: String) -> [String] {
-        guard !text.isEmpty,
-              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return []
-        }
-        let range = NSRange(text.startIndex..., in: text)
-        var urls: [String] = []
-        detector.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let url = match?.url else { return }
-            let scheme = url.scheme?.lowercased()
-            guard scheme == "http" || scheme == "https" || scheme == "mailto" else { return }
-            urls.append(url.absoluteString)
-        }
-        return urls
+        // Single source of truth: delegate to the model's detector so capture-time detection and
+        // the retroactive effectiveLinks detection share identical rules, including rejecting
+        // bare hostnames that only look like URLs (for example "current.id" in source code).
+        ClipboardItem.detectURLs(in: text)
     }
 
     /// Extract image attachments from an attributed pasteboard flavour. Never performs network I/O.
