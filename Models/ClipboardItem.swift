@@ -394,3 +394,64 @@ enum ClipboardKind: String, CaseIterable {
         ClipboardKind(rawValue: value.lowercased())
     }
 }
+
+/// Detects and parses tab-separated tabular text (as produced when a table is copied from Notion,
+/// a spreadsheet, or a web page) so the preview can render it as an aligned grid instead of ragged
+/// monospaced text. Pure, no side effects.
+///
+/// Detection is deliberately conservative to avoid turning ordinary prose or code that happens to
+/// contain a stray tab into a "table": it requires multiple rows, at least two columns, and a
+/// consistent column count across most rows.
+enum TableDetector {
+    /// A parsed table: the rows, each a list of cell strings. All rows are padded to the same
+    /// column count so the renderer can lay out a rectangular grid.
+    struct Table: Equatable {
+        let rows: [[String]]
+        var columnCount: Int { rows.first?.count ?? 0 }
+    }
+
+    /// Upper bounds so a pathological paste cannot produce an enormous grid. Beyond these the text
+    /// falls back to the normal plain-text preview.
+    static let maxRows = 200
+    static let maxColumns = 20
+
+    /// Parse `text` as a tab-separated table, or nil when it does not look like one. A nil result
+    /// means the caller should render the text normally.
+    static func parse(_ text: String) -> Table? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.contains("\t") else { return nil }
+
+        // Split into lines, dropping a trailing empty line but keeping interior blank lines out
+        // (a table copy has no blank rows between data rows).
+        let lines = trimmed.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        guard lines.count >= 2, lines.count <= maxRows else { return nil }
+
+        let rawRows = lines.map { $0.components(separatedBy: "\t") }
+        let counts = rawRows.map { $0.count }
+        guard let maxCount = counts.max(), maxCount >= 2, maxCount <= maxColumns else { return nil }
+
+        // Require the table to be genuinely columnar: the most common column count must cover the
+        // majority of rows. This rejects prose with an occasional stray tab.
+        let modeCount = counts.reduce(into: [Int: Int]()) { $0[$1, default: 0] += 1 }
+        guard let (dominantColumns, dominantRows) = modeCount.max(by: { $0.value < $1.value }),
+              dominantColumns >= 2,
+              Double(dominantRows) / Double(rawRows.count) >= 0.6 else {
+            return nil
+        }
+
+        // Pad every row to the dominant column count so the grid is rectangular. Rows with more
+        // cells than the dominant count have their trailing cells joined into the last column, so
+        // no content is lost.
+        let padded: [[String]] = rawRows.map { row in
+            if row.count == dominantColumns { return row }
+            if row.count < dominantColumns {
+                return row + Array(repeating: "", count: dominantColumns - row.count)
+            }
+            let head = Array(row.prefix(dominantColumns - 1))
+            let tail = row.suffix(from: dominantColumns - 1).joined(separator: "\t")
+            return head + [tail]
+        }
+
+        return Table(rows: padded)
+    }
+}

@@ -155,6 +155,17 @@ tag filters.
 - Code and Link classification only applies to items captured after those
   features existed; Text and Image are accurate for all history.
 
+## 11. Aligned preview for tab-separated tables
+
+- When a copied item is a **tab-separated table** (as produced by copying a
+  table from Notion, a spreadsheet, or a web page), the preview renders it as an
+  **aligned grid** instead of ragged monospaced text, so columns line up.
+- The first row is treated as a header (bold, with a divider beneath it).
+- Detection is conservative: it needs multiple rows, at least two columns, and a
+  consistent column count across most rows, so ordinary prose or code with a
+  stray tab is never mistaken for a table. Anything that does not qualify falls
+  back to the normal plain-text preview.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of

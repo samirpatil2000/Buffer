@@ -764,6 +764,41 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(ClipboardItem.detectURLs(in: mixed), ["https://example.com/x"])
     }
 
+    // MARK: - Tab-separated table detection
+
+    func testTableParsesCleanTabSeparatedTable() {
+        let text = "Name\tAge\tCity\nAlice\t30\tParis\nBob\t25\tOslo"
+        let table = TableDetector.parse(text)
+        XCTAssertNotNil(table)
+        XCTAssertEqual(table?.columnCount, 3)
+        XCTAssertEqual(table?.rows.count, 3)
+        XCTAssertEqual(table?.rows.first, ["Name", "Age", "City"])
+        XCTAssertEqual(table?.rows.last, ["Bob", "25", "Oslo"])
+    }
+
+    func testTableRejectsProseWithStrayTab() {
+        // A single tab inside otherwise ordinary multi-line prose is not a table.
+        let text = "This is a note\twith a stray tab\nand a second line of prose\nand a third"
+        XCTAssertNil(TableDetector.parse(text))
+    }
+
+    func testTableRejectsSingleRow() {
+        XCTAssertNil(TableDetector.parse("Name\tAge\tCity"))
+    }
+
+    func testTableRejectsPlainTextWithoutTabs() {
+        XCTAssertNil(TableDetector.parse("just one line\nand another line\nand a third line"))
+    }
+
+    func testTablePadsShortRowsToDominantColumnCount() {
+        // Most rows have 3 columns; a short row is padded so the grid stays rectangular.
+        let text = "A\tB\tC\n1\t2\t3\n4\t5\n7\t8\t9"
+        let table = TableDetector.parse(text)
+        XCTAssertNotNil(table)
+        XCTAssertEqual(table?.columnCount, 3)
+        XCTAssertEqual(table?.rows[2], ["4", "5", ""])
+    }
+
     func testSelectionRangeIndexCalculations() {
         // Forward expansion
         XCTAssertEqual(SelectionRangeHelper.indexRange(anchor: 2, target: 5), 2...5)

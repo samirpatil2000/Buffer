@@ -1884,11 +1884,37 @@ struct HistoryContentView: View {
             // URLs are blue, underlined, and clickable, matching hyperlinked items.
             HighlightedTextView(attributedText: linked, searchQuery: activeSearchQuery)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+        } else if let table = TableDetector.parse(text) {
+            // Tab-separated tabular text (copied from Notion, a spreadsheet, or a web page):
+            // render as an aligned grid so columns line up, instead of ragged monospaced text.
+            tableBody(table)
         } else {
             Text(highlightedSearchText(text, size: previewFontSize, monospaced: true))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    /// Render a parsed tab-separated table as an aligned grid. The first row is treated as a header
+    /// (bold, with a divider below it), matching how copied tables usually lead with column titles.
+    @ViewBuilder
+    private func tableBody(_ table: TableDetector.Table) -> some View {
+        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 4) {
+            ForEach(Array(table.rows.enumerated()), id: \.offset) { rowIndex, row in
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                        Text(highlightedSearchText(cell, size: previewFontSize, monospaced: true))
+                            .fontWeight(rowIndex == 0 ? .semibold : .regular)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                }
+                if rowIndex == 0 {
+                    Divider().gridCellColumns(table.columnCount)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     /// Build an attributed string from plain text where each captured link's URL substring is
