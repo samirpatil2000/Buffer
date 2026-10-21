@@ -417,41 +417,103 @@ enum TableDetector {
 
     /// Parse `text` as a tab-separated table, or nil when it does not look like one. A nil result
     /// means the caller should render the text normally.
+    ///
+    /// Two strategies, tried in order:
+    /// 1. Clean grid: every physical line is already one row with the same column count. This is
+    ///    the common case for Notion and spreadsheet copies.
+    /// 2. Header-driven reflow: the header establishes N columns but some cells contain embedded
+    ///    newlines (seen with tables copied from Teams), so one logical row is spread across
+    ///    several physical lines. Stitch physical lines back into N-column rows.
     static func parse(_ text: String) -> Table? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.contains("\t") else { return nil }
 
-        // Split into lines, dropping a trailing empty line but keeping interior blank lines out
-        // (a table copy has no blank rows between data rows).
-        let lines = trimmed.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        let lines = trimmed.components(separatedBy: .newlines)
+        // Keep interior lines even when blank, because a blank physical line can be the middle of
+        // a multi-line cell. Only a hard cap guards against pathological input.
         guard lines.count >= 2, lines.count <= maxRows else { return nil }
 
-        let rawRows = lines.map { $0.components(separatedBy: "\t") }
-        let counts = rawRows.map { $0.count }
+        if let clean = parseCleanGrid(lines) { return clean }
+        return parseWithHeaderReflow(lines)
+    }
+
+    /// Strategy 1: every non-empty physical line is already a complete row. Returns nil if the
+    /// lines are not consistently columnar.
+    private static func parseCleanGrid(_ lines: [String]) -> Table? {
+        let rows = lines.filter { !$0.isEmpty }.map { $0.components(separatedBy: "\t") }
+        guard rows.count >= 2 else { return nil }
+        let counts = rows.map { $0.count }
         guard let maxCount = counts.max(), maxCount >= 2, maxCount <= maxColumns else { return nil }
 
-        // Require the table to be genuinely columnar: the most common column count must cover the
-        // majority of rows. This rejects prose with an occasional stray tab.
         let modeCount = counts.reduce(into: [Int: Int]()) { $0[$1, default: 0] += 1 }
         guard let (dominantColumns, dominantRows) = modeCount.max(by: { $0.value < $1.value }),
               dominantColumns >= 2,
-              Double(dominantRows) / Double(rawRows.count) >= 0.6 else {
+              Double(dominantRows) / Double(rows.count) >= 0.9 else {
+            // 0.9 (not 0.6): the clean path demands near-uniform rows. Anything messier is left to
+            // the reflow path, which understands multi-line cells.
             return nil
         }
 
-        // Pad every row to the dominant column count so the grid is rectangular. Rows with more
-        // cells than the dominant count have their trailing cells joined into the last column, so
-        // no content is lost.
-        let padded: [[String]] = rawRows.map { row in
-            if row.count == dominantColumns { return row }
-            if row.count < dominantColumns {
-                return row + Array(repeating: "", count: dominantColumns - row.count)
+        return Table(rows: rows.map { normalize($0, to: dominantColumns) })
+    }
+
+    /// Strategy 2: trust the first line as an N-column header, then merge following physical lines
+    /// into N-column logical rows, rejoining cells that were split by an embedded newline.
+    private static func parseWithHeaderReflow(_ lines: [String]) -> Table? {
+        let header = lines[0].components(separatedBy: "\t")
+        let targetColumns = header.count
+        guard targetColumns >= 2, targetColumns <= maxColumns else { return nil }
+
+        // Only trust the header width if at least two later physical lines split into exactly that
+        // many cells on their own. That is strong evidence the width is real, not coincidental.
+        let bodyLines = lines.dropFirst().filter { !$0.isEmpty }
+        let exactMatches = bodyLines.filter { $0.components(separatedBy: "\t").count == targetColumns }
+        guard exactMatches.count >= 2 else { return nil }
+
+        var rows: [[String]] = [header]
+        var buffer: [String] = []
+
+        for line in lines.dropFirst() {
+            let cells = line.components(separatedBy: "\t")
+            if buffer.isEmpty {
+                buffer = cells
+            } else {
+                // The newline fell inside the last cell of the buffer, so the first fragment of
+                // this line continues that cell. Join them (with a newline so cell content is
+                // preserved verbatim), then append the remaining fragments as new cells.
+                let joined = buffer[buffer.count - 1]
+                    + "\n"
+                    + (cells.first ?? "")
+                buffer[buffer.count - 1] = joined
+                buffer.append(contentsOf: cells.dropFirst())
             }
-            let head = Array(row.prefix(dominantColumns - 1))
-            let tail = row.suffix(from: dominantColumns - 1).joined(separator: "\t")
-            return head + [tail]
+
+            if buffer.count >= targetColumns {
+                rows.append(normalize(buffer, to: targetColumns))
+                buffer = []
+            }
+        }
+        if !buffer.isEmpty {
+            rows.append(normalize(buffer, to: targetColumns))
         }
 
-        return Table(rows: padded)
+        // Require the reflow to have produced a plausible table: at least two body rows, and all
+        // rows at the target width. Trim each cell so the stray leading tabs / blank fragments
+        // introduced by the serialization do not show as empty lines.
+        guard rows.count >= 3 else { return nil }
+        let cleaned = rows.map { row in row.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } }
+        return Table(rows: cleaned)
+    }
+
+    /// Force `row` to exactly `columns` cells: pad short rows with empties, and fold any overflow
+    /// cells into the last column (joined by tab) so no content is lost.
+    private static func normalize(_ row: [String], to columns: Int) -> [String] {
+        if row.count == columns { return row }
+        if row.count < columns {
+            return row + Array(repeating: "", count: columns - row.count)
+        }
+        let head = Array(row.prefix(columns - 1))
+        let tail = row.suffix(from: columns - 1).joined(separator: "\t")
+        return head + [tail]
     }
 }

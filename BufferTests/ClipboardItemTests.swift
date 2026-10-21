@@ -791,12 +791,39 @@ class ClipboardItemTests: XCTestCase {
     }
 
     func testTablePadsShortRowsToDominantColumnCount() {
-        // Most rows have 3 columns; a short row is padded so the grid stays rectangular.
-        let text = "A\tB\tC\n1\t2\t3\n4\t5\n7\t8\t9"
+        // A 3-column grid where all but one row are full width (>= 90%), so it stays on the clean
+        // path and the single short row is padded to keep the grid rectangular.
+        let fullRows = (1...10).map { "\($0)\t\($0)\t\($0)" }
+        let text = (["A\tB\tC", "4\t5"] + fullRows).joined(separator: "\n")
         let table = TableDetector.parse(text)
         XCTAssertNotNil(table)
         XCTAssertEqual(table?.columnCount, 3)
-        XCTAssertEqual(table?.rows[2], ["4", "5", ""])
+        XCTAssertEqual(table?.rows[1], ["4", "5", ""])
+    }
+
+    func testTableReflowsCellsSplitByEmbeddedNewlines() {
+        // Shape seen when copying a table out of Teams: a cell with an internal newline splits one
+        // logical 4-column row across three physical lines. The header width plus at least two
+        // clean 4-column rows let the detector trust the width and stitch the split rows together.
+        let text = [
+            "Type\tS4H\tS4C\tMeaning",
+            "INVOICE\tZSB, F2\t",   // row 1 part a (S4C cell empty, Meaning missing)
+            "F2",                     // row 1 part b (continuation of the S4H cell content)
+            "\tInvoice",             // row 1 part c (Meaning)
+            "CREDIT_MEMO\tZSBC, S1\tS1\tCredit memo",             // clean 4-column row
+            "CREDIT_MEMO_CANCELLATION\tZSBD, S2\tS2\tCancellation", // clean 4-column row
+            "STANDARD_ORDER\tTA\t",
+            "F2",
+            "\tStandard SAP sales order"
+        ].joined(separator: "\n")
+
+        let table = TableDetector.parse(text)
+        XCTAssertNotNil(table)
+        XCTAssertEqual(table?.columnCount, 4)
+        XCTAssertEqual(table?.rows[0], ["Type", "S4H", "S4C", "Meaning"])
+        XCTAssertEqual(table?.rows[1], ["INVOICE", "ZSB, F2", "F2", "Invoice"])
+        XCTAssertEqual(table?.rows[2], ["CREDIT_MEMO", "ZSBC, S1", "S1", "Credit memo"])
+        XCTAssertEqual(table?.rows.last, ["STANDARD_ORDER", "TA", "F2", "Standard SAP sales order"])
     }
 
     func testSelectionRangeIndexCalculations() {

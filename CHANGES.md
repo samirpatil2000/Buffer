@@ -165,6 +165,10 @@ tag filters.
   consistent column count across most rows, so ordinary prose or code with a
   stray tab is never mistaken for a table. Anything that does not qualify falls
   back to the normal plain-text preview.
+- Tables copied from **Teams** (and similar sources) often split a single row
+  across several lines when a cell contains an internal line break. When the
+  header establishes a clear column count and enough clean rows confirm it, the
+  detector stitches those split lines back into the correct rows.
 
 ## Developer-facing
 
