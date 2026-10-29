@@ -231,7 +231,60 @@ struct SettingsView: View {
                         }
                         .toggleStyle(.switch)
                 }
-                
+
+                HStack {
+                    Text("Automatically extract text from images (OCR)")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.autoOCR)
+                        .labelsHidden()
+                        .onChange(of: settings.autoOCR) { _ in
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
+                .help("Uses on-device text recognition so screenshots and copied images become searchable automatically.")
+
+                // Rich Content Section
+                Divider()
+                    .padding(.vertical, 4)
+
+                Text("Rich Content")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("Preserve formatting and embedded images")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.preserveRichText)
+                        .labelsHidden()
+                        .onChange(of: settings.preserveRichText) { _ in
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
+                .help("Stores styled text (RTF/HTML) and images embedded in copied text alongside the plain text. Increases history file size.")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Download remote images from copied web content")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Toggle("", isOn: $settings.downloadRemoteImages)
+                            .labelsHidden()
+                            .onChange(of: settings.downloadRemoteImages) { _ in
+                                settings.save()
+                            }
+                            .toggleStyle(.switch)
+                            .disabled(!settings.preserveRichText)
+                    }
+                    Text("⚠️ Makes network requests when you copy. Images in web pages are usually remote links, so capturing them means fetching from the web - which can load tracking pixels and leak that you copied the content. Off by default. Not needed for native apps like Pages or Mail.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 // History Size Section
                 Divider()
                     .padding(.vertical, 4)
@@ -241,50 +294,29 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
                 
                 HStack(spacing: 12) {
-                    ForEach(HistoryLimit.allCases, id: \.self) { tier in
-                        Button(action: { 
-                            if tier.isReduction(from: settings.historyLimit) {
-                                pendingTier = tier
-                                showingTrimAlert = true
-                            } else {
-                                settings.historyLimit = tier
+                    ForEach(HistoryLimit.allCases.filter { $0 != .custom }, id: \.self) { tier in
+                        historyLimitTile(for: tier)
+                    }
+                }
+
+                historyLimitTile(for: .custom)
+
+                if settings.historyLimit == .custom {
+                    HStack {
+                        Text("Custom item count")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        TextField("", value: $settings.customHistoryLimit, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                            .multilineTextAlignment(.trailing)
+                            .onChange(of: settings.customHistoryLimit) { newValue in
+                                let clamped = max(1, newValue)
+                                if clamped != newValue {
+                                    settings.customHistoryLimit = clamped
+                                }
                                 settings.save()
                             }
-                        }) {
-                            VStack(alignment: .center, spacing: 6) {
-                                if settings.historyLimit == tier {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.accentColor)
-                                        .font(.system(size: 14))
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundColor(.secondary.opacity(0.3))
-                                        .font(.system(size: 14))
-                                }
-                                
-                                Text(tier.label)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(settings.historyLimit == tier ? .primary : .secondary)
-                                
-                                Text(tier.subtitle)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                            }
-                            .padding(.vertical, 14)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(settings.historyLimit == tier 
-                                          ? Color.accentColor.opacity(0.1) 
-                                          : Color(NSColor.controlBackgroundColor))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(settings.historyLimit == tier 
-                                            ? Color.accentColor : Color.clear, lineWidth: settings.historyLimit == tier ? 1.5 : 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -319,6 +351,52 @@ struct SettingsView: View {
         }
     }
     
+    private func historyLimitTile(for tier: HistoryLimit) -> some View {
+        Button(action: {
+            if tier.isReduction(from: settings.historyLimit) {
+                pendingTier = tier
+                showingTrimAlert = true
+            } else {
+                settings.historyLimit = tier
+                settings.save()
+            }
+        }) {
+            VStack(alignment: .center, spacing: 6) {
+                if settings.historyLimit == tier {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.system(size: 14))
+                } else {
+                    Image(systemName: "circle")
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .font(.system(size: 14))
+                }
+
+                Text(tier.label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(settings.historyLimit == tier ? .primary : .secondary)
+
+                Text(tier.subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.8))
+            }
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(settings.historyLimit == tier
+                          ? Color.accentColor.opacity(0.1)
+                          : Color(NSColor.controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(settings.historyLimit == tier
+                            ? Color.accentColor : Color.clear, lineWidth: settings.historyLimit == tier ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {
         Button(action: {
             settings.hotkeyModifiers = mods
@@ -558,6 +636,10 @@ class SettingsViewModel: ObservableObject {
     @Published var hideStatusBar: Bool
     @Published var minTextLength: Int
     @Published var deduplicateHistory: Bool
+    @Published var customHistoryLimit: Int
+    @Published var autoOCR: Bool
+    @Published var preserveRichText: Bool
+    @Published var downloadRemoteImages: Bool
     @Published var appTheme: AppTheme
     
     private let defaults = UserDefaults.standard
@@ -591,6 +673,10 @@ class SettingsViewModel: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = SettingsManager.shared.minTextLength
         self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
+        self.customHistoryLimit = SettingsManager.shared.customHistoryLimit
+        self.autoOCR = SettingsManager.shared.autoOCR
+        self.preserveRichText = SettingsManager.shared.preserveRichText
+        self.downloadRemoteImages = SettingsManager.shared.downloadRemoteImages
 
         // Load app theme
         self.appTheme = SettingsManager.shared.appTheme
@@ -602,6 +688,7 @@ class SettingsViewModel: ObservableObject {
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
+        defaults.set(customHistoryLimit, forKey: "customHistoryLimit")
 
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
@@ -610,6 +697,10 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.hideStatusBar = hideStatusBar
         SettingsManager.shared.minTextLength = minTextLength
         SettingsManager.shared.deduplicateHistory = deduplicateHistory
+        SettingsManager.shared.customHistoryLimit = customHistoryLimit
+        SettingsManager.shared.autoOCR = autoOCR
+        SettingsManager.shared.preserveRichText = preserveRichText
+        SettingsManager.shared.downloadRemoteImages = downloadRemoteImages
         SettingsManager.shared.appTheme = appTheme
         SettingsManager.shared.save()
         SettingsManager.shared.applyTheme(appTheme)

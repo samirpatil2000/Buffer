@@ -17,10 +17,18 @@ class ClipboardStore: ObservableObject {
     private var maxItems: Int? { SettingsManager.shared.historyLimit.maxCount }
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
+    private var ocrInProgress: Set<UUID> = []
     
     private var storageDirectory: URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("Buffer", isDirectory: true)
+        // Debug builds use a separate data directory so running from Xcode never
+        // reads or overwrites the real release app's clipboard history.
+        #if DEBUG
+        let folderName = "Buffer-dev"
+        #else
+        let folderName = "Buffer"
+        #endif
+        return appSupport.appendingPathComponent(folderName, isDirectory: true)
     }
     
     private var historyFileURL: URL {
@@ -78,10 +86,11 @@ class ClipboardStore: ObservableObject {
     static func duplicateInlineTextIndex(for item: ClipboardItem, in items: [ClipboardItem]) -> Int? {
         guard item.type == .text,
               !item.isFileBacked,
+              item.imageFilenames.isEmpty,          // a combined item is never a duplicate of plain text
               let text = item.textContent else { return nil }
 
         return items.firstIndex {
-            $0.type == .text && !$0.isFileBacked && $0.textContent == text
+            $0.type == .text && !$0.isFileBacked && $0.imageFilenames.isEmpty && $0.textContent == text
         }
     }
 
@@ -91,6 +100,7 @@ class ClipboardStore: ObservableObject {
         // Promote an existing identical inline text item instead of storing a duplicate.
         if SettingsManager.shared.deduplicateHistory,
            let duplicateIndex = Self.duplicateInlineTextIndex(for: item, in: items) {
+            deleteAssociatedFiles(for: item)   // no-op for anything the predicate can match today
             moveToTop(items[duplicateIndex])
             return
         }
@@ -116,6 +126,55 @@ class ClipboardStore: ObservableObject {
         let itemsToSave = items
         saveQueue.async { [weak self] in
             self?.saveHistoryToDisk(itemsToSave)
+        }
+
+        triggerAutoOCRIfNeeded(for: item)
+    }
+
+    /// Automatically run OCR on a freshly added item's image(s), if auto-OCR is enabled and the
+    /// item hasn't been OCR'd yet. Covers pure image items (both capture paths) AND combined
+    /// text+image items, which carry their pictures in `imageFilenames`. For a combined item the
+    /// OCR text is stored separately in `ocrText` for search/retrieval - it is never merged into
+    /// the item's own text and never affects what gets pasted.
+    private func triggerAutoOCRIfNeeded(for item: ClipboardItem) {
+        guard SettingsManager.shared.autoOCR,
+              item.ocrText == nil,
+              !ocrInProgress.contains(item.id) else { return }
+
+        // Collect every image this item owns (pure image's single file, or a combined item's
+        // attachment list). Nothing to OCR if there are no images.
+        let filenames = item.allImageFilenames
+        guard !filenames.isEmpty else { return }
+
+        ocrInProgress.insert(item.id)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let images = filenames.compactMap { self.attachedImage(filename: $0) }
+            guard !images.isEmpty else {
+                self.runOnMain { self.ocrInProgress.remove(item.id) }
+                return
+            }
+
+            Task {
+                // OCR each image; join non-empty results with blank lines so multiple pictures
+                // remain individually searchable.
+                var pieces: [String] = []
+                for image in images {
+                    if let recognized = await OCRService.shared.recognizeText(from: image),
+                       !recognized.isEmpty {
+                        pieces.append(recognized)
+                    }
+                }
+                // Empty string is the auto-OCR no-text sentinel, deliberately distinct from
+                // the manual button's human-facing "No text found in this image." string,
+                // because that string is itself text that could spuriously match a search.
+                let text = pieces.joined(separator: "\n\n")
+                self.runOnMain {
+                    self.setOCRText(text, for: item)
+                    self.ocrInProgress.remove(item.id)
+                }
+            }
         }
     }
     
@@ -177,6 +236,8 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].textContent = text
+            self.items[index].rtfData = nil
+            self.items[index].htmlData = nil
             let itemsToSave = self.items
             self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
         }
@@ -220,7 +281,22 @@ class ClipboardStore: ObservableObject {
             }
         }
     }
-    
+
+    /// Set the manual syntax-highlighting language override for a text item.
+    /// Pass nil for auto-detect, "" to force Plain Text, or a highlight.js language name.
+    func setLanguage(_ language: String?, for item: ClipboardItem) {
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].language = language
+
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in
+                self?.saveHistoryToDisk(itemsToSave)
+            }
+        }
+    }
+
     /// Move an item to the top of the list (most recent position)
     func moveToTop(_ item: ClipboardItem) {
         runOnMain { [weak self] in
@@ -269,6 +345,50 @@ class ClipboardStore: ObservableObject {
         guard item.type == .image, let filename = item.imageFilename else { return nil }
         let url = imagesDirectory.appendingPathComponent(filename)
         return NSImage(contentsOf: url)
+    }
+
+    func attachedImage(filename: String) -> NSImage? {
+        NSImage(contentsOf: imagesDirectory.appendingPathComponent(filename))
+    }
+
+    /// File URLs for an item's attachment images, in order. Used to render remote-image HTML
+    /// inline by pointing <img> tags at these local files instead of fetching over the network.
+    func attachedImageURLs(for item: ClipboardItem) -> [URL] {
+        item.imageFilenames.map { imagesDirectory.appendingPathComponent($0) }
+    }
+
+    /// Resolve an item's remote-URL -> local-filename map into remote-URL -> local file URL, so
+    /// the preview can rewrite each remote <img> to the exact local file it was downloaded into.
+    func remoteImageLocalURLs(for item: ClipboardItem) -> [String: URL] {
+        var result: [String: URL] = [:]
+        for (remoteURL, filename) in item.remoteImageMap {
+            result[remoteURL] = imagesDirectory.appendingPathComponent(filename)
+        }
+        return result
+    }
+
+    /// Images embedded in a combined item, in document order
+    func attachedImages(for item: ClipboardItem) -> [NSImage] {
+        item.imageFilenames.compactMap { attachedImage(filename: $0) }
+    }
+
+    /// Every image an item owns - pure image first, then attachments. For paste and export.
+    func allImages(for item: ClipboardItem) -> [NSImage] {
+        item.allImageFilenames.compactMap { attachedImage(filename: $0) }
+    }
+
+    /// Representative image for thumbnails and the detail preview
+    func primaryImage(for item: ClipboardItem) -> NSImage? {
+        guard let first = item.allImageFilenames.first else { return nil }
+        return attachedImage(filename: first)
+    }
+
+    /// Remove image files written during a capture that did not complete. Not for live items -
+    /// those go through deleteAssociatedFiles(for:).
+    func removeImageFiles(_ filenames: [String]) {
+        for name in filenames {
+            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(name))
+        }
     }
     
     func saveImage(_ data: Data) -> String? {
@@ -365,21 +485,29 @@ class ClipboardStore: ObservableObject {
         
         switch item.type {
         case .text:
+            let textBytes: Int
             if let filename = item.textFilename {
                 let url = textsDirectory.appendingPathComponent(filename)
-                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
-                return attributes?[.size] as? Int
+                textBytes = (try? fileManager.attributesOfItem(atPath: url.path))?[.size] as? Int ?? 0
             } else {
-                return item.textContent?.utf8.count
+                textBytes = item.textContent?.utf8.count ?? 0
             }
+            let richBytes = (item.rtfData?.count ?? 0) + (item.htmlData?.count ?? 0) + (item.rtfdData?.count ?? 0)
+            let total = textBytes + richBytes + imageFileBytes(for: item)
+            return total > 0 ? total : nil
         case .image:
-            if let filename = item.imageFilename {
-                let url = imagesDirectory.appendingPathComponent(filename)
-                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
-                return attributes?[.size] as? Int
-            }
+            let bytes = imageFileBytes(for: item)
+            return bytes > 0 ? bytes : nil
         }
-        return nil
+    }
+
+    /// Sum of the on-disk size of every image file an item owns
+    private func imageFileBytes(for item: ClipboardItem) -> Int {
+        item.allImageFilenames.reduce(0) { total, filename in
+            let url = imagesDirectory.appendingPathComponent(filename)
+            let size = (try? fileManager.attributesOfItem(atPath: url.path))?[.size] as? Int ?? 0
+            return total + size
+        }
     }
     
     // MARK: - Private
@@ -409,16 +537,16 @@ class ClipboardStore: ObservableObject {
     private func saveHistoryToDisk(_ itemsToSave: [ClipboardItem]) {
         do {
             let data = try JSONEncoder().encode(itemsToSave)
-            try data.write(to: historyFileURL)
+            try data.write(to: historyFileURL, options: .atomic)
         } catch {
             print("[Buffer] Failed to save history: \(error)")
         }
     }
     
-    private func deleteImageFile(for item: ClipboardItem) {
-        guard item.type == .image, let filename = item.imageFilename else { return }
-        let url = imagesDirectory.appendingPathComponent(filename)
-        try? fileManager.removeItem(at: url)
+    private func deleteImageFiles(for item: ClipboardItem) {
+        for filename in item.allImageFilenames {
+            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(filename))
+        }
     }
     
     private func deleteTextFile(for item: ClipboardItem) {
@@ -429,7 +557,7 @@ class ClipboardStore: ObservableObject {
     
     /// Delete all associated files (images and text files) for an item
     private func deleteAssociatedFiles(for item: ClipboardItem) {
-        deleteImageFile(for: item)
+        deleteImageFiles(for: item)
         deleteTextFile(for: item)
     }
 }
