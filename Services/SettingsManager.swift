@@ -87,6 +87,7 @@ class SettingsManager: ObservableObject {
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private let minTextLengthKey = "minTextLength"
     private let deduplicateHistoryKey = "deduplicateHistory"
+    private let ignoreConcealedKey = "ignoreConcealed"
     private let contentZoomScaleKey = "contentZoomScale"
     private let appThemeKey = "appTheme"
 
@@ -103,6 +104,7 @@ class SettingsManager: ObservableObject {
     @Published var hideStatusBar: Bool = false
     @Published var minTextLength: Int = 1
     @Published var deduplicateHistory: Bool = false
+    @Published var ignoreConcealed: Bool = true
     @Published var contentZoomScale: Double = defaultZoomScale
     @Published var appTheme: AppTheme = .system
     @Published var selectedSettingsTab: Int = 0
@@ -153,6 +155,7 @@ class SettingsManager: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = defaults.object(forKey: minTextLengthKey) as? Int ?? 1
         self.deduplicateHistory = defaults.bool(forKey: deduplicateHistoryKey)
+        self.ignoreConcealed = defaults.object(forKey: ignoreConcealedKey) as? Bool ?? true
 
         // Load content zoom scale
         let savedZoom = defaults.double(forKey: contentZoomScaleKey)
@@ -179,6 +182,7 @@ class SettingsManager: ObservableObject {
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
         defaults.set(minTextLength, forKey: minTextLengthKey)
         defaults.set(deduplicateHistory, forKey: deduplicateHistoryKey)
+        defaults.set(ignoreConcealed, forKey: ignoreConcealedKey)
         defaults.set(contentZoomScale, forKey: contentZoomScaleKey)
         defaults.set(appTheme.rawValue, forKey: appThemeKey)
     }

@@ -231,7 +231,25 @@ struct SettingsView: View {
                         }
                         .toggleStyle(.switch)
                 }
-                
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ignore Password Manager Copies")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Skips copies that password managers mark as private")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.ignoreConcealed)
+                        .labelsHidden()
+                        .onChange(of: settings.ignoreConcealed) { _ in
+                            settings.save()
+                        }
+                        .toggleStyle(.switch)
+                }
+
                 // History Size Section
                 Divider()
                     .padding(.vertical, 4)
@@ -558,6 +576,7 @@ class SettingsViewModel: ObservableObject {
     @Published var hideStatusBar: Bool
     @Published var minTextLength: Int
     @Published var deduplicateHistory: Bool
+    @Published var ignoreConcealed: Bool
     @Published var appTheme: AppTheme
     
     private let defaults = UserDefaults.standard
@@ -591,6 +610,7 @@ class SettingsViewModel: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = SettingsManager.shared.minTextLength
         self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
+        self.ignoreConcealed = SettingsManager.shared.ignoreConcealed
 
         // Load app theme
         self.appTheme = SettingsManager.shared.appTheme
@@ -610,6 +630,7 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.hideStatusBar = hideStatusBar
         SettingsManager.shared.minTextLength = minTextLength
         SettingsManager.shared.deduplicateHistory = deduplicateHistory
+        SettingsManager.shared.ignoreConcealed = ignoreConcealed
         SettingsManager.shared.appTheme = appTheme
         SettingsManager.shared.save()
         SettingsManager.shared.applyTheme(appTheme)
