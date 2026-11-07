@@ -22,7 +22,8 @@ struct TagChip: View {
     static func normalize(_ input: String) -> String {
         let lower = input.lowercased()
         let dashed = lower.replacingOccurrences(of: "\\s+", with: "-", options: .regularExpression)
-        let trimmed = dashed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let cleaned = dashed.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        let trimmed = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
         return String(trimmed.prefix(32))
     }
 
