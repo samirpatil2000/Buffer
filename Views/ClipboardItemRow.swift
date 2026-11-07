@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Single row displaying a clipboard item - optimized for smooth scrolling
 struct ClipboardItemRow: View {
@@ -72,11 +73,20 @@ struct ClipboardItemRow: View {
                 }
             }
 
-            // Source app badge
+            // Source app badge: name, then the app icon to its right. The icon is the last
+            // element with a fixed frame, so varying name lengths cannot move it.
             if let app = item.sourceApp {
                 Text(app)
                     .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let appIcon = AppIconProvider.shared.icon(bundleID: item.sourceAppBundleID, name: app) {
+                    Image(nsImage: appIcon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 15, height: 15)
+                }
             }
             
             // Pin indicator
@@ -364,5 +374,62 @@ struct ClipboardItemRow: View {
         let b = hueToRGB(p, q, hNorm - 1/3)
         
         return (r, g, b)
+    }
+}
+
+/// Resolves and caches source-app icons for history rows. Co-located with its sole consumer
+/// (the row) so no new file needs wiring into the Xcode project.
+///
+/// Resolution order, first hit wins: the stored bundle id (reliable for items captured after the
+/// field was added), then the app name (best-effort fallback for old items). The real NSWorkspace
+/// work lives behind an injected resolver closure so the ordering and cache logic can be unit
+/// tested with a fake resolver, without touching the real system.
+final class AppIconProvider {
+    static let shared = AppIconProvider()
+
+    /// Resolves a (bundleID, name) pair to an icon, or nil when neither maps to an app.
+    private let resolve: (_ bundleID: String?, _ name: String?) -> NSImage?
+
+    // In-memory only, never persisted. Stores nil results too (negative caching) so repeated
+    // lookups for an unresolvable app on scroll do not re-hit NSWorkspace every time.
+    private var cache: [String: NSImage?] = [:]
+
+    init(resolve: @escaping (_ bundleID: String?, _ name: String?) -> NSImage? = AppIconProvider.systemResolve) {
+        self.resolve = resolve
+    }
+
+    /// Return the cached or freshly resolved icon for a row. Pure ordering and cache logic: builds
+    /// a key, serves a cached entry if present (including a cached nil without recomputing),
+    /// otherwise resolves once and caches the outcome.
+    func icon(bundleID: String?, name: String?) -> NSImage? {
+        guard let key = Self.cacheKey(bundleID: bundleID, name: name) else { return nil }
+        if let cached = cache[key] { return cached }
+        let resolved = resolve(bundleID, name)
+        cache[key] = resolved
+        return resolved
+    }
+
+    /// Prefer a bundle id key, fall back to a lowercased name key. Returns nil when both inputs
+    /// are missing or empty, signalling the caller to skip resolution entirely.
+    private static func cacheKey(bundleID: String?, name: String?) -> String? {
+        if let bundleID = bundleID, !bundleID.isEmpty { return "bundle:\(bundleID)" }
+        if let name = name, !name.isEmpty { return "name:\(name.lowercased())" }
+        return nil
+    }
+
+    /// The real-system resolver. Bundle id path first (urlForApplication then icon(forFile:)),
+    /// then a best-effort scan of running apps by localizedName. Returns nil when nothing matches.
+    static func systemResolve(bundleID: String?, name: String?) -> NSImage? {
+        if let bundleID = bundleID, !bundleID.isEmpty,
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        if let name = name, !name.isEmpty {
+            let match = NSWorkspace.shared.runningApplications.first {
+                $0.localizedName?.caseInsensitiveCompare(name) == .orderedSame
+            }
+            if let match = match { return match.icon }
+        }
+        return nil
     }
 }

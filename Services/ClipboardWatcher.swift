@@ -101,6 +101,7 @@ class ClipboardWatcher: ObservableObject {
         
         // Get current frontmost app as source
         let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName
+        let sourceBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         
         // Check for single image file from Finder BEFORE text check
         // (Finder always writes both NSFilenamesPboardType + .string, so we must intercept first)
@@ -110,7 +111,7 @@ class ClipboardWatcher: ObservableObject {
             if isImageFile(filePath) {
                 // Read and process image file asynchronously to avoid blocking the poll timer
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    self?.processImageFile(filePath, sourceApp: sourceApp)
+                    self?.processImageFile(filePath, sourceApp: sourceApp, sourceBundleID: sourceBundleID)
                 }
                 return  // Prevent .string branch from also processing this change
             }
@@ -146,7 +147,7 @@ class ClipboardWatcher: ObservableObject {
                 let hash = hashSource.hashValue
                 if hash != lastContentHash {
                     lastContentHash = hash
-                    if let item = buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, links: links) {
+                    if let item = buildTextItem(text: text, sourceApp: sourceApp, sourceAppBundleID: sourceBundleID, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, links: links) {
                         store.add(item)
                     }
                 }
@@ -199,7 +200,7 @@ class ClipboardWatcher: ObservableObject {
                 }
 
                 // 4. Build. On failure, roll back the files we just wrote.
-                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames, links: links, remoteImageMap: remoteImageMap) else {
+                guard let item = self.buildTextItem(text: text, sourceApp: sourceApp, sourceAppBundleID: sourceBundleID, rtf: rich.rtf, html: rich.html, rtfd: rich.rtfd, imageFilenames: filenames, links: links, remoteImageMap: remoteImageMap) else {
                     self.removeImageFiles(filenames)
                     return
                 }
@@ -227,7 +228,8 @@ class ClipboardWatcher: ObservableObject {
                 
                 // Save image to disk
                 if let filename = store.saveImage(imageData) {
-                    let item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                    var item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                    item.sourceAppBundleID = sourceBundleID
                     store.add(item)
                 }
             }
@@ -256,6 +258,7 @@ class ClipboardWatcher: ObservableObject {
     /// Build a text item, choosing inline or file-backed storage by size. Returns nil only if the
     /// large-text file could not be written (matching today's behaviour of skipping the capture).
     private func buildTextItem(text: String, sourceApp: String?,
+                                sourceAppBundleID: String? = nil,
                                 rtf: Data?, html: Data?, rtfd: Data? = nil,
                                 imageFilenames: [String] = [],
                                 links: [WebLink] = [],
@@ -263,6 +266,7 @@ class ClipboardWatcher: ObservableObject {
         let textSize = text.utf8.count
         if textSize <= inlineTextLimit {
             var item = ClipboardItem.text(text, sourceApp: sourceApp, rtfData: rtf, htmlData: html, rtfdData: rtfd)
+            item.sourceAppBundleID = sourceAppBundleID
             item.imageFilenames = imageFilenames
             item.links = links
             item.remoteImageMap = remoteImageMap
@@ -273,6 +277,7 @@ class ClipboardWatcher: ObservableObject {
         var item = ClipboardItem.largeText(preview: String(text.prefix(previewLength)),
                                             filename: filename, sourceApp: sourceApp,
                                             rtfData: rtf, htmlData: html, rtfdData: rtfd)
+        item.sourceAppBundleID = sourceAppBundleID
         item.imageFilenames = imageFilenames
         item.links = links
         item.remoteImageMap = remoteImageMap
@@ -581,7 +586,7 @@ class ClipboardWatcher: ObservableObject {
     }
     
     /// Read image file from disk, convert to PNG, and store as image item
-    private func processImageFile(_ filePath: String, sourceApp: String?) {
+    private func processImageFile(_ filePath: String, sourceApp: String?, sourceBundleID: String? = nil) {
         do {
             // Read file bytes
             let fileURL = URL(fileURLWithPath: filePath)
@@ -602,7 +607,8 @@ class ClipboardWatcher: ObservableObject {
             
             // Save image to disk and add to store
             if let filename = store.saveImage(pngData) {
-                let item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                var item = ClipboardItem.image(filename: filename, sourceApp: sourceApp)
+                item.sourceAppBundleID = sourceBundleID
                 DispatchQueue.main.async { [weak self] in
                     self?.lastContentHash = hash
                     self?.store.add(item)

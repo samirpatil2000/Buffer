@@ -62,11 +62,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // images were downloaded.
     var remoteImageMap: [String: String] = [:]
 
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = [], remoteImageMap: [String: String] = [:]) {
+    // Bundle identifier of the frontmost app the copy was made from, captured going forward.
+    // Additive and nil for old items (resolved by sourceApp name instead), so it stays
+    // backward-compatible with history.json entries written before this field existed.
+    var sourceAppBundleID: String? = nil
+
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, sourceAppBundleID: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = [], remoteImageMap: [String: String] = [:]) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
         self.sourceApp = sourceApp
+        self.sourceAppBundleID = sourceAppBundleID
         self.textContent = textContent
         self.textFilename = textFilename
         self.imageFilename = imageFilename
@@ -89,6 +95,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
         case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
         case rtfData, htmlData, rtfdData, imageFilenames, language, links, remoteImageMap
+        case sourceAppBundleID
     }
 
     init(from decoder: Decoder) throws {
@@ -97,6 +104,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.type = try container.decode(ClipboardItemType.self, forKey: .type)
         self.timestamp = try container.decode(Date.self, forKey: .timestamp)
         self.sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
+        self.sourceAppBundleID = try container.decodeIfPresent(String.self, forKey: .sourceAppBundleID)
         self.textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
         self.textFilename = try container.decodeIfPresent(String.self, forKey: .textFilename)
         self.imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
@@ -121,6 +129,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encode(type, forKey: .type)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encodeIfPresent(sourceApp, forKey: .sourceApp)
+        try container.encodeIfPresent(sourceAppBundleID, forKey: .sourceAppBundleID)
         try container.encodeIfPresent(textContent, forKey: .textContent)
         try container.encodeIfPresent(textFilename, forKey: .textFilename)
         try container.encodeIfPresent(imageFilename, forKey: .imageFilename)

@@ -203,6 +203,21 @@ tag filters.
   behavior is covered by regression tests without touching real Secure Event
   Input state.
 
+## 14. Source app icon in history rows
+
+- Each history row now shows the **icon of the app the copy was made from**,
+  placed to the **right of the source app name**. The icon is the last element
+  in the row with a fixed 15x15 frame, so a long or short app name never shifts
+  the icon from its trailing position.
+- The source app's **bundle identifier is captured and stored** going forward,
+  which gives a clean, reliable icon lookup for new items. Old items that have
+  no stored bundle id fall back to resolving the icon by app name. The new
+  bundle id field is additive and backward-compatible, matching the other fields
+  we have added, so existing `history.json` files keep loading.
+- Icon lookups are **cached in memory** by bundle id or name, including a
+  negative cache for apps that do not resolve, so scrolling does not re-hit
+  NSWorkspace for every row.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of

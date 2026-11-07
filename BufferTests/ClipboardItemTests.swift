@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import Buffer
 
 class ClipboardItemTests: XCTestCase {
@@ -731,6 +732,82 @@ class ClipboardItemTests: XCTestCase {
         """
         let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
         XCTAssertTrue(decoded.links.isEmpty)
+    }
+
+    // MARK: - Source app bundle id Codable round-trip
+
+    func testSourceAppBundleIDRoundTripCodable() throws {
+        let item = ClipboardItem(type: .text, sourceAppBundleID: "com.apple.Safari", textContent: "x")
+        let data = try JSONEncoder().encode(item)
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: data)
+        XCTAssertEqual(decoded.sourceAppBundleID, "com.apple.Safari")
+    }
+
+    func testOldPayloadWithoutSourceAppBundleIDDecodesToNil() throws {
+        // A history.json entry written before the bundle id field existed: no key present.
+        let json = """
+        { "id": "\(UUID().uuidString)", "type": "text", "timestamp": 760000000,
+          "textContent": "hi", "sourceApp": "Safari", "isPinned": false,
+          "isBookmarked": false, "tags": [], "isTruncated": false }
+        """
+        let decoded = try JSONDecoder().decode(ClipboardItem.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.sourceAppBundleID)
+        XCTAssertEqual(decoded.sourceApp, "Safari")
+        XCTAssertEqual(decoded.textContent, "hi")
+    }
+
+    // MARK: - AppIconProvider ordering and cache (pure, injected resolver)
+
+    func testAppIconProviderPrefersBundleIDOverName() {
+        var seenBundleID: String??
+        var seenName: String??
+        let provider = AppIconProvider(resolve: { bundleID, name in
+            seenBundleID = bundleID
+            seenName = name
+            return NSImage()
+        })
+        _ = provider.icon(bundleID: "com.x", name: "X")
+        // The resolver receives the bundle id, and the provider tries it first.
+        XCTAssertEqual(seenBundleID, "com.x")
+        XCTAssertEqual(seenName, "X")
+    }
+
+    func testAppIconProviderCachesResolvedIcon() {
+        var calls = 0
+        let image = NSImage()
+        let provider = AppIconProvider(resolve: { _, _ in
+            calls += 1
+            return image
+        })
+        let first = provider.icon(bundleID: "com.x", name: "X")
+        let second = provider.icon(bundleID: "com.x", name: "X")
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(first === image)
+        XCTAssertTrue(second === image)
+    }
+
+    func testAppIconProviderNegativeCachesNil() {
+        var calls = 0
+        let provider = AppIconProvider(resolve: { _, _ in
+            calls += 1
+            return nil
+        })
+        let first = provider.icon(bundleID: "com.missing", name: "Missing")
+        let second = provider.icon(bundleID: "com.missing", name: "Missing")
+        // nil is cached too, so the resolver runs only once for an unresolvable app.
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(first)
+        XCTAssertNil(second)
+    }
+
+    func testAppIconProviderReturnsNilForEmptyInputs() {
+        var calls = 0
+        let provider = AppIconProvider(resolve: { _, _ in
+            calls += 1
+            return NSImage()
+        })
+        XCTAssertNil(provider.icon(bundleID: nil, name: nil))
+        XCTAssertEqual(calls, 0)
     }
 
     func testDetectBareURLsInPlainText() {
