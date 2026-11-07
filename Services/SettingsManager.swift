@@ -142,8 +142,11 @@ class SettingsManager: ObservableObject {
         }
         
         // Load saved keycode or use default (V key)
-        let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
-        self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : defaultKeyCode
+        if defaults.object(forKey: hotkeyKeyCodeKey) != nil {
+            self.hotkeyKeyCode = UInt16(defaults.integer(forKey: hotkeyKeyCodeKey))
+        } else {
+            self.hotkeyKeyCode = defaultKeyCode
+        }
         
         // Load launch at login status
         if #available(macOS 13.0, *) {

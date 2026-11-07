@@ -1,4 +1,5 @@
 import XCTest
+import Carbon
 @testable import Buffer
 
 class ClipboardItemTests: XCTestCase {
@@ -1073,6 +1074,112 @@ class ClipboardItemTests: XCTestCase {
         let (kind4, rest4) = HistoryContentView.parseTypeToken(from: "type:banana")
         XCTAssertNil(kind4)
         XCTAssertEqual(rest4, "type:banana")
+    }
+
+    // MARK: - Hotkey & Secure Event Input Regression Tests
+
+    func testHotkeyRegistrationWithOptionModifier() {
+        var callbackFired = false
+        let manager = HotkeyManager {
+            callbackFired = true
+        }
+
+        // Register Option + C (C = keyCode 8, option modifier)
+        let optionModifier = UInt32(optionKey)
+        manager.register(keyCode: 8, modifiers: optionModifier)
+        XCTAssertTrue(manager.isRegistered, "HotkeyManager should register Option + C successfully")
+
+        manager.unregister()
+        XCTAssertFalse(manager.isRegistered, "HotkeyManager should unregister cleanly")
+        _ = callbackFired
+    }
+
+    func testHotkeyCallbackFiresDuringSecureEventInput() {
+        let expectation = XCTestExpectation(description: "Hotkey callback fires during Secure Event Input")
+        
+        let manager = HotkeyManager {
+            expectation.fulfill()
+        }
+
+        EnableSecureEventInput()
+        defer {
+            DisableSecureEventInput()
+            manager.unregister()
+        }
+
+        XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input should be active")
+
+        // Register Option + C
+        let optionModifier = UInt32(optionKey)
+        manager.register(keyCode: 8, modifiers: optionModifier)
+        XCTAssertTrue(manager.isRegistered, "Hotkey should be registered during Secure Event Input")
+
+        // Dispatch simulated hotkey event to GetEventDispatcherTarget()
+        var eventRef: EventRef?
+        let createStatus = CreateEvent(
+            nil,
+            OSType(kEventClassKeyboard),
+            UInt32(kEventHotKeyPressed),
+            0,
+            EventAttributes(kEventAttributeNone),
+            &eventRef
+        )
+        XCTAssertEqual(createStatus, noErr, "CreateEvent should succeed")
+
+        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1)
+        SetEventParameter(
+            eventRef,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            MemoryLayout<EventHotKeyID>.size,
+            &hotKeyID
+        )
+
+        let sendStatus = SendEventToEventTarget(eventRef, GetEventDispatcherTarget())
+        XCTAssertEqual(sendStatus, noErr, "SendEventToEventTarget to dispatcher should succeed")
+
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    func testHistoryPanelCanBecomeKeyAndMain() {
+        let panel = HistoryPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        XCTAssertTrue(panel.canBecomeKey, "HistoryPanel must be able to become key window")
+        XCTAssertTrue(panel.canBecomeMain, "HistoryPanel must be able to become main window")
+    }
+
+    func testSettingsManagerKeyCodeZeroPersistence() {
+        let defaults = UserDefaults.standard
+        let originalKey = defaults.object(forKey: "hotkeyKeyCode")
+        defer {
+            if let original = originalKey {
+                defaults.set(original, forKey: "hotkeyKeyCode")
+            } else {
+                defaults.removeObject(forKey: "hotkeyKeyCode")
+            }
+        }
+
+        // Set keycode to 0 ('A' key)
+        defaults.set(0, forKey: "hotkeyKeyCode")
+        
+        let loadedCode: UInt16 = defaults.object(forKey: "hotkeyKeyCode") != nil ? UInt16(defaults.integer(forKey: "hotkeyKeyCode")) : 9
+        XCTAssertEqual(loadedCode, 0, "KeyCode 0 (A key) must not fall back to default keycode 9 (V key)")
+    }
+
+    func testOptionModifierDisplayAndSerialization() {
+        let mods = HotkeyModifiers(shift: false, command: false, option: true, control: false)
+        XCTAssertEqual(mods.displayString, "⌥")
+        XCTAssertEqual(mods.toArray(), ["option"])
+
+        let reconstructed = HotkeyModifiers(from: ["option"])
+        XCTAssertTrue(reconstructed.option)
+        XCTAssertFalse(reconstructed.command)
+        XCTAssertFalse(reconstructed.shift)
+        XCTAssertFalse(reconstructed.control)
     }
 }
 

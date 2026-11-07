@@ -35,6 +35,7 @@
 		AAA00025 /* Highlighter in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00002 /* Highlighter */; };
 		AAA00026 /* CodeFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00025 /* CodeFormatter.swift */; };
 		AAA00030 /* SyntaxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00030 /* SyntaxDetector.swift */; };
+		AAA00031 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBB00031 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +79,7 @@
 		BBB00024 /* SyntaxHighlighting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighting.swift; sourceTree = "<group>"; };
 		BBB00025 /* CodeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeFormatter.swift; sourceTree = "<group>"; };
 		BBB00030 /* SyntaxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxDetector.swift; sourceTree = "<group>"; };
+		BBB00031 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -146,6 +148,7 @@
 				DDD00004 /* Views */,
 				BBB00013 /* Info.plist */,
 				BBB00014 /* Buffer.entitlements */,
+				BBB00031 /* Assets.xcassets */,
 			);
 			name = Buffer;
 			path = .;
@@ -287,6 +290,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAA00031 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -514,6 +518,7 @@
 		FFF00005 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = Buffer.entitlements;
@@ -555,6 +560,7 @@
 		FFF00006 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = Buffer.entitlements;

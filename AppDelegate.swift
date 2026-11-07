@@ -91,11 +91,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func toggleHistoryWindow() {
         print("[AppDelegate] toggleHistoryWindow called")
-        if let window = historyWindowController?.window, window.isVisible {
-            print("[AppDelegate] Window is visible, closing...")
+        if let window = historyWindowController?.window, window.isVisible, window.isKeyWindow {
+            print("[AppDelegate] Window is visible and key, closing...")
             historyWindowController?.close()
         } else {
-            print("[AppDelegate] Window is hidden, showing...")
+            print("[AppDelegate] Window is hidden or not key, showing...")
             showHistoryWindow()
         }
     }
@@ -106,6 +106,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettingsWindow() {
         if let controller = settingsWindowController, let window = controller.window {
+            positionOnActiveScreen(window)
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -116,10 +117,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.appearance = SettingsManager.shared.appTheme.nsAppearance
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
-        window.center()
+        window.collectionBehavior = [.moveToActiveSpace, .participatesInCycle]
+        positionOnActiveScreen(window)
         let controller = NSWindowController(window: window)
         settingsWindowController = controller
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func positionOnActiveScreen(_ window: NSWindow) {
+        if let screen = NSScreen.main {
+            let screenRect = screen.visibleFrame
+            let x = screenRect.midX - (window.frame.width / 2)
+            let y = screenRect.midY - (window.frame.height / 2)
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.center()
+        }
     }
 }

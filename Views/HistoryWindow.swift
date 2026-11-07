@@ -6,6 +6,7 @@ class HistoryPanel: NSPanel {
     var onClickOutside: (() -> Void)?
     
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
     
     override func resignKey() {
         super.resignKey()
@@ -195,8 +196,9 @@ class HistoryWindowController: NSWindowController {
         shouldResetOnOpen = shouldResetSearch
         ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
-        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
         window?.makeFirstResponder(window?.contentView)
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }
