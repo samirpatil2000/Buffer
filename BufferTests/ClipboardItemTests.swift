@@ -1044,6 +1044,11 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(plain.matchesKind(.link))
     }
 
+    func testMatchesDoesNotTriggerLinkDetectionOnNonMatchingPlainText() {
+        let plain = ClipboardItem.text("plain text without any mention of target")
+        XCTAssertFalse(ClipboardItem.matches(item: plain, query: "nonexistent"))
+    }
+
     func testCombinedItemMatchesBothTextAndImage() {
         var combined = ClipboardItem.text("caption text")
         combined.imageFilenames = ["a.png"]
@@ -1140,8 +1145,8 @@ class ClipboardItemTests: XCTestCase {
             &hotKeyID
         )
 
-        let sendStatus = SendEventToEventTarget(eventRef, GetEventDispatcherTarget())
-        XCTAssertEqual(sendStatus, noErr, "SendEventToEventTarget to dispatcher should succeed")
+        let sendStatus = SendEventToEventTarget(eventRef, GetApplicationEventTarget())
+        XCTAssertEqual(sendStatus, noErr, "SendEventToEventTarget to application target should succeed")
 
         wait(for: [expectation], timeout: 2.0)
     }

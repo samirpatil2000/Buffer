@@ -37,7 +37,7 @@ class HotkeyManager {
             var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             
             let status = InstallEventHandler(
-                GetEventDispatcherTarget(),
+                GetApplicationEventTarget(),
                 { (nextHandler, theEvent, userData) -> OSStatus in
                     var hotKeyID = EventHotKeyID()
                     GetEventParameter(
@@ -96,7 +96,7 @@ class HotkeyManager {
             requiredKeyCode,
             requiredModifiers,
             hotKeyID,
-            GetEventDispatcherTarget(),
+            GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )

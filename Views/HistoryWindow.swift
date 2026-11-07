@@ -84,6 +84,7 @@ class HistoryWindowController: NSWindowController {
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
@@ -197,9 +198,6 @@ class HistoryWindowController: NSWindowController {
         ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
-        window?.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeFirstResponder(window?.contentView)
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }
 
@@ -331,6 +329,7 @@ struct HistoryContentView: View {
     @FocusState private var isTextEditorFocused: Bool
     
     @State private var filteredItems: [ClipboardItem] = []
+    @State private var isResettingOnOpen = false
     
     private var previewFontSize: CGFloat { CGFloat(13 * settings.contentZoomScale) }
 
@@ -666,6 +665,7 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: searchText) { newValue in
+            guard !isResettingOnOpen else { return }
             showTagAutocomplete = newValue.hasPrefix("#")
             
             searchDebounceTask?.cancel()
@@ -685,6 +685,7 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: debouncedSearchText) { newValue in
+            guard !isResettingOnOpen else { return }
             let currentFiltered = computeFilteredItems()
             self.filteredItems = currentFiltered
             
@@ -708,6 +709,7 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: activeTagFilter) { _ in
+            guard !isResettingOnOpen else { return }
             let currentFiltered = computeFilteredItems()
             self.filteredItems = currentFiltered
             
@@ -728,6 +730,7 @@ struct HistoryContentView: View {
             }
         }
         .onChange(of: activeKind) { _ in
+            guard !isResettingOnOpen else { return }
             let currentFiltered = computeFilteredItems()
             self.filteredItems = currentFiltered
             let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
@@ -822,6 +825,9 @@ struct HistoryContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .bufferWindowDidOpen)) { _ in
+            isResettingOnOpen = true
+            defer { isResettingOnOpen = false }
+            
             // Only reset persistent search state if the window was closed long enough ago
             // (or this is the first open). shouldResetOnOpen is set by the controller in
             // showWindow(_:) before the notification fires.
@@ -833,7 +839,7 @@ struct HistoryContentView: View {
                 debouncedSearchText = searchText
             }
             
-            // Recalculate cache immediately
+            // Recalculate cache immediately (single pass)
             let currentFiltered = computeFilteredItems()
             self.filteredItems = currentFiltered
             
@@ -872,10 +878,7 @@ struct HistoryContentView: View {
             }
             // Trigger scroll so ClipboardListView brings the selected row into view
             scrollTrigger = true
-            // Delay needed for NSHostingView to have settled as key window
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isSearchFocused = true
-            }
+            isSearchFocused = true
         }
         .onAppear {
             updateFilteredItems()

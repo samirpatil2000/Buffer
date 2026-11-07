@@ -260,9 +260,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         if let ocrText = item.ocrText, !ocrText.isEmpty, ocrText.localizedCaseInsensitiveContains(query) {
             return true
         }
-        // Match on hyperlinks (captured, or detected live from the body for older items), by
-        // both the visible anchor text and the URL itself.
-        for link in item.effectiveLinks {
+        // Match on captured rich hyperlinks where href URL might differ from visible text.
+        // Plain text items do not need NSDataDetector scanning here because any URL inside
+        // plain text is already a substring of textContent checked above.
+        for link in item.links {
             if link.text.localizedCaseInsensitiveContains(query)
                 || link.url.localizedCaseInsensitiveContains(query) {
                 return true
