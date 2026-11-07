@@ -11,34 +11,36 @@ struct SettingsView: View {
     @State private var pendingTier: HistoryLimit?
     
     var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            HStack {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 22))
-                    .foregroundColor(.accentColor)
-                Text("Buffer Settings")
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer()
-            }
-            
-            // Tab Picker
+        VStack(spacing: 12) {
+            // Centered Segmented Tab Picker
             Picker("", selection: $settingsManager.selectedSettingsTab) {
                 Text("General").tag(0)
                 Text("Shortcuts").tag(1)
             }
             .pickerStyle(.segmented)
+            .frame(maxWidth: 220)
+            .padding(.top, 14)
             
             Divider()
+                .padding(.horizontal, 16)
+                .opacity(0.5)
             
             if settingsManager.selectedSettingsTab == 0 {
-                generalSettingsTab
+                ScrollView(.vertical, showsIndicators: false) {
+                    generalSettingsTab
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                        .padding(.bottom, 20)
+                }
             } else {
-                ShortcutsCheatSheetView(isEmbeddedInSettings: true)
+                ScrollView(.vertical, showsIndicators: false) {
+                    ShortcutsCheatSheetView(isEmbeddedInSettings: true)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 20)
+                }
             }
         }
-        .padding(22)
-        .frame(width: 380)
+        .frame(width: 460, height: 560)
         .alert("Reduce History Limit?", isPresented: $showingTrimAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Reduce & Delete", role: .destructive) {
@@ -58,74 +60,13 @@ struct SettingsView: View {
         })
     }
     
+    // MARK: - General Tab
+    
     private var generalSettingsTab: some View {
-        VStack(spacing: 20) {
-            // Hotkey section
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Keyboard Shortcut")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 12) {
-                    // Current shortcut display
-                    HStack(spacing: 4) {
-                        Text(settings.hotkeyModifiers.displayString)
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        Text(keyCodeNames[settings.hotkeyKeyCode] ?? "?")
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isRecording ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(isRecording ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: 1)
-                    )
-                    
-                    Button(action: { isRecording.toggle() }) {
-                        Text(isRecording ? "Cancel" : "Change")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Spacer()
-                }
-                
-                if isRecording {
-                    Text("Press your new shortcut...")
-                        .font(.system(size: 11))
-                        .foregroundColor(.accentColor)
-                }
-            }
-            
-            Divider()
-            
-            // Preset shortcuts
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Quick Presets")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 8) {
-                    presetButton(label: "⇧⌘V", mods: HotkeyModifiers(shift: true, command: true), keyCode: 9)
-                    presetButton(label: "⌥⌘V", mods: HotkeyModifiers(command: true, option: true), keyCode: 9)
-                    presetButton(label: "⌃⇧V", mods: HotkeyModifiers(shift: true, control: true), keyCode: 9)
-                    presetButton(label: "⌘B", mods: HotkeyModifiers(command: true), keyCode: 11)
-                }
-            }
-            
-            Divider()
-            
-            // Appearance section
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Appearance")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 12) {
+        VStack(spacing: 18) {
+            // 1. Appearance Card
+            settingsCard(title: "APPEARANCE") {
+                HStack(spacing: 16) {
                     ForEach(AppTheme.allCases, id: \.self) { theme in
                         Button(action: {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -142,69 +83,205 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
             
-            Divider()
+            // 2. Global Shortcut Card
+            settingsCard(title: "GLOBAL SHORTCUT") {
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Activation Hotkey")
+                            .font(.system(size: 13, weight: .medium))
+                        if isRecording {
+                            Text("Press your new shortcut…")
+                                .font(.system(size: 11))
+                                .foregroundColor(.accentColor)
+                        } else {
+                            Text("Brings Buffer to front")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 8) {
+                        // Current shortcut badge
+                        HStack(spacing: 4) {
+                            Text(settings.hotkeyModifiers.displayString)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            Text(keyCodeNames[settings.hotkeyKeyCode] ?? "?")
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isRecording ? Color.accentColor.opacity(0.18) : Color(NSColor.windowBackgroundColor))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(isRecording ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: 1)
+                        )
+                        
+                        Button(isRecording ? "Cancel" : "Change") {
+                            isRecording.toggle()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Menu {
+                            Button("⇧⌘V  (Shift-Command-V)") {
+                                applyPreset(mods: HotkeyModifiers(shift: true, command: true), keyCode: 9)
+                            }
+                            Button("⌥⌘V  (Option-Command-V)") {
+                                applyPreset(mods: HotkeyModifiers(command: true, option: true), keyCode: 9)
+                            }
+                            Button("⌃⇧V  (Control-Shift-V)") {
+                                applyPreset(mods: HotkeyModifiers(shift: true, control: true), keyCode: 9)
+                            }
+                            Button("⌘B    (Command-B)") {
+                                applyPreset(mods: HotkeyModifiers(command: true), keyCode: 11)
+                            }
+                        } label: {
+                            Text("Presets")
+                                .font(.system(size: 12))
+                        }
+                        .menuStyle(.borderedButton)
+                        .controlSize(.small)
+                        .fixedSize()
+                    }
+                }
+            }
             
-            // System section
-            VStack(alignment: .leading, spacing: 12) {
-                Text("System")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack {
+            // 3. System Card
+            settingsCard(title: "SYSTEM") {
+                settingsRow {
                     Text("Launch at Login")
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Toggle("", isOn: $settings.launchAtLogin)
                         .labelsHidden()
+                        .toggleStyle(.switch)
                         .onChange(of: settings.launchAtLogin) { newValue in
                             SettingsManager.shared.toggleLaunchAtLogin(newValue)
                             DispatchQueue.main.async {
                                 settings.launchAtLogin = SettingsManager.shared.launchAtLogin
                             }
                         }
-                        .toggleStyle(.switch)
                 }
                 
-                HStack {
+                rowDivider
+                
+                settingsRow {
+                    Text("Hide Menu Bar Icon")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Toggle("", isOn: $settings.hideStatusBar)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .onChange(of: settings.hideStatusBar) { _ in
+                            settings.save()
+                        }
+                }
+                
+                rowDivider
+                
+                settingsRow {
                     Text("Include Pre-release Updates")
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Toggle("", isOn: $settings.includePrereleases)
                         .labelsHidden()
+                        .toggleStyle(.switch)
                         .onChange(of: settings.includePrereleases) { newValue in
                             settings.save()
                             if newValue {
                                 UpdateService.shared.checkForUpdates(silent: true)
                             }
                         }
-                        .toggleStyle(.switch)
                 }
-
-                HStack {
-                    Text("Hide Menu Bar Icon")
+            }
+            
+            // 4. Clipboard & History Card
+            settingsCard(title: "CLIPBOARD & HISTORY") {
+                // History Limit Picker
+                VStack(spacing: 0) {
+                    settingsRow {
+                        Text("History Limit")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Picker("", selection: Binding(
+                            get: { settings.historyLimit },
+                            set: { tier in
+                                if tier.isReduction(from: settings.historyLimit) {
+                                    pendingTier = tier
+                                    showingTrimAlert = true
+                                } else {
+                                    settings.historyLimit = tier
+                                    settings.save()
+                                }
+                            }
+                        )) {
+                            ForEach(HistoryLimit.allCases, id: \.self) { tier in
+                                Text(historyLimitTitle(for: tier)).tag(tier)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 175)
+                    }
+                    
+                    if settings.historyLimit == .custom {
+                        Divider().padding(.leading, 14).opacity(0.4)
+                        settingsRow {
+                            Text("Custom Limit")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 6)
+                            Spacer()
+                            HStack(spacing: 6) {
+                                TextField("", value: $settings.customHistoryLimit, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                    .multilineTextAlignment(.trailing)
+                                    .onChange(of: settings.customHistoryLimit) { newValue in
+                                        let clamped = max(1, newValue)
+                                        if clamped != newValue {
+                                            settings.customHistoryLimit = clamped
+                                        }
+                                        HistoryLimit.customHistoryLimit = clamped
+                                        settings.save()
+                                    }
+                                Text("items")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                
+                rowDivider
+                
+                // Deduplicate
+                settingsRow {
+                    Text("Deduplicate History")
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
-                    Toggle("", isOn: $settings.hideStatusBar)
+                    Toggle("", isOn: $settings.deduplicateHistory)
                         .labelsHidden()
-                        .onChange(of: settings.hideStatusBar) { _ in
+                        .toggleStyle(.switch)
+                        .onChange(of: settings.deduplicateHistory) { _ in
                             settings.save()
                         }
-                        .toggleStyle(.switch)
                 }
-
-                // History Filtering Section
-                Divider()
-                    .padding(.vertical, 4)
-
-                Text("History Filtering")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-
-                HStack {
-                    Text("Ignore entries shorter than")
+                
+                rowDivider
+                
+                // Min text length
+                settingsRow {
+                    Text("Ignore Entries Shorter Than")
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Stepper(
@@ -220,19 +297,10 @@ struct SettingsView: View {
                     }
                 }
 
-                HStack {
-                    Text("Deduplicate History")
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer()
-                    Toggle("", isOn: $settings.deduplicateHistory)
-                        .labelsHidden()
-                        .onChange(of: settings.deduplicateHistory) { _ in
-                            settings.save()
-                        }
-                        .toggleStyle(.switch)
-                }
+                rowDivider
 
-                HStack {
+                // Ignore password manager copies
+                settingsRow {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Ignore Password Manager Copies")
                             .font(.system(size: 13, weight: .medium))
@@ -244,111 +312,168 @@ struct SettingsView: View {
                     Spacer()
                     Toggle("", isOn: $settings.ignoreConcealed)
                         .labelsHidden()
+                        .toggleStyle(.switch)
                         .onChange(of: settings.ignoreConcealed) { _ in
                             settings.save()
                         }
-                        .toggleStyle(.switch)
                 }
 
-                // History Size Section
-                Divider()
-                    .padding(.vertical, 4)
-                
-                Text("History Size")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 12) {
-                    ForEach(HistoryLimit.allCases, id: \.self) { tier in
-                        Button(action: { 
-                            if tier.isReduction(from: settings.historyLimit) {
-                                pendingTier = tier
-                                showingTrimAlert = true
-                            } else {
-                                settings.historyLimit = tier
-                                settings.save()
-                            }
-                        }) {
-                            VStack(alignment: .center, spacing: 6) {
-                                if settings.historyLimit == tier {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.accentColor)
-                                        .font(.system(size: 14))
-                                } else {
-                                    Image(systemName: "circle")
-                                        .foregroundColor(.secondary.opacity(0.3))
-                                        .font(.system(size: 14))
-                                }
-                                
-                                Text(tier.label)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(settings.historyLimit == tier ? .primary : .secondary)
-                                
-                                Text(tier.subtitle)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                            }
-                            .padding(.vertical, 14)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(settings.historyLimit == tier 
-                                          ? Color.accentColor.opacity(0.1) 
-                                          : Color(NSColor.controlBackgroundColor))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(settings.historyLimit == tier 
-                                            ? Color.accentColor : Color.clear, lineWidth: settings.historyLimit == tier ? 1.5 : 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
+                rowDivider
+
+                // Auto OCR
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Extract Text from Images (OCR)")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Makes text inside copied screenshots searchable")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                     }
+                    Spacer()
+                    Toggle("", isOn: $settings.autoOCR)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .onChange(of: settings.autoOCR) { _ in
+                            settings.save()
+                        }
+                }
+                .help("Uses on-device text recognition so screenshots and copied images become searchable automatically.")
+
+                rowDivider
+                
+                // Preserve Rich Text
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preserve Rich Text Formatting")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Stores styled text (RTF/HTML) and embedded images")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.preserveRichText)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .onChange(of: settings.preserveRichText) { _ in
+                            settings.save()
+                        }
+                }
+                .help("Stores styled text (RTF/HTML) and images embedded in copied text alongside the plain text.")
+                
+                rowDivider
+                
+                // Remote Images
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text("Download Remote Web Images")
+                                .font(.system(size: 13, weight: .medium))
+                            
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .help("Makes network requests on copy. Images in web pages are remote links; downloading them fetches data from the web (can load tracking pixels). Off by default.")
+                        }
+                        Text("Captures pictures referenced in copied web HTML")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.downloadRemoteImages)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .disabled(!settings.preserveRichText)
+                        .onChange(of: settings.downloadRemoteImages) { _ in
+                            settings.save()
+                        }
                 }
             }
             
-            Divider()
-
-            // About
-            VStack(spacing: 6) {
-                Text("Designed to disappear. Built to remember.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary.opacity(0.5))
-                    .italic()
-
-                Text("Buffer \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · by @samirpatil2000")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary.opacity(0.4))
-
-                HStack(spacing: 8) {
-                    Link("⭐ Star on GitHub", destination: URL(string: "https://github.com/samirpatil2000/Buffer")!)
-                        .font(.system(size: 10, weight: .medium))
-
-                    Text("·")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.4))
-
-                    Link("Report an Issue", destination: URL(string: "https://github.com/samirpatil2000/Buffer/issues/new")!)
-                        .font(.system(size: 10, weight: .medium))
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .multilineTextAlignment(.center)
+            // 5. About Section
+            aboutSection
         }
     }
     
-    private func presetButton(label: String, mods: HotkeyModifiers, keyCode: UInt16) -> some View {
-        Button(action: {
-            settings.hotkeyModifiers = mods
-            settings.hotkeyKeyCode = keyCode
-            settings.save()
-        }) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+    // MARK: - Inset Group Helpers
+    
+    private func settingsCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .padding(.leading, 4)
+            
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(NSColor.controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
         }
-        .buttonStyle(.bordered)
+    }
+    
+    private func settingsRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+    
+    private var rowDivider: some View {
+        Divider()
+            .padding(.leading, 14)
+            .opacity(0.5)
+    }
+    
+    private func historyLimitTitle(for tier: HistoryLimit) -> String {
+        switch tier {
+        case .essential: return "Essential (200)"
+        case .deep:      return "Deep (1,000)"
+        case .unlimited: return "Unlimited"
+        case .custom:    return "Custom…"
+        }
+    }
+    
+    private func applyPreset(mods: HotkeyModifiers, keyCode: UInt16) {
+        settings.hotkeyModifiers = mods
+        settings.hotkeyKeyCode = keyCode
+        settings.save()
+    }
+    
+    // MARK: - About
+    
+    private var aboutSection: some View {
+        VStack(spacing: 6) {
+            Text("Designed to disappear. Built to remember.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.6))
+                .italic()
+
+            Text("Buffer \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · by @samirpatil2000")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary.opacity(0.5))
+
+            HStack(spacing: 8) {
+                Link("⭐ Star on GitHub", destination: URL(string: "https://github.com/samirpatil2000/Buffer")!)
+                    .font(.system(size: 10, weight: .medium))
+
+                Text("·")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.4))
+
+                Link("Report an Issue", destination: URL(string: "https://github.com/samirpatil2000/Buffer/issues/new")!)
+                    .font(.system(size: 10, weight: .medium))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(.center)
+        .padding(.top, 4)
     }
 }
 
@@ -577,6 +702,10 @@ class SettingsViewModel: ObservableObject {
     @Published var minTextLength: Int
     @Published var deduplicateHistory: Bool
     @Published var ignoreConcealed: Bool
+    @Published var customHistoryLimit: Int
+    @Published var autoOCR: Bool
+    @Published var preserveRichText: Bool
+    @Published var downloadRemoteImages: Bool
     @Published var appTheme: AppTheme
     
     private let defaults = UserDefaults.standard
@@ -592,8 +721,11 @@ class SettingsViewModel: ObservableObject {
         }
         
         // Load keycode (default to V = 9)
-        let savedKeyCode = defaults.integer(forKey: hotkeyKeyCodeKey)
-        self.hotkeyKeyCode = savedKeyCode > 0 ? UInt16(savedKeyCode) : 9
+        if defaults.object(forKey: hotkeyKeyCodeKey) != nil {
+            self.hotkeyKeyCode = UInt16(defaults.integer(forKey: hotkeyKeyCodeKey))
+        } else {
+            self.hotkeyKeyCode = 9
+        }
         
         // Load launch at login status from manager natively via SMAppService
         self.launchAtLogin = SettingsManager.shared.launchAtLogin
@@ -611,6 +743,10 @@ class SettingsViewModel: ObservableObject {
         self.minTextLength = SettingsManager.shared.minTextLength
         self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
         self.ignoreConcealed = SettingsManager.shared.ignoreConcealed
+        self.customHistoryLimit = SettingsManager.shared.customHistoryLimit
+        self.autoOCR = SettingsManager.shared.autoOCR
+        self.preserveRichText = SettingsManager.shared.preserveRichText
+        self.downloadRemoteImages = SettingsManager.shared.downloadRemoteImages
 
         // Load app theme
         self.appTheme = SettingsManager.shared.appTheme
@@ -622,6 +758,7 @@ class SettingsViewModel: ObservableObject {
         defaults.set(historyLimit.rawValue, forKey: "historyLimit")
         defaults.set(includePrereleases, forKey: "includePrereleases")
         defaults.set(hideStatusBar, forKey: "hideStatusBar")
+        defaults.set(customHistoryLimit, forKey: "customHistoryLimit")
 
         SettingsManager.shared.hotkeyModifiers = hotkeyModifiers
         SettingsManager.shared.hotkeyKeyCode = hotkeyKeyCode
@@ -631,6 +768,10 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.minTextLength = minTextLength
         SettingsManager.shared.deduplicateHistory = deduplicateHistory
         SettingsManager.shared.ignoreConcealed = ignoreConcealed
+        SettingsManager.shared.customHistoryLimit = customHistoryLimit
+        SettingsManager.shared.autoOCR = autoOCR
+        SettingsManager.shared.preserveRichText = preserveRichText
+        SettingsManager.shared.downloadRemoteImages = downloadRemoteImages
         SettingsManager.shared.appTheme = appTheme
         SettingsManager.shared.save()
         SettingsManager.shared.applyTheme(appTheme)

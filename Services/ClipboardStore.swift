@@ -17,14 +17,26 @@ class ClipboardStore: ObservableObject {
     private var maxItems: Int? { SettingsManager.shared.historyLimit.maxCount }
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
+    private var ocrInProgress: Set<UUID> = []
     
     private var storageDirectory: URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("Buffer", isDirectory: true)
+        // Debug builds use a separate data directory so running from Xcode never
+        // reads or overwrites the real release app's clipboard history.
+        #if DEBUG
+        let folderName = "Buffer-dev"
+        #else
+        let folderName = "Buffer"
+        #endif
+        return appSupport.appendingPathComponent(folderName, isDirectory: true)
     }
     
     private var historyFileURL: URL {
         storageDirectory.appendingPathComponent("history.json")
+    }
+
+    private var databaseFileURL: URL {
+        storageDirectory.appendingPathComponent("buffer.sqlite")
     }
     
     private var imagesDirectory: URL {
@@ -37,6 +49,8 @@ class ClipboardStore: ObservableObject {
     
     init() {
         ensureDirectoriesExist()
+        DatabaseManager.shared.initialize(databaseURL: databaseFileURL)
+        DatabaseManager.shared.migrateFromJSONIfNeeded(jsonURL: historyFileURL)
         loadHistory()
         
         NotificationCenter.default.addObserver(
@@ -50,16 +64,20 @@ class ClipboardStore: ObservableObject {
     @objc private func handleLimitChanged() {
         guard let maxItems = maxItems, items.count > maxItems else { return }
         var trimmed = items
+        var removedItems: [ClipboardItem] = []
         while trimmed.count > maxItems {
             if let idx = trimmed.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
-                deleteAssociatedFiles(for: trimmed[idx])
-                trimmed.remove(at: idx)
+                let removed = trimmed.remove(at: idx)
+                deleteAssociatedFiles(for: removed)
+                removedItems.append(removed)
             } else {
                 break
             }
         }
         items = trimmed
-        saveQueue.async { [weak self] in self?.saveHistoryToDisk(trimmed) }
+        if !removedItems.isEmpty {
+            DatabaseManager.shared.deleteMultiple(ids: removedItems.map(\.id))
+        }
     }
     
     // MARK: - Public API
@@ -78,10 +96,11 @@ class ClipboardStore: ObservableObject {
     static func duplicateInlineTextIndex(for item: ClipboardItem, in items: [ClipboardItem]) -> Int? {
         guard item.type == .text,
               !item.isFileBacked,
+              item.imageFilenames.isEmpty,          // a combined item is never a duplicate of plain text
               let text = item.textContent else { return nil }
 
         return items.firstIndex {
-            $0.type == .text && !$0.isFileBacked && $0.textContent == text
+            $0.type == .text && !$0.isFileBacked && $0.imageFilenames.isEmpty && $0.textContent == text
         }
     }
 
@@ -91,31 +110,78 @@ class ClipboardStore: ObservableObject {
         // Promote an existing identical inline text item instead of storing a duplicate.
         if SettingsManager.shared.deduplicateHistory,
            let duplicateIndex = Self.duplicateInlineTextIndex(for: item, in: items) {
+            deleteAssociatedFiles(for: item)   // no-op for anything the predicate can match today
             moveToTop(items[duplicateIndex])
             return
         }
         
         // Insert at beginning (newest first)
         items.insert(item, at: 0)
+        DatabaseManager.shared.insert(item)
         
         // Evict oldest unprotected item if over limit
         if let maxItems = maxItems, items.count > maxItems {
+            let removed: ClipboardItem
             if let indexToRemove = items.lastIndex(where: { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }) {
-                let removed = items.remove(at: indexToRemove)
-                deleteAssociatedFiles(for: removed)
+                removed = items.remove(at: indexToRemove)
             } else {
                 // All items are protected — remove the oldest one anyway
-                let removed = items.removeLast()
-                deleteAssociatedFiles(for: removed)
+                removed = items.removeLast()
             }
+            deleteAssociatedFiles(for: removed)
+            ThumbnailCache.shared.removeImage(for: removed.id)
+            DatabaseManager.shared.delete(id: removed.id)
         }
         
         print("[Buffer] Store: New count: \(items.count)")
-        
-        // Save to disk in background
-        let itemsToSave = items
-        saveQueue.async { [weak self] in
-            self?.saveHistoryToDisk(itemsToSave)
+
+        triggerAutoOCRIfNeeded(for: item)
+    }
+
+    /// Automatically run OCR on a freshly added item's image(s), if auto-OCR is enabled and the
+    /// item hasn't been OCR'd yet. Covers pure image items (both capture paths) AND combined
+    /// text+image items, which carry their pictures in `imageFilenames`. For a combined item the
+    /// OCR text is stored separately in `ocrText` for search/retrieval - it is never merged into
+    /// the item's own text and never affects what gets pasted.
+    private func triggerAutoOCRIfNeeded(for item: ClipboardItem) {
+        guard SettingsManager.shared.autoOCR,
+              item.ocrText == nil,
+              !ocrInProgress.contains(item.id) else { return }
+
+        // Collect every image this item owns (pure image's single file, or a combined item's
+        // attachment list). Nothing to OCR if there are no images.
+        let filenames = item.allImageFilenames
+        guard !filenames.isEmpty else { return }
+
+        ocrInProgress.insert(item.id)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let images = filenames.compactMap { self.attachedImage(filename: $0) }
+            guard !images.isEmpty else {
+                self.runOnMain { self.ocrInProgress.remove(item.id) }
+                return
+            }
+
+            Task {
+                // OCR each image; join non-empty results with blank lines so multiple pictures
+                // remain individually searchable.
+                var pieces: [String] = []
+                for image in images {
+                    if let recognized = await OCRService.shared.recognizeText(from: image),
+                       !recognized.isEmpty {
+                        pieces.append(recognized)
+                    }
+                }
+                // Empty string is the auto-OCR no-text sentinel, deliberately distinct from
+                // the manual button's human-facing "No text found in this image." string,
+                // because that string is itself text that could spuriously match a search.
+                let text = pieces.joined(separator: "\n\n")
+                self.runOnMain {
+                    self.setOCRText(text, for: item)
+                    self.ocrInProgress.remove(item.id)
+                }
+            }
         }
     }
     
@@ -124,11 +190,8 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             self.items.removeAll { $0.id == item.id }
             self.deleteAssociatedFiles(for: item)
-            
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk(itemsToSave)
-            }
+            ThumbnailCache.shared.removeImage(for: item.id)
+            DatabaseManager.shared.delete(id: item.id)
         }
     }
     
@@ -140,12 +203,9 @@ class ClipboardStore: ObservableObject {
             self.items.removeAll { ids.contains($0.id) }
             for item in itemsToDelete {
                 self.deleteAssociatedFiles(for: item)
+                ThumbnailCache.shared.removeImage(for: item.id)
             }
-            
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk(itemsToSave)
-            }
+            DatabaseManager.shared.deleteMultiple(ids: itemsToDelete.map(\.id))
         }
     }
     
@@ -155,8 +215,7 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].isPinned.toggle()
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+            DatabaseManager.shared.updatePin(id: item.id, isPinned: self.items[index].isPinned)
         }
     }
 
@@ -166,8 +225,7 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].isBookmarked.toggle()
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+            DatabaseManager.shared.updateBookmark(id: item.id, isBookmarked: self.items[index].isBookmarked)
         }
     }
     
@@ -177,8 +235,10 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].textContent = text
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+            self.items[index].rtfData = nil
+            self.items[index].htmlData = nil
+            self.items[index].storedHasRichText = false
+            DatabaseManager.shared.updateText(id: item.id, textContent: text, previewText: self.items[index].previewText)
         }
     }
     
@@ -192,8 +252,7 @@ class ClipboardStore: ObservableObject {
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             guard !self.items[index].tags.contains(tag) else { return }
             self.items[index].tags.append(tag)
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+            DatabaseManager.shared.updateTags(id: item.id, tags: self.items[index].tags)
         }
     }
 
@@ -202,8 +261,7 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].tags.removeAll { $0 == tag }
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
+            DatabaseManager.shared.updateTags(id: item.id, tags: self.items[index].tags)
         }
     }
 
@@ -213,14 +271,21 @@ class ClipboardStore: ObservableObject {
             guard let self = self else { return }
             guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
             self.items[index].ocrText = text
-            
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk(itemsToSave)
-            }
+            DatabaseManager.shared.updateOCRText(id: item.id, ocrText: text)
         }
     }
-    
+
+    /// Set the manual syntax-highlighting language override for a text item.
+    /// Pass nil for auto-detect, "" to force Plain Text, or a highlight.js language name.
+    func setLanguage(_ language: String?, for item: ClipboardItem) {
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+            self.items[index].language = language
+            DatabaseManager.shared.updateLanguage(id: item.id, language: language)
+        }
+    }
+
     /// Move an item to the top of the list (most recent position)
     func moveToTop(_ item: ClipboardItem) {
         runOnMain { [weak self] in
@@ -231,37 +296,29 @@ class ClipboardStore: ObservableObject {
             if index == 0 { return }
             
             // Remove from current position and insert at top
-            let removed = self.items.remove(at: index)
-            self.items.insert(removed, at: 0)
-            
-            // Save updated order to disk
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk(itemsToSave)
-            }
+            var moved = self.items.remove(at: index)
+            moved.timestamp = Date()
+            self.items.insert(moved, at: 0)
+            DatabaseManager.shared.moveToTop(id: item.id, newTimestamp: moved.timestamp)
         }
     }
     
     func clear(keepProtected: Bool = false) {
         runOnMain { [weak self] in
             guard let self = self else { return }
+            let itemsToDelete: [ClipboardItem]
             if keepProtected {
-                let itemsToDelete = self.items.filter { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
-                for item in itemsToDelete {
-                    self.deleteAssociatedFiles(for: item)
-                }
+                itemsToDelete = self.items.filter { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
                 self.items.removeAll { !$0.isPinned && !$0.isBookmarked && $0.tags.isEmpty }
             } else {
-                for item in self.items {
-                    self.deleteAssociatedFiles(for: item)
-                }
+                itemsToDelete = self.items
                 self.items.removeAll()
             }
-            
-            let itemsToSave = self.items
-            self.saveQueue.async { [weak self] in
-                self?.saveHistoryToDisk(itemsToSave)
+            for item in itemsToDelete {
+                self.deleteAssociatedFiles(for: item)
+                ThumbnailCache.shared.removeImage(for: item.id)
             }
+            DatabaseManager.shared.deleteMultiple(ids: itemsToDelete.map(\.id))
         }
     }
     
@@ -269,6 +326,50 @@ class ClipboardStore: ObservableObject {
         guard item.type == .image, let filename = item.imageFilename else { return nil }
         let url = imagesDirectory.appendingPathComponent(filename)
         return NSImage(contentsOf: url)
+    }
+
+    func attachedImage(filename: String) -> NSImage? {
+        NSImage(contentsOf: imagesDirectory.appendingPathComponent(filename))
+    }
+
+    /// File URLs for an item's attachment images, in order. Used to render remote-image HTML
+    /// inline by pointing <img> tags at these local files instead of fetching over the network.
+    func attachedImageURLs(for item: ClipboardItem) -> [URL] {
+        item.imageFilenames.map { imagesDirectory.appendingPathComponent($0) }
+    }
+
+    /// Resolve an item's remote-URL -> local-filename map into remote-URL -> local file URL, so
+    /// the preview can rewrite each remote <img> to the exact local file it was downloaded into.
+    func remoteImageLocalURLs(for item: ClipboardItem) -> [String: URL] {
+        var result: [String: URL] = [:]
+        for (remoteURL, filename) in item.remoteImageMap {
+            result[remoteURL] = imagesDirectory.appendingPathComponent(filename)
+        }
+        return result
+    }
+
+    /// Images embedded in a combined item, in document order
+    func attachedImages(for item: ClipboardItem) -> [NSImage] {
+        item.imageFilenames.compactMap { attachedImage(filename: $0) }
+    }
+
+    /// Every image an item owns - pure image first, then attachments. For paste and export.
+    func allImages(for item: ClipboardItem) -> [NSImage] {
+        item.allImageFilenames.compactMap { attachedImage(filename: $0) }
+    }
+
+    /// Representative image for thumbnails and the detail preview
+    func primaryImage(for item: ClipboardItem) -> NSImage? {
+        guard let first = item.allImageFilenames.first else { return nil }
+        return attachedImage(filename: first)
+    }
+
+    /// Remove image files written during a capture that did not complete. Not for live items -
+    /// those go through deleteAssociatedFiles(for:).
+    func removeImageFiles(_ filenames: [String]) {
+        for name in filenames {
+            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(name))
+        }
     }
     
     func saveImage(_ data: Data) -> String? {
@@ -365,21 +466,29 @@ class ClipboardStore: ObservableObject {
         
         switch item.type {
         case .text:
+            let textBytes: Int
             if let filename = item.textFilename {
                 let url = textsDirectory.appendingPathComponent(filename)
-                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
-                return attributes?[.size] as? Int
+                textBytes = (try? fileManager.attributesOfItem(atPath: url.path))?[.size] as? Int ?? 0
             } else {
-                return item.textContent?.utf8.count
+                textBytes = item.textContent?.utf8.count ?? 0
             }
+            let richBytes = (item.rtfData?.count ?? 0) + (item.htmlData?.count ?? 0) + (item.rtfdData?.count ?? 0)
+            let total = textBytes + richBytes + imageFileBytes(for: item)
+            return total > 0 ? total : nil
         case .image:
-            if let filename = item.imageFilename {
-                let url = imagesDirectory.appendingPathComponent(filename)
-                let attributes = try? fileManager.attributesOfItem(atPath: url.path)
-                return attributes?[.size] as? Int
-            }
+            let bytes = imageFileBytes(for: item)
+            return bytes > 0 ? bytes : nil
         }
-        return nil
+    }
+
+    /// Sum of the on-disk size of every image file an item owns
+    private func imageFileBytes(for item: ClipboardItem) -> Int {
+        item.allImageFilenames.reduce(0) { total, filename in
+            let url = imagesDirectory.appendingPathComponent(filename)
+            let size = (try? fileManager.attributesOfItem(atPath: url.path))?[.size] as? Int ?? 0
+            return total + size
+        }
     }
     
     // MARK: - Private
@@ -390,35 +499,46 @@ class ClipboardStore: ObservableObject {
         try? fileManager.createDirectory(at: textsDirectory, withIntermediateDirectories: true)
     }
     
+    /// Load lightweight items from SQLite into memory for the UI.
     private func loadHistory() {
-        guard fileManager.fileExists(atPath: historyFileURL.path) else { 
-            print("[Buffer] No history file found")
-            return 
+        let loadedItems = DatabaseManager.shared.fetchAllItems(includeBlobs: false)
+        self.items = loadedItems
+        print("[Buffer] Loaded \(loadedItems.count) items from SQLite")
+    }
+
+    /// Load full rich text blobs on demand for a single item (used when previewing or pasting).
+    func loadFullItem(for item: ClipboardItem) -> ClipboardItem {
+        // If rich text is already present in memory, return it directly
+        if item.rtfData != nil || item.htmlData != nil || item.rtfdData != nil {
+            return item
         }
         
-        do {
-            let data = try Data(contentsOf: historyFileURL)
-            let loadedItems = try JSONDecoder().decode([ClipboardItem].self, from: data)
-            self.items = loadedItems
-            print("[Buffer] Loaded \(loadedItems.count) items from history")
-        } catch {
-            print("[Buffer] Failed to load history: \(error)")
+        // If item has no rich text flag and has ocr text (or text item), return directly
+        if !item.hasRichText && (item.ocrText != nil || item.type == .text) {
+            return item
         }
+        
+        guard let payload = DatabaseManager.shared.fetchPayload(for: item.id) else {
+            return item
+        }
+        
+        var populated = item
+        if let rtf = payload.rtfData { populated.rtfData = rtf }
+        if let html = payload.htmlData { populated.htmlData = html }
+        if let rtfd = payload.rtfdData { populated.rtfdData = rtfd }
+        if let ocr = payload.ocrText, populated.ocrText == nil { populated.ocrText = ocr }
+        if let text = payload.textContent, populated.textContent == nil { populated.textContent = text }
+        return populated
     }
-    
+
     private func saveHistoryToDisk(_ itemsToSave: [ClipboardItem]) {
-        do {
-            let data = try JSONEncoder().encode(itemsToSave)
-            try data.write(to: historyFileURL)
-        } catch {
-            print("[Buffer] Failed to save history: \(error)")
-        }
+        // Deprecated: All persistence is now handled transactionally via SQLite DatabaseManager.
     }
     
-    private func deleteImageFile(for item: ClipboardItem) {
-        guard item.type == .image, let filename = item.imageFilename else { return }
-        let url = imagesDirectory.appendingPathComponent(filename)
-        try? fileManager.removeItem(at: url)
+    private func deleteImageFiles(for item: ClipboardItem) {
+        for filename in item.allImageFilenames {
+            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(filename))
+        }
     }
     
     private func deleteTextFile(for item: ClipboardItem) {
@@ -429,7 +549,7 @@ class ClipboardStore: ObservableObject {
     
     /// Delete all associated files (images and text files) for an item
     private func deleteAssociatedFiles(for item: ClipboardItem) {
-        deleteImageFile(for: item)
+        deleteImageFiles(for: item)
         deleteTextFile(for: item)
     }
 }
