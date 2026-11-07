@@ -2443,6 +2443,12 @@ struct HistoryContentView: View {
                                     .font(.system(size: 11))
                                     .focused($isTagInputFocused)
                                     .frame(minWidth: 60)
+                                    .onChange(of: tagInputText) { newValue in
+                                        let filtered = newValue.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0.isWhitespace }
+                                        if filtered != newValue {
+                                            tagInputText = filtered
+                                        }
+                                    }
                                 Button("Cancel") {
                                     tagInputText = ""
                                     showTagInput = false
