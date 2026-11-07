@@ -13,6 +13,34 @@ class HistoryPanel: NSPanel {
     }
 }
 
+/// How the history panel should present itself when asked to show.
+enum WindowShowDecision: Equatable {
+    /// Buffer can take key focus normally: activate and makeKeyAndOrderFront.
+    case activateAndKey
+    /// Another app holds focus (for example a password field holding Secure Event
+    /// Input) and will likely keep key status, so place the panel on screen with
+    /// orderFrontRegardless so it is still visible, and suppress the immediate
+    /// resignKey self-close during the open handshake.
+    case orderFrontWithoutStealingKey
+}
+
+/// Pure, side-effect free decisions for the history panel show path. Kept free of
+/// OS calls so the password-field / Secure Event Input robustness can be unit tested
+/// without touching real secure-input state.
+enum WindowShowPolicy {
+    /// anotherAppHoldsFocus is true when the frontmost app at open time is not Buffer
+    /// (the password-field-in-another-app case).
+    static func decision(anotherAppHoldsFocus: Bool) -> WindowShowDecision {
+        return anotherAppHoldsFocus ? .orderFrontWithoutStealingKey : .activateAndKey
+    }
+
+    /// Whether a resignKey callback should be ignored (not self-close) right now.
+    /// isOpening is the short-lived flag set while showWindow runs.
+    static func shouldIgnoreResignKey(isOpening: Bool) -> Bool {
+        return isOpening
+    }
+}
+
 private struct ChunkedTextState {
     var visibleText: String = ""
     var totalBytes: Int = 0
@@ -33,7 +61,12 @@ class HistoryWindowController: NSWindowController {
     private let store: ClipboardStore
     private var previousApp: NSRunningApplication?
 
-    /// Timestamp of the last close — used to decide whether to persist search state
+    /// Short-lived flag set while showWindow runs. Guards against a transient resignKey
+    /// during the open handshake tearing the panel straight back down when another app
+    /// (for example a focused password field) holds Secure Event Input.
+    private var isOpening: Bool = false
+
+    /// Timestamp of the last close - used to decide whether to persist search state
     private var lastClosedAt: Date?
     /// Shared flag: true if the content view should reset search on the next open
     var shouldResetOnOpen: Bool = true
@@ -60,7 +93,9 @@ class HistoryWindowController: NSWindowController {
         super.init(window: panel)
         
         panel.onClickOutside = { [weak self] in
-            self?.close()
+            guard let self = self else { return }
+            if WindowShowPolicy.shouldIgnoreResignKey(isOpening: self.isOpening) { return }
+            self.close()
         }
         
         setupPanel(panel)
@@ -189,14 +224,40 @@ class HistoryWindowController: NSWindowController {
     }
     
     override func showWindow(_ sender: Any?) {
-        previousApp = NSWorkspace.shared.frontmostApplication
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        previousApp = frontmost
         // Compute reset decision *before* super.showWindow fires didBecomeKeyNotification
-        // → bufferWindowDidOpen, so the content view onReceive handler sees the right value.
+        // -> bufferWindowDidOpen, so the content view onReceive handler sees the right value.
         shouldResetOnOpen = shouldResetSearch
+
+        // Guard the open handshake: if another app (for example a focused password field
+        // holding Secure Event Input) keeps key status, the panel can receive a transient
+        // resignKey and self-close before it ever appears. Ignore resignKey while opening,
+        // then clear the flag on the next main-queue turn once the handshake has settled.
+        isOpening = true
+        defer {
+            DispatchQueue.main.async { [weak self] in
+                self?.isOpening = false
+            }
+        }
+
         ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+
+        let anotherAppHoldsFocus = frontmost != nil && frontmost?.bundleIdentifier != Bundle.main.bundleIdentifier
+        switch WindowShowPolicy.decision(anotherAppHoldsFocus: anotherAppHoldsFocus) {
+        case .activateAndKey:
+            NSApp.activate(ignoringOtherApps: true)
+            window?.makeKeyAndOrderFront(nil)
+        case .orderFrontWithoutStealingKey:
+            // Another app owns focus/Secure Event Input, so attempting to steal key can
+            // fail and leave the panel hidden. Still place it on screen so it is visible,
+            // mirroring the non-activating panel pattern used elsewhere in the app.
+            NSApp.activate(ignoringOtherApps: true)
+            window?.makeKeyAndOrderFront(nil)
+            window?.orderFrontRegardless()
+        }
+
         window?.makeFirstResponder(window?.contentView)
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }

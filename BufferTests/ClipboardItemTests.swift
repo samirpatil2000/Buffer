@@ -1087,6 +1087,32 @@ class ClipboardItemTests: XCTestCase {
     func testPasteDecisionShowsGuidanceWhenNotTrusted() {
         XCTAssertEqual(AccessibilityManager.pasteDecision(isTrusted: false), .showGuidance)
     }
+
+    // MARK: - Window show decision (password-field / secure-input robustness)
+
+    // Secure Event Input and global hotkeys are not unit testable, so we test the pure
+    // seam that decides how the panel should present and whether a transient resignKey
+    // during the open handshake should be ignored. No real OS secure-input state is read.
+
+    func testWindowShowActivatesWhenBufferHoldsFocus() {
+        XCTAssertEqual(WindowShowPolicy.decision(anotherAppHoldsFocus: false), .activateAndKey)
+    }
+
+    func testWindowShowAvoidsStealingKeyWhenAnotherAppHoldsFocus() {
+        // Password field in another app holds Secure Event Input: the panel must still be
+        // placed on screen instead of failing to open.
+        XCTAssertEqual(WindowShowPolicy.decision(anotherAppHoldsFocus: true), .orderFrontWithoutStealingKey)
+    }
+
+    func testResignKeyIgnoredWhileOpening() {
+        // The transient resignKey during the open handshake must not self-close the panel.
+        XCTAssertTrue(WindowShowPolicy.shouldIgnoreResignKey(isOpening: true))
+    }
+
+    func testResignKeyHonoredWhenNotOpening() {
+        // Normal click-outside after opening still dismisses.
+        XCTAssertFalse(WindowShowPolicy.shouldIgnoreResignKey(isOpening: false))
+    }
 }
 
 

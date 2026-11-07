@@ -185,6 +185,24 @@ tag filters.
   appears, so returning from System Settings reflects the new state. Permission
   state is never persisted, the OS is the source of truth.
 
+## 13. Hotkey works while a password field is focused
+
+- **Bug:** when a secure text field (password field) was focused in another app,
+  pressing the Buffer hotkey (Option + C) did not open the window. Clicking
+  outside the field did not help, and the user had to switch tabs or close and
+  reopen the window before the shortcut started working again. The focused
+  password field holds macOS Secure Event Input, which kept key status away from
+  the Buffer panel, so the panel received a transient resignKey during the open
+  handshake and self-closed before it ever appeared.
+- **Fix:** the show path now detects when another app holds focus at open time
+  and places the panel on screen with orderFrontRegardless so it is still
+  visible, and it ignores the transient resignKey during a short opening window
+  so the panel is no longer torn down mid-open. A normal click-outside after the
+  window has opened still dismisses it. The show decision and the resignKey
+  guard were extracted into a pure, side-effect free WindowShowPolicy seam so the
+  behavior is covered by regression tests without touching real Secure Event
+  Input state.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of
