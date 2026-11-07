@@ -36,6 +36,8 @@
 		AAA00026 /* CodeFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00025 /* CodeFormatter.swift */; };
 		AAA00030 /* SyntaxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00030 /* SyntaxDetector.swift */; };
 		AAA00031 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBB00031 /* Assets.xcassets */; };
+		AAA00032 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00032 /* DatabaseManager.swift */; };
+		AAA00033 /* ThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB00033 /* ThumbnailCache.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +82,8 @@
 		BBB00025 /* CodeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeFormatter.swift; sourceTree = "<group>"; };
 		BBB00030 /* SyntaxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxDetector.swift; sourceTree = "<group>"; };
 		BBB00031 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BBB00032 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
+		BBB00033 /* ThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCache.swift; sourceTree = "<group>"; };
 		EB5F7ACF8D07ACEDB0B7217E /* BufferTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BufferTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -176,6 +180,8 @@
 				BBB00024 /* SyntaxHighlighting.swift */,
 				BBB00025 /* CodeFormatter.swift */,
 				BBB00030 /* SyntaxDetector.swift */,
+				BBB00032 /* DatabaseManager.swift */,
+				BBB00033 /* ThumbnailCache.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -341,6 +347,8 @@
 				AAA00024 /* SyntaxHighlighting.swift in Sources */,
 				AAA00026 /* CodeFormatter.swift in Sources */,
 				AAA00030 /* SyntaxDetector.swift in Sources */,
+				AAA00032 /* DatabaseManager.swift in Sources */,
+				AAA00033 /* ThumbnailCache.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

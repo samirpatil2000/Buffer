@@ -31,11 +31,12 @@ class PasteController {
     /// .rtfd is written first (resolution 2 fallback): pasting via .rtf alone does not preserve
     /// inline images, empirically verified - see feature3-design.md section 4.8.
     private static func writeTextPayload(_ item: ClipboardItem, store: ClipboardStore, to pasteboard: NSPasteboard) {
-        guard let text = store.fullText(for: item) else { return }
+        let full = store.loadFullItem(for: item)
+        guard let text = store.fullText(for: full) else { return }
         let pbItem = NSPasteboardItem()
-        if let rtfd = item.rtfdData { pbItem.setData(rtfd, forType: .rtfd) }
-        if let rtf = item.rtfData { pbItem.setData(rtf, forType: .rtf) }
-        if let html = item.htmlData { pbItem.setData(html, forType: .html) }
+        if let rtfd = full.rtfdData { pbItem.setData(rtfd, forType: .rtfd) }
+        if let rtf = full.rtfData { pbItem.setData(rtf, forType: .rtf) }
+        if let html = full.htmlData { pbItem.setData(html, forType: .html) }
         pbItem.setString(text, forType: .string)
         pasteboard.writeObjects([pbItem])
     }

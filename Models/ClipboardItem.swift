@@ -5,7 +5,7 @@ import AppKit
 struct ClipboardItem: Identifiable, Codable, Equatable {
     let id: UUID
     let type: ClipboardItemType
-    let timestamp: Date
+    var timestamp: Date
     let sourceApp: String?
     
     // For text items — inline content (nil for file-backed large text)
@@ -62,7 +62,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // images were downloaded.
     var remoteImageMap: [String: String] = [:]
 
-    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = [], remoteImageMap: [String: String] = [:]) {
+    // True when the item has rich-text formatting, persisted so lightweight list rows know to show the badge
+    var storedHasRichText: Bool = false
+
+    init(id: UUID = UUID(), type: ClipboardItemType, timestamp: Date = Date(), sourceApp: String? = nil, textContent: String? = nil, textFilename: String? = nil, imageFilename: String? = nil, isPinned: Bool = false, isBookmarked: Bool = false, tags: [String] = [], ocrText: String? = nil, isTruncated: Bool = false, originalSizeBytes: Int? = nil, rtfData: Data? = nil, htmlData: Data? = nil, rtfdData: Data? = nil, imageFilenames: [String] = [], language: String? = nil, links: [WebLink] = [], remoteImageMap: [String: String] = [:], storedHasRichText: Bool? = nil) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
@@ -83,12 +86,14 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.language = language
         self.links = links
         self.remoteImageMap = remoteImageMap
+        self.storedHasRichText = storedHasRichText ?? (rtfData != nil || htmlData != nil || rtfdData != nil)
     }
     
     enum CodingKeys: String, CodingKey {
         case id, type, timestamp, sourceApp, textContent, textFilename, imageFilename
         case isPinned, isBookmarked, tags, ocrText, isTruncated, originalSizeBytes
         case rtfData, htmlData, rtfdData, imageFilenames, language, links, remoteImageMap
+        case storedHasRichText
     }
 
     init(from decoder: Decoder) throws {
@@ -113,6 +118,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.language = try container.decodeIfPresent(String.self, forKey: .language)
         self.links = try container.decodeIfPresent([WebLink].self, forKey: .links) ?? []
         self.remoteImageMap = try container.decodeIfPresent([String: String].self, forKey: .remoteImageMap) ?? [:]
+        self.storedHasRichText = try container.decodeIfPresent(Bool.self, forKey: .storedHasRichText) ?? (self.rtfData != nil || self.htmlData != nil || self.rtfdData != nil)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -137,6 +143,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(language, forKey: .language)
         if !links.isEmpty { try container.encode(links, forKey: .links) }
         if !remoteImageMap.isEmpty { try container.encode(remoteImageMap, forKey: .remoteImageMap) }
+        if storedHasRichText { try container.encode(storedHasRichText, forKey: .storedHasRichText) }
     }
     
     /// Create a text clipboard item
@@ -197,7 +204,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Whether a styled representation of this item's text is available.
     /// Single consumer today is the row badge (Views/ClipboardItemRow.swift) - there is
     /// no detail-pane indicator in scope.
-    var hasRichText: Bool { rtfData != nil || htmlData != nil }
+    var hasRichText: Bool { storedHasRichText || rtfData != nil || htmlData != nil || rtfdData != nil }
 
     /// All image files this item owns, in a single list - the only correct input for
     /// file deletion and size accounting.

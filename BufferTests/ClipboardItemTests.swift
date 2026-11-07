@@ -1083,6 +1083,10 @@ class ClipboardItemTests: XCTestCase {
         let manager = HotkeyManager {
             callbackFired = true
         }
+        defer {
+            manager.unregister()
+            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+        }
 
         // Register Option + C (C = keyCode 8, option modifier)
         let optionModifier = UInt32(optionKey)
@@ -1105,6 +1109,7 @@ class ClipboardItemTests: XCTestCase {
         defer {
             DisableSecureEventInput()
             manager.unregister()
+            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
         }
 
         XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input should be active")
@@ -1181,6 +1186,66 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(reconstructed.shift)
         XCTAssertFalse(reconstructed.control)
     }
+
+    // MARK: - SQLite & Cache Tests
+
+    func testDatabaseManagerLifecycleAndFTS() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testDBURL = tempDir.appendingPathComponent("test_buffer.sqlite")
+        DatabaseManager.shared.initialize(databaseURL: testDBURL)
+
+        // Test insert
+        let item1 = ClipboardItem.text("Hello swift and rust world", sourceApp: "Xcode")
+        DatabaseManager.shared.insert(item1)
+
+        let item2 = ClipboardItem.text("Another snippet for testing", sourceApp: "Terminal")
+        DatabaseManager.shared.insert(item2)
+
+        // Wait a tiny moment for serial queue to complete
+        usleep(50_000)
+
+        // Test fetchAllItems
+        let all = DatabaseManager.shared.fetchAllItems(includeBlobs: false)
+        XCTAssertGreaterThanOrEqual(all.count, 2, "Items should be inserted into SQLite")
+        XCTAssertTrue(all.contains(where: { $0.id == item1.id }))
+        XCTAssertTrue(all.contains(where: { $0.id == item2.id }))
+
+        // Test FTS search
+        let hits = DatabaseManager.shared.searchFTS(query: "rust")
+        XCTAssertTrue(hits.contains(item1.id), "FTS search for 'rust' should match item1")
+
+        // Test Pin update
+        DatabaseManager.shared.updatePin(id: item1.id, isPinned: true)
+        usleep(30_000)
+        let updated = DatabaseManager.shared.fetchAllItems(includeBlobs: false)
+        let found = updated.first(where: { $0.id == item1.id })
+        XCTAssertEqual(found?.isPinned, true, "Pin state should update in SQLite")
+
+        // Test delete
+        DatabaseManager.shared.delete(id: item1.id)
+        usleep(30_000)
+        let afterDelete = DatabaseManager.shared.fetchAllItems(includeBlobs: false)
+        XCTAssertFalse(afterDelete.contains(where: { $0.id == item1.id }), "Item1 should be deleted")
+    }
+
+    func testThumbnailCacheStorageAndEviction() {
+        let cache = ThumbnailCache.shared
+        let id1 = UUID()
+        let id2 = UUID()
+
+        let testImage = NSImage(size: NSSize(width: 40, height: 40))
+        cache.setImage(testImage, for: id1)
+
+        XCTAssertNotNil(cache.image(for: id1), "Cache should return stored image")
+        XCTAssertNil(cache.image(for: id2), "Cache should return nil for missing image")
+
+        cache.removeImage(for: id1)
+        XCTAssertNil(cache.image(for: id1), "Cache should return nil after removeImage")
+    }
 }
+
 
 

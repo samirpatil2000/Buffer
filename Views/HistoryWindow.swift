@@ -404,9 +404,9 @@ struct HistoryContentView: View {
     }
     
     /// Get the primary selected item (for detail pane when multiple selected or single item)
-    /// Returns the first selected item in list order
+    /// Returns the first selected item in list order with full rich payload loaded on demand
     private var selectedItem: ClipboardItem? {
-        selectedItems.first
+        selectedItems.first.map { store.loadFullItem(for: $0) }
     }
     
     /// Selection status for UI display

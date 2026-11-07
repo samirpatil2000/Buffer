@@ -189,9 +189,13 @@ struct ClipboardItemRow: View {
         }
     }
     
-    /// Generate a small thumbnail asynchronously
+    /// Generate a small thumbnail asynchronously using bounded memory cache
     private func loadThumbnail() async -> NSImage? {
-        await withCheckedContinuation { continuation in
+        if let cached = ThumbnailCache.shared.image(for: item.id) {
+            return cached
+        }
+        
+        return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 guard let original = store.primaryImage(for: item) else {
                     continuation.resume(returning: nil)
@@ -210,6 +214,7 @@ struct ClipboardItemRow: View {
                 )
                 thumb.unlockFocus()
                 
+                ThumbnailCache.shared.setImage(thumb, for: item.id)
                 continuation.resume(returning: thumb)
             }
         }

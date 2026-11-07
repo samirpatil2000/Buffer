@@ -6,7 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     private var clipboardWatcher: ClipboardWatcher?
     private var historyWindowController: HistoryWindowController?
-    private var hotkeyManager: HotkeyManager?
+    var hotkeyManager: HotkeyManager?
     private var settingsWindowController: NSWindowController?
     
     let clipboardStore = ClipboardStore()
