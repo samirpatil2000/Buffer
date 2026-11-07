@@ -1083,6 +1083,10 @@ class ClipboardItemTests: XCTestCase {
         let manager = HotkeyManager {
             callbackFired = true
         }
+        defer {
+            manager.unregister()
+            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+        }
 
         // Register Option + C (C = keyCode 8, option modifier)
         let optionModifier = UInt32(optionKey)
@@ -1105,6 +1109,7 @@ class ClipboardItemTests: XCTestCase {
         defer {
             DisableSecureEventInput()
             manager.unregister()
+            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
         }
 
         XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input should be active")

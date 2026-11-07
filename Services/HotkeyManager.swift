@@ -6,8 +6,8 @@ class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private let callback: () -> Void
     
-    // Store the singleton for the C callback
-    private static var instance: HotkeyManager?
+    // Store weak reference to the active manager for the C callback
+    private static weak var instance: HotkeyManager?
     private static var eventHandlerInstalled = false
     
     var isRegistered: Bool {
@@ -16,14 +16,20 @@ class HotkeyManager {
     
     init(callback: @escaping () -> Void) {
         self.callback = callback
-        HotkeyManager.instance = self
     }
     
     func register(keyCode: UInt32? = nil, modifiers: UInt32? = nil) {
         let settings = SettingsManager.shared
         print("[HotkeyManager] Registering: keyCode=\(settings.hotkeyKeyCode) mods=\(settings.hotkeyModifiers.displayString)")
         
+        // If another manager was active, unregister its Carbon hotkey first
+        // to avoid eventHotKeyExistsErr (-9878) collisions.
+        if let existing = HotkeyManager.instance, existing !== self {
+            existing.unregister()
+        }
+        
         unregister()
+        HotkeyManager.instance = self
         
         if !HotkeyManager.eventHandlerInstalled {
             // Install event handler on the event dispatcher target so it receives hotkey events
@@ -112,12 +118,12 @@ class HotkeyManager {
             self.hotKeyRef = nil
             print("[HotkeyManager] Hotkey unregistered")
         }
+        if HotkeyManager.instance === self {
+            HotkeyManager.instance = nil
+        }
     }
     
     deinit {
         unregister()
-        if HotkeyManager.instance === self {
-            HotkeyManager.instance = nil
-        }
     }
 }
