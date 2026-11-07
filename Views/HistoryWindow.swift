@@ -2886,6 +2886,12 @@ struct GlobalKeyMonitor: NSViewRepresentable {
                 if let win = self.view?.window, !win.isKeyWindow {
                     return event
                 }
+
+                // Let the IME handle events while text composition is active
+                if let textView = self.view?.window?.firstResponder as? NSTextView,
+                   textView.hasMarkedText() {
+                    return event
+                }
                 
                 let isEditing = self.isEditing
                 let flags = event.modifierFlags
