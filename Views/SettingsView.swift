@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var recordedModifiers = HotkeyModifiers()
     @State private var showingTrimAlert = false
     @State private var pendingTier: HistoryLimit?
+    @State private var accessibilityTrusted = AccessibilityManager.isTrusted()
     
     var body: some View {
         VStack(spacing: 16) {
@@ -56,6 +57,11 @@ struct SettingsView: View {
             settings.save()
             isRecording = false
         })
+        .onAppear {
+            // The OS owns permission truth, so re-read it every time the window appears
+            // (for example after the user returns from System Settings).
+            accessibilityTrusted = AccessibilityManager.isTrusted()
+        }
     }
     
     private var generalSettingsTab: some View {
@@ -194,6 +200,28 @@ struct SettingsView: View {
                         }
                         .toggleStyle(.switch)
                 }
+
+                // Permissions Section
+                Divider()
+                    .padding(.vertical, 4)
+
+                Text("Permissions")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("Accessibility")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Image(systemName: accessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(accessibilityTrusted ? .green : .orange)
+                        .font(.system(size: 13))
+                    Button("Open Settings") {
+                        AccessibilityManager.openAccessibilitySettings()
+                    }
+                    .font(.system(size: 12))
+                }
+                .help("Buffer needs Accessibility access to paste automatically with Cmd+V. Without it you can still paste manually.")
 
                 // History Filtering Section
                 Divider()

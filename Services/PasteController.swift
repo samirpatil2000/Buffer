@@ -1,5 +1,64 @@
 import Cocoa
 import UniformTypeIdentifiers
+import ApplicationServices
+
+/// The decision the paste path should take based on current Accessibility trust state.
+/// Pure and side-effect free so it can be unit tested without touching the OS.
+enum PasteAccessDecision: Equatable {
+    /// Trusted: synthesize Cmd+V as usual.
+    case proceed
+    /// Not trusted: still write the pasteboard, but surface guidance instead of
+    /// letting the synthetic keystroke silently fail.
+    case showGuidance
+}
+
+/// Wraps the macOS Accessibility (AXIsProcessTrusted) permission that the synthetic
+/// Cmd+V paste keystroke requires. Keeps the raw API calls in one small place and
+/// never persists state, the OS owns the truth.
+enum AccessibilityManager {
+
+    /// Non-prompting status read. Never shows the system dialog.
+    /// Use this for status checks (launch, Settings row, paste decision).
+    static func isTrusted() -> Bool {
+        return AXIsProcessTrusted()
+    }
+
+    /// Prompting check. Shows the system "Open System Settings" dialog when the
+    /// process is not yet trusted. Call this ONLY in response to an explicit user
+    /// action (for example a button), never automatically.
+    @discardableResult
+    static func requestAccess() -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// Open the Accessibility pane in System Settings so the user can grant access.
+    static func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Pure mapping from trust state to the paste-path decision. Unit tested.
+    static func pasteDecision(isTrusted: Bool) -> PasteAccessDecision {
+        return isTrusted ? .proceed : .showGuidance
+    }
+
+    /// Show a modal alert guiding the user to grant Accessibility, modeled on
+    /// UpdateService.showUpdateAlert. The pasteboard has already been written by
+    /// the caller, so the user can still paste manually with Cmd+V.
+    static func showPermissionAlert() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.icon = NSApp.applicationIconImage
+        alert.messageText = "Buffer needs Accessibility access to paste"
+        alert.informativeText = "Your content was copied to the clipboard, so you can paste it manually with Cmd+V. To let Buffer paste automatically, grant Accessibility access in System Settings."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Later")
+        if alert.runModal() == .alertFirstButtonReturn {
+            openAccessibilitySettings()
+        }
+    }
+}
 
 /// Handles pasting content into the frontmost application
 class PasteController {
@@ -112,6 +171,13 @@ class PasteController {
             }
         }
 
+        // Pasteboard is written above, so the user can paste manually even without
+        // Accessibility. Only synthesize Cmd+V when trusted, otherwise guide the user.
+        if AccessibilityManager.pasteDecision(isTrusted: AccessibilityManager.isTrusted()) == .showGuidance {
+            AccessibilityManager.showPermissionAlert()
+            return
+        }
+
         // Reactivate previous app, then simulate paste after it has focus
         previousApp?.activate(options: .activateIgnoringOtherApps)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -129,7 +195,17 @@ class PasteController {
             paste(first, store: store, previousApp: previousApp)
             return
         }
-        
+
+        // Without Accessibility the synthetic Cmd+V is silently dropped, and the
+        // multi-step paste below would also leave images only partially placed.
+        // Write a best-effort pasteboard representation so manual Cmd+V works, then
+        // guide the user instead of synthesizing keystrokes that cannot land.
+        if AccessibilityManager.pasteDecision(isTrusted: AccessibilityManager.isTrusted()) == .showGuidance {
+            copyMultipleToClipboard(items, store: store)
+            AccessibilityManager.showPermissionAlert()
+            return
+        }
+
         let pasteboard = NSPasteboard.general
         
         // Separate items by type

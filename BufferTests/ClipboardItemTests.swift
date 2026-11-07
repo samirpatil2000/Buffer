@@ -1074,6 +1074,19 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertNil(kind4)
         XCTAssertEqual(rest4, "type:banana")
     }
+
+    // MARK: - AccessibilityManager paste decision
+
+    // The raw AXIsProcessTrusted and CGEvent calls are not unit testable, so we test the
+    // pure seam that maps trust state to the paste-path decision instead.
+
+    func testPasteDecisionProceedsWhenTrusted() {
+        XCTAssertEqual(AccessibilityManager.pasteDecision(isTrusted: true), .proceed)
+    }
+
+    func testPasteDecisionShowsGuidanceWhenNotTrusted() {
+        XCTAssertEqual(AccessibilityManager.pasteDecision(isTrusted: false), .showGuidance)
+    }
 }
 
 

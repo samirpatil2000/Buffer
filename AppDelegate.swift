@@ -27,9 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
-        // Request Accessibility permissions for global hotkeys
-        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+        // One-time, non-prompting read of Accessibility trust state. We do NOT show the
+        // system dialog at launch anymore. Guidance is surfaced only when the user actually
+        // tries to paste (PasteController) or opens the Settings permissions row. The Carbon
+        // global hotkey does not need Accessibility, so an untrusted launch is not fatal.
+        if !AccessibilityManager.isTrusted() {
+            print("[AppDelegate] Accessibility not granted. Paste will prompt for access when used.")
+        }
         
         // Initialize clipboard watcher
         clipboardWatcher = ClipboardWatcher(store: clipboardStore)

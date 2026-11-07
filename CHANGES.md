@@ -170,11 +170,44 @@ tag filters.
   header establishes a clear column count and enough clean rows confirm it, the
   detector stitches those split lines back into the correct rows.
 
+## 12. Graceful Accessibility-permission handling
+
+- Buffer no longer shows the macOS Accessibility prompt unconditionally at
+  launch. At launch it only does a silent, non-prompting status read.
+- Pasting needs Accessibility (it synthesizes Cmd+V). If you trigger a paste
+  while access is not granted, Buffer still writes the item to the clipboard so
+  you can paste it manually with Cmd+V, and it shows a short alert with an
+  **Open System Settings** button instead of letting the keystroke silently
+  fail.
+- Settings has a new **Permissions** row under **System** showing Accessibility
+  status (green check when granted, amber warning when not) with an **Open
+  Settings** button. The status is re-read each time the Settings window
+  appears, so returning from System Settings reflects the new state. Permission
+  state is never persisted, the OS is the source of truth.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of
   `Buffer/`) so development and testing never read or overwrite real clipboard
   data. Release builds are unaffected.
+
+- **Accessibility re-prompts after each local reinstall.** Locally rebuilt
+  copies are ad-hoc signed, and an ad-hoc signature differs on every build, so
+  macOS treats each reinstalled copy as a new app and the previous Accessibility
+  grant does not carry over. This is a local development concern only. The real
+  end-user fix is Developer ID signing plus notarization by the maintainer,
+  which keeps a stable identity so the grant sticks across updates.
+- **Run only one Buffer.app at a time.** Keeping several copies around (a Debug
+  build, one in Downloads, one in /Applications) causes global-hotkey conflicts
+  and makes the app look like it quits at random, because more than one instance
+  fights over the same shortcut. Keep a single runnable copy.
+- Two local remedies while developing:
+  - After a reinstall, reset the grant so the fresh copy can be re-added
+    cleanly: `tccutil reset Accessibility com.samirpatil.Buffer`.
+  - Or sign every local build with a stable self-signed certificate so the
+    identity stays constant and the grant persists across rebuilds. Do not
+    hardcode a machine-specific certificate identity into any build script,
+    keep it a local, per-developer setting.
 
 ---
 
