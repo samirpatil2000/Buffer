@@ -1245,6 +1245,43 @@ class ClipboardItemTests: XCTestCase {
         cache.removeImage(for: id1)
         XCTAssertNil(cache.image(for: id1), "Cache should return nil after removeImage")
     }
+
+    // MARK: - Tag Normalization Tests
+
+    func testTagChipNormalizeStripsDisallowedSpecialCharacters() {
+        // Explicitly requested characters: #, @, $, %
+        XCTAssertEqual(TagChip.normalize("#swift"), "swift")
+        XCTAssertEqual(TagChip.normalize("@user"), "user")
+        XCTAssertEqual(TagChip.normalize("$100"), "100")
+        XCTAssertEqual(TagChip.normalize("%tag%"), "tag")
+        XCTAssertEqual(TagChip.normalize("#@$%"), "")
+        XCTAssertEqual(TagChip.normalize("tag#with@symbols$and%percents"), "tagwithsymbolsandpercents")
+
+        // Other punctuation and symbols
+        XCTAssertEqual(TagChip.normalize("tag!with?punctuation*"), "tagwithpunctuation")
+        XCTAssertEqual(TagChip.normalize("tag.with.dots"), "tagwithdots")
+        XCTAssertEqual(TagChip.normalize("tag+plus=equal"), "tagplusequal")
+        XCTAssertEqual(TagChip.normalize("(tag)[brackets]{braces}"), "tagbracketsbraces")
+        XCTAssertEqual(TagChip.normalize("tag/slash\\backslash"), "tagslashbackslash")
+    }
+
+    func testTagChipNormalizePreservesAlphanumericsHyphensAndUnderscores() {
+        XCTAssertEqual(TagChip.normalize("swiftui"), "swiftui")
+        XCTAssertEqual(TagChip.normalize("SwiftUI-2_0"), "swiftui-2_0")
+        XCTAssertEqual(TagChip.normalize("my_tag"), "my_tag")
+        XCTAssertEqual(TagChip.normalize("my-tag"), "my-tag")
+        XCTAssertEqual(TagChip.normalize("tag_with-mixed_separators"), "tag_with-mixed_separators")
+        XCTAssertEqual(TagChip.normalize("  spaced   tag  "), "spaced-tag")
+        XCTAssertEqual(TagChip.normalize("   tag-name   "), "tag-name")
+        XCTAssertEqual(TagChip.normalize("-___leading-and-trailing___-"), "leading-and-trailing")
+    }
+
+    func testTagChipNormalizeTruncatesToMax32Characters() {
+        let longTag = String(repeating: "a", count: 50)
+        let normalized = TagChip.normalize(longTag)
+        XCTAssertEqual(normalized.count, 32)
+        XCTAssertEqual(normalized, String(repeating: "a", count: 32))
+    }
 }
 
 
