@@ -73,22 +73,16 @@ struct ClipboardItemRow: View {
                 }
             }
 
-            // Source app badge: name, then the app icon to its right. The icon is the last
-            // element with a fixed frame, so varying name lengths cannot move it.
+            // Source app name. The matching app icon is rendered last in this row (after the
+            // status badges) so the icon is always the rightmost element.
             if let app = item.sourceApp {
                 Text(app)
                     .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                if let appIcon = AppIconProvider.shared.icon(bundleID: item.sourceAppBundleID, name: app) {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 15, height: 15)
-                }
             }
-            
+
             // Pin indicator
             if item.isPinned {
                 Circle()
@@ -103,19 +97,21 @@ struct ClipboardItemRow: View {
                     .foregroundColor(.yellow.opacity(0.8))
             }
 
-            // Rich-text badge: signals styled formatting is available for this item
-            if item.hasRichText {
-                Image(systemName: "textformat")
-                    .font(.system(size: 10 * zoomScale))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-
             // Attached-images badge: signals a combined item carrying embedded images.
-            // Visually distinct glyph from hasRichText - both may show simultaneously.
             if item.hasAttachedImages {
                 Image(systemName: "photo.on.rectangle")
                     .font(.system(size: 10 * zoomScale))
                     .foregroundColor(.secondary.opacity(0.6))
+            }
+
+            // Source app icon: always the last (rightmost) element, with a fixed frame so varying
+            // name lengths and the optional badges above cannot move it.
+            if let app = item.sourceApp,
+               let appIcon = AppIconProvider.shared.icon(bundleID: item.sourceAppBundleID, name: app) {
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 15, height: 15)
             }
         }
         .padding(.horizontal, 12)

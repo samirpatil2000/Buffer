@@ -220,9 +220,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// True when the item carries both a text body and at least one image
     var isCombined: Bool { type == .text && !imageFilenames.isEmpty }
 
-    /// Whether this item carries embedded image attachments (combined item), used by the
-    /// row's second badge. Kept distinct from hasRichText (resolution 4) so the two can show
-    /// simultaneously with visually distinct glyphs.
+    /// Whether this item carries embedded image attachments (combined item), used to show the
+    /// attached-images badge on the row.
     var hasAttachedImages: Bool { !imageFilenames.isEmpty }
 
     /// Preview text for display (truncated for long content)

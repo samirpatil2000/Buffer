@@ -206,9 +206,12 @@ tag filters.
 ## 14. Source app icon in history rows
 
 - Each history row now shows the **icon of the app the copy was made from**,
-  placed to the **right of the source app name**. The icon is the last element
-  in the row with a fixed 15x15 frame, so a long or short app name never shifts
-  the icon from its trailing position.
+  placed to the **right of the source app name** and after any status badges, so
+  the app icon is always the rightmost element. The icon has a fixed 15x15
+  frame, so a long or short app name and the optional badges never shift it from
+  its trailing position.
+- The old rich-text "Aa" row badge was removed: it did not communicate anything
+  actionable at a glance. The bookmark and the combined text+image badges remain.
 - The source app's **bundle identifier is captured and stored** going forward,
   which gives a clean, reliable icon lookup for new items. Old items that have
   no stored bundle id fall back to resolving the icon by app name. The new
