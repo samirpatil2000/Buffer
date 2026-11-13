@@ -296,9 +296,30 @@ struct SettingsView: View {
                         settings.save()
                     }
                 }
-                
+
                 rowDivider
-                
+
+                // Ignore password manager copies
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ignore Password Manager Copies")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Skips copies that password managers mark as private")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.ignoreConcealed)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .onChange(of: settings.ignoreConcealed) { _ in
+                            settings.save()
+                        }
+                }
+
+                rowDivider
+
                 // Auto OCR
                 settingsRow {
                     VStack(alignment: .leading, spacing: 2) {
@@ -317,7 +338,7 @@ struct SettingsView: View {
                         }
                 }
                 .help("Uses on-device text recognition so screenshots and copied images become searchable automatically.")
-                
+
                 rowDivider
                 
                 // Preserve Rich Text
@@ -680,6 +701,7 @@ class SettingsViewModel: ObservableObject {
     @Published var hideStatusBar: Bool
     @Published var minTextLength: Int
     @Published var deduplicateHistory: Bool
+    @Published var ignoreConcealed: Bool
     @Published var customHistoryLimit: Int
     @Published var autoOCR: Bool
     @Published var preserveRichText: Bool
@@ -720,6 +742,7 @@ class SettingsViewModel: ObservableObject {
         // Load clipboard history filtering settings
         self.minTextLength = SettingsManager.shared.minTextLength
         self.deduplicateHistory = SettingsManager.shared.deduplicateHistory
+        self.ignoreConcealed = SettingsManager.shared.ignoreConcealed
         self.customHistoryLimit = SettingsManager.shared.customHistoryLimit
         self.autoOCR = SettingsManager.shared.autoOCR
         self.preserveRichText = SettingsManager.shared.preserveRichText
@@ -744,6 +767,7 @@ class SettingsViewModel: ObservableObject {
         SettingsManager.shared.hideStatusBar = hideStatusBar
         SettingsManager.shared.minTextLength = minTextLength
         SettingsManager.shared.deduplicateHistory = deduplicateHistory
+        SettingsManager.shared.ignoreConcealed = ignoreConcealed
         SettingsManager.shared.customHistoryLimit = customHistoryLimit
         SettingsManager.shared.autoOCR = autoOCR
         SettingsManager.shared.preserveRichText = preserveRichText
