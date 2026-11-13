@@ -93,15 +93,39 @@ package_app() {
     ${DMG_NAME}
 
     echo "🔏 Signing DMG..."
-    codesign \
-    --force \
-    --sign "${SIGN_IDENTITY}" \
-    ${DMG_NAME}
+    DMG_SIGN_OK=false
+    for attempt in 1 2 3; do
+        if codesign \
+            --force \
+            --timestamp \
+            --sign "${SIGN_IDENTITY}" \
+            ${DMG_NAME}; then
+            DMG_SIGN_OK=true
+            break
+        fi
+        echo "⚠️  DMG signing attempt ${attempt} failed (timestamp server unreachable?), retrying in 3s..."
+        sleep 3
+    done
+    if [ "$DMG_SIGN_OK" = false ]; then
+        echo "❌ DMG signing failed after 3 attempts."
+        exit 1
+    fi
 
     echo "📤 Notarizing DMG..."
     if xcrun notarytool submit ${DMG_NAME} --keychain-profile "${NOTARY_PROFILE}" --wait; then
         echo "📎 Stapling DMG..."
-        xcrun stapler staple ${DMG_NAME}
+        STAPLE_OK=false
+        for attempt in 1 2 3; do
+            if xcrun stapler staple ${DMG_NAME}; then
+                STAPLE_OK=true
+                break
+            fi
+            echo "⚠️ Stapling attempt ${attempt} failed, retrying in 3s..."
+            sleep 3
+        done
+        if [ "$STAPLE_OK" = false ]; then
+            echo "⚠️ Stapling failed after 3 attempts. Continuing..."
+        fi
     else
         echo "⚠️  Notarization failed or skipped. Continuing with unnotarized DMG..."
     fi

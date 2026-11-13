@@ -32,8 +32,7 @@ class HotkeyManager {
         HotkeyManager.instance = self
         
         if !HotkeyManager.eventHandlerInstalled {
-            // Install event handler on the event dispatcher target so it receives hotkey events
-            // even when another application has Secure Event Input enabled (e.g. password fields).
+            // Install event handler on the application event target for continuous AppKit run loop delivery
             var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             
             let status = InstallEventHandler(

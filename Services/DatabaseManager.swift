@@ -152,7 +152,7 @@ final class DatabaseManager {
                 if verifiedCount == legacyItems.count {
                     print("[DatabaseManager] Migration verified! \(verifiedCount) items migrated.")
                     let migratedPath = jsonURL.path + ".migrated"
-                    try? FileManager.default.moveItem(atPath: jsonURL.path, toPath: migratedPath)
+                    try? FileManager.default.copyItem(atPath: jsonURL.path, toPath: migratedPath)
                 } else {
                     print("[DatabaseManager] Warning: Migrated count \(verifiedCount) does not match JSON count \(legacyItems.count)")
                 }

@@ -1151,6 +1151,52 @@ class ClipboardItemTests: XCTestCase {
         wait(for: [expectation], timeout: 2.0)
     }
 
+    func testSecureElementDetectionInAppDelegate() {
+        guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
+        
+        // Test with custom system element check or mock attributes
+        // An element without AXSecureTextField must not be detected as secure
+        let systemWide = AXUIElementCreateSystemWide()
+        XCTAssertFalse(appDelegate.isSecureElement(systemWide), "System-wide element is not a secure password field")
+    }
+
+    func testHotkeyRecoversWhenLeavingPasswordFieldUnderLingeringSecureInput() {
+        let expectation = XCTestExpectation(description: "Hotkey recovers immediately when leaving password field under lingering Secure Event Input")
+        
+        var callbackFired = false
+        let manager = HotkeyManager {
+            callbackFired = true
+            expectation.fulfill()
+        }
+
+        // Simulate lingering Secure Event Input (as left by Chromium after clicking outside a password field)
+        EnableSecureEventInput()
+        defer {
+            DisableSecureEventInput()
+            manager.unregister()
+            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+        }
+
+        XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input is lingering in the system")
+
+        // Register Option + C
+        let optionModifier = UInt32(optionKey)
+        manager.register(keyCode: 8, modifiers: optionModifier)
+        XCTAssertTrue(manager.isRegistered, "Hotkey must register on dispatcher target")
+
+        // Dispatch simulated Option + C event
+        var eventRef: EventRef?
+        CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0, EventAttributes(kEventAttributeNone), &eventRef)
+        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1)
+        SetEventParameter(eventRef, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), MemoryLayout<EventHotKeyID>.size, &hotKeyID)
+        
+        let status = SendEventToEventTarget(eventRef, GetApplicationEventTarget())
+        XCTAssertEqual(status, noErr)
+
+        wait(for: [expectation], timeout: 2.0)
+        XCTAssertTrue(callbackFired, "Hotkey must fire without requiring tab switch or window restart")
+    }
+
     func testHistoryPanelCanBecomeKeyAndMain() {
         let panel = HistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),

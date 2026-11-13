@@ -198,6 +198,8 @@ class HistoryWindowController: NSWindowController {
         ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }
 

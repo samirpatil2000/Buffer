@@ -89,15 +89,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Thread.callStackSymbols.forEach { print($0) }
     }
     
-    private func toggleHistoryWindow() {
+    func toggleHistoryWindow() {
         print("[AppDelegate] toggleHistoryWindow called")
         if let window = historyWindowController?.window, window.isVisible, window.isKeyWindow {
             print("[AppDelegate] Window is visible and key, closing...")
             historyWindowController?.close()
         } else {
+            if isPasswordFieldFocused() {
+                print("[AppDelegate] Password field focused; suppressing window show.")
+                return
+            }
             print("[AppDelegate] Window is hidden or not key, showing...")
             showHistoryWindow()
         }
+    }
+    
+    func isPasswordFieldFocused() -> Bool {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              frontApp.bundleIdentifier != Bundle.main.bundleIdentifier else {
+            return false
+        }
+        
+        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+        var focusedElement: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+        
+        guard result == .success, let element = focusedElement else {
+            // Also check system-wide focused element fallback
+            let systemWide = AXUIElementCreateSystemWide()
+            var sysFocused: CFTypeRef?
+            if AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &sysFocused) == .success,
+               let sysElement = sysFocused {
+                return isSecureElement(sysElement as! AXUIElement)
+            }
+            return false
+        }
+        
+        return isSecureElement(element as! AXUIElement)
+    }
+    
+    func isSecureElement(_ element: AXUIElement) -> Bool {
+        // If the element provides an AXFocused attribute and explicitly reports false,
+        // it means the element is not currently focused (e.g. user clicked outside onto whitespace/canvas).
+        var focusedRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXFocusedAttribute as CFString, &focusedRef) == .success,
+           let isFocused = focusedRef as? Bool, !isFocused {
+            return false
+        }
+        
+        var subrole: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole) == .success,
+           let subroleString = subrole as? String, subroleString == "AXSecureTextField" {
+            return true
+        }
+        
+        var role: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success,
+           let roleString = role as? String, roleString == "AXSecureTextField" {
+            return true
+        }
+        
+        return false
     }
     
     private func showHistoryWindow() {
