@@ -184,6 +184,11 @@ tag filters.
   Settings** button. The status is re-read each time the Settings window
   appears, so returning from System Settings reflects the new state. Permission
   state is never persisted, the OS is the source of truth.
+- **Double-click now auto-pastes, matching the Enter key.** Previously a
+  double-click only copied the item to the clipboard and dismissed the window,
+  while Enter pasted it into the previous app. Both now route through the same
+  paste path, so they behave identically, including the same Accessibility
+  guidance when access is not yet granted.
 
 ## 13. Hotkey works while a password field is focused
 

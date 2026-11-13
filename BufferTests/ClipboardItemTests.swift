@@ -1157,6 +1157,9 @@ class ClipboardItemTests: XCTestCase {
     // The raw AXIsProcessTrusted and CGEvent calls are not unit testable, so we test the
     // pure seam that maps trust state to the paste-path decision instead.
 
+    // Both paste entry points (the Enter key and a double-click on a row) now route through the
+    // same onPaste -> PasteController.paste path, so this single decision seam governs both. These
+    // two cases therefore cover the paste-permission behavior for either entry point.
     func testPasteDecisionProceedsWhenTrusted() {
         XCTAssertEqual(AccessibilityManager.pasteDecision(isTrusted: true), .proceed)
     }

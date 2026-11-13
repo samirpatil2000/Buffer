@@ -90,9 +90,11 @@ struct ClipboardListView: View {
                         .highPriorityGesture(
                             TapGesture(count: 2)
                                 .onEnded { _ in
+                                    // Double-click auto-pastes into the previous app, matching the
+                                    // Enter key. onPaste routes through PasteController.paste, which
+                                    // closes the window itself, so no separate onDismiss is needed.
                                     selectedIndex = index
-                                    onSelect(item)
-                                    onDismiss()
+                                    onPaste(item)
                                 }
                         )
                     }
