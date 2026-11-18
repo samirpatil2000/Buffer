@@ -18,45 +18,32 @@ class OCRService {
         }
         
         return await withCheckedContinuation { continuation in
-            let request = VNRecognizeTextRequest { request, error in
-                if let error = error {
+            DispatchQueue.global(qos: .userInitiated).async {
+                // No completion handler on purpose. When Vision fails it reports the error through
+                // BOTH the request's completion handler and the error thrown by perform(), so a
+                // handler that resumes the continuation plus a catch that resumes it again trapped
+                // the whole app ("resume called twice") on any image Vision could not process.
+                // Reading results after perform() returns leaves a single path that resumes once.
+                let request = VNRecognizeTextRequest()
+                // Use accurate recognition for best results
+                request.recognitionLevel = .accurate
+                // Support multiple languages automatically
+                request.usesLanguageCorrection = true
+
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                do {
+                    try handler.perform([request])
+                } catch {
                     print("[Buffer OCR] Recognition error: \(error.localizedDescription)")
                     continuation.resume(returning: nil)
                     return
                 }
-                
-                guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                
+
                 // Collect the top candidate from each observation
-                let recognizedStrings = observations.compactMap { observation in
+                let recognizedStrings = (request.results ?? []).compactMap { observation in
                     observation.topCandidates(1).first?.string
                 }
-                
-                if recognizedStrings.isEmpty {
-                    continuation.resume(returning: nil)
-                } else {
-                    let fullText = recognizedStrings.joined(separator: "\n")
-                    continuation.resume(returning: fullText)
-                }
-            }
-            
-            // Use accurate recognition for best results
-            request.recognitionLevel = .accurate
-            // Support multiple languages automatically
-            request.usesLanguageCorrection = true
-            
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try handler.perform([request])
-                } catch {
-                    print("[Buffer OCR] Handler error: \(error.localizedDescription)")
-                    continuation.resume(returning: nil)
-                }
+                continuation.resume(returning: recognizedStrings.isEmpty ? nil : recognizedStrings.joined(separator: "\n"))
             }
         }
     }

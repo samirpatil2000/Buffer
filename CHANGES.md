@@ -31,6 +31,12 @@ upstream v3.0.0+. This document describes everything in the
   search query.
 - A Settings toggle (default on) controls automatic OCR; a manual re-run action
   remains available as a fallback.
+- **Fixed a crash that quit the app.** When Vision could not process an image
+  (for example one that is too small), it reported the failure through both the
+  request completion handler and the error thrown by `perform()`. The OCR call
+  resumed its continuation on each path, which trapped the whole process. OCR now
+  reads results after `perform()` returns, so there is a single path and an
+  unprocessable image simply yields no text. A regression test covers it.
 
 ## 3. Rich text and combined text + image items
 

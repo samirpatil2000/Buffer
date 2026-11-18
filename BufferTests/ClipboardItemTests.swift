@@ -1193,6 +1193,29 @@ class ClipboardItemTests: XCTestCase {
         // Normal click-outside after opening still dismisses.
         XCTAssertFalse(WindowShowPolicy.shouldIgnoreResignKey(isOpening: false))
     }
+
+    // MARK: - OCR resilience
+
+    private func blankImage(width: Int, height: Int) -> NSImage {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let image = NSImage(size: NSSize(width: width, height: height))
+        image.addRepresentation(rep)
+        return image
+    }
+
+    // Regression: Vision reports a failure through BOTH the request completion handler and the
+    // thrown error from perform(). Resuming the continuation on each path trapped the whole app
+    // ("CheckedContinuation.resume called twice") whenever an image could not be processed. The
+    // call must instead complete exactly once and report no text.
+    func testOCRSurvivesImagesVisionCannotProcess() async {
+        for (width, height) in [(1, 1), (2, 2)] {
+            let result = await OCRService.shared.recognizeText(from: blankImage(width: width, height: height))
+            XCTAssertNil(result, "blank \(width)x\(height) image has no text and must not crash OCR")
+        }
+    }
 }
 
 
