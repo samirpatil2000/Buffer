@@ -35,8 +35,17 @@ upstream v3.0.0+. This document describes everything in the
   (for example one that is too small), it reported the failure through both the
   request completion handler and the error thrown by `perform()`. The OCR call
   resumed its continuation on each path, which trapped the whole process. OCR now
-  reads results after `perform()` returns, so there is a single path and an
-  unprocessable image simply yields no text. A regression test covers it.
+  reads results after `perform()` returns, so there is a single path. A
+  regression test covers it.
+- **A failed OCR is no longer recorded as "no text".** Failures are reported as
+  errors and the item is left unprocessed, so the **Extract Text** button stays
+  available to retry. Previously a failure was saved as "no text found", which
+  made the image permanently unsearchable (and, for the manual button, saved
+  searchable placeholder text). Partial results are still kept when some images
+  in an item succeed.
+- OCR failures are written to the unified log with the real reason, which a GUI
+  app's `print` never surfaced. View them with
+  `log show --predicate 'category == "OCR"' --last 1d`.
 
 ## 3. Rich text and combined text + image items
 

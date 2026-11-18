@@ -157,21 +157,22 @@ class ClipboardStore: ObservableObject {
             }
 
             Task {
-                // OCR each image; join non-empty results with blank lines so multiple pictures
-                // remain individually searchable.
-                var pieces: [String] = []
-                for image in images {
-                    if let recognized = await OCRService.shared.recognizeText(from: image),
-                       !recognized.isEmpty {
-                        pieces.append(recognized)
-                    }
-                }
+                // Join non-empty results with blank lines so multiple pictures remain
+                // individually searchable.
+                //
                 // Empty string is the auto-OCR no-text sentinel, deliberately distinct from
                 // the manual button's human-facing "No text found in this image." string,
                 // because that string is itself text that could spuriously match a search.
-                let text = pieces.joined(separator: "\n\n")
+                // A failed run stores nothing (nil), so the item stays unprocessed and the manual
+                // Extract Text button remains available, instead of being mislabelled "no text".
+                let text: String?
+                switch await OCRService.shared.recognize(images) {
+                case .found(let pieces): text = pieces.joined(separator: "\n\n")
+                case .noText: text = ""
+                case .failed: text = nil
+                }
                 self.runOnMain {
-                    self.setOCRText(text, for: item)
+                    if let text = text { self.setOCRText(text, for: item) }
                     self.ocrInProgress.remove(item.id)
                 }
             }

@@ -1209,12 +1209,35 @@ class ClipboardItemTests: XCTestCase {
     // Regression: Vision reports a failure through BOTH the request completion handler and the
     // thrown error from perform(). Resuming the continuation on each path trapped the whole app
     // ("CheckedContinuation.resume called twice") whenever an image could not be processed. The
-    // call must instead complete exactly once and report no text.
-    func testOCRSurvivesImagesVisionCannotProcess() async {
+    // call must instead complete exactly once, and report the failure as a thrown error so it is
+    // never mistaken for "this image has no text".
+    func testOCRThrowsInsteadOfCrashingForImagesVisionCannotProcess() async {
         for (width, height) in [(1, 1), (2, 2)] {
-            let result = await OCRService.shared.recognizeText(from: blankImage(width: width, height: height))
-            XCTAssertNil(result, "blank \(width)x\(height) image has no text and must not crash OCR")
+            do {
+                _ = try await OCRService.shared.recognizeText(from: blankImage(width: width, height: height))
+                XCTFail("expected OCR to throw for an unprocessable \(width)x\(height) image")
+            } catch {
+                // Expected: a thrown error, not a crash and not a silent "no text".
+            }
         }
+    }
+
+    private struct StubOCRError: Error {}
+
+    func testOCRSummaryFoundWhenAnyImageHasText() {
+        // A partial result is still worth keeping, even if another image failed or had no text.
+        let summary = OCRService.summarize([.success("receipt"), .failure(StubOCRError()), .success(nil)])
+        XCTAssertEqual(summary, .found(["receipt"]))
+    }
+
+    func testOCRSummaryNoTextOnlyWhenEveryImageSucceededEmpty() {
+        XCTAssertEqual(OCRService.summarize([.success(nil), .success("")]), .noText)
+        XCTAssertEqual(OCRService.summarize([]), .noText)
+    }
+
+    func testOCRSummaryFailedWhenNothingFoundAndSomethingFailed() {
+        // A failure says nothing about whether the image has text, so it must not read as no text.
+        XCTAssertEqual(OCRService.summarize([.failure(StubOCRError()), .success(nil)]), .failed)
     }
 }
 

@@ -1,23 +1,74 @@
 import Foundation
 import AppKit
 import Vision
+import os
 
 /// Service for extracting text from images using Apple's Vision framework (on-device OCR)
 class OCRService {
     static let shared = OCRService()
-    
+
+    /// Failures are written to the unified log (not print, which a GUI app discards) so the real
+    /// reason is visible later with: log show --predicate 'category == "OCR"' --last 1d
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.samirpatil.Buffer", category: "OCR")
+
     private init() {}
-    
-    /// Recognize text in an image asynchronously
-    /// - Parameter image: The NSImage to extract text from
-    /// - Returns: Recognized text string, or nil if no text found
-    func recognizeText(from image: NSImage) async -> String? {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            print("[Buffer OCR] Failed to get CGImage from NSImage")
+
+    enum OCRError: LocalizedError {
+        case unreadableImage
+
+        var errorDescription: String? { "The image could not be converted for text recognition." }
+    }
+
+    /// What OCR concluded for an item's images, kept separate from "no text" on purpose. A failed
+    /// run says nothing about whether the image has text, so it must not be stored as "no text".
+    enum Summary: Equatable {
+        case found([String])
+        case noText
+        case failed
+    }
+
+    /// Fold the per-image outcomes into one verdict. Any recognized text wins (partial results are
+    /// still searchable), and a failure only matters when nothing was found, because then we cannot
+    /// claim the images have no text.
+    static func summarize(_ outcomes: [Result<String?, Error>]) -> Summary {
+        let pieces = outcomes.compactMap { outcome -> String? in
+            if case .success(let text?) = outcome, !text.isEmpty { return text }
             return nil
         }
-        
-        return await withCheckedContinuation { continuation in
+        if !pieces.isEmpty { return .found(pieces) }
+
+        let anyFailed = outcomes.contains { outcome in
+            if case .failure = outcome { return true }
+            return false
+        }
+        return anyFailed ? .failed : .noText
+    }
+
+    /// OCR every image and summarize. Images are processed one after another, never in parallel.
+    func recognize(_ images: [NSImage]) async -> Summary {
+        var outcomes: [Result<String?, Error>] = []
+        for image in images {
+            do {
+                outcomes.append(.success(try await recognizeText(from: image)))
+            } catch {
+                outcomes.append(.failure(error))
+            }
+        }
+        return OCRService.summarize(outcomes)
+    }
+
+    /// Recognize text in an image asynchronously
+    /// - Parameter image: The NSImage to extract text from
+    /// - Returns: Recognized text string, or nil if the image was processed and has no text
+    /// - Throws: When the image could not be processed at all (distinct from "no text found")
+    func recognizeText(from image: NSImage) async throws -> String? {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            OCRService.log.error("OCR skipped: could not get a CGImage from the NSImage")
+            throw OCRError.unreadableImage
+        }
+        let dimensions = "\(cgImage.width)x\(cgImage.height)"
+
+        return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 // No completion handler on purpose. When Vision fails it reports the error through
                 // BOTH the request's completion handler and the error thrown by perform(), so a
@@ -34,8 +85,8 @@ class OCRService {
                 do {
                     try handler.perform([request])
                 } catch {
-                    print("[Buffer OCR] Recognition error: \(error.localizedDescription)")
-                    continuation.resume(returning: nil)
+                    OCRService.log.error("OCR failed for \(dimensions, privacy: .public) image: \(error.localizedDescription, privacy: .public)")
+                    continuation.resume(throwing: error)
                     return
                 }
 

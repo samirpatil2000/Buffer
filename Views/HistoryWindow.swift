@@ -1555,12 +1555,16 @@ struct HistoryContentView: View {
                                         guard let item = selectedItem else { return }
                                         isExtractingText = true
                                         let images = await loadImages(item.allImageFilenames)
-                                        var parts: [String] = []
-                                        for image in images {
-                                            if let text = await OCRService.shared.recognizeText(from: image) { parts.append(text) }
+                                        switch await OCRService.shared.recognize(images) {
+                                        case .found(let parts):
+                                            store.setOCRText(parts.joined(separator: "\n"), for: item)
+                                        case .noText:
+                                            store.setOCRText("No text found in this image.", for: item)
+                                        case .failed:
+                                            // Save nothing so the button stays available to retry,
+                                            // rather than recording a failure as "no text".
+                                            break
                                         }
-                                        store.setOCRText(parts.isEmpty ? "No text found in this image." : parts.joined(separator: "\n"),
-                                                         for: item)
                                         isExtractingText = false
                                     }
                                 }) {
