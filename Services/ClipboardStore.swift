@@ -18,6 +18,8 @@ class ClipboardStore: ObservableObject {
     private let fileManager = FileManager.default
     private let saveQueue = DispatchQueue(label: "com.buffer.save", qos: .utility)
     private var ocrInProgress: Set<UUID> = []
+    /// Main thread only. Prevents two backlog passes from running at once.
+    private var isOCRBacklogRunning = false
     
     private var storageDirectory: URL {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -53,6 +55,11 @@ class ClipboardStore: ObservableObject {
             name: .bufferHistoryLimitChanged,
             object: nil
         )
+
+        // Pick up images that still have no OCR result, after launch has had a moment to settle.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.processOCRBacklog()
+        }
     }
     
     @objc private func handleLimitChanged() {
@@ -148,34 +155,92 @@ class ClipboardStore: ObservableObject {
 
         ocrInProgress.insert(item.id)
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        Task { [weak self] in
             guard let self = self else { return }
-            let images = filenames.compactMap { self.attachedImage(filename: $0) }
-            guard !images.isEmpty else {
-                self.runOnMain { self.ocrInProgress.remove(item.id) }
-                return
+            // A failed run stores nothing (nil), so the item stays unprocessed and is retried by the
+            // launch-time backlog pass, instead of being mislabelled "no text".
+            let text = await self.ocrSummary(forImages: filenames)?.storedText
+            self.runOnMain {
+                if let text = text { self.setOCRText(text, for: item) }
+                self.ocrInProgress.remove(item.id)
             }
+        }
+    }
 
-            Task {
-                // Join non-empty results with blank lines so multiple pictures remain
-                // individually searchable.
-                //
-                // Empty string is the auto-OCR no-text sentinel, deliberately distinct from
-                // the manual button's human-facing "No text found in this image." string,
-                // because that string is itself text that could spuriously match a search.
-                // A failed run stores nothing (nil), so the item stays unprocessed and the manual
-                // Extract Text button remains available, instead of being mislabelled "no text".
-                let text: String?
-                switch await OCRService.shared.recognize(images) {
-                case .found(let pieces): text = pieces.joined(separator: "\n\n")
-                case .noText: text = ""
-                case .failed: text = nil
+    /// Image items that still need OCR, newest first so recent items become searchable first. That
+    /// is every item carrying an image with no OCR result at all, which covers images captured
+    /// before auto-OCR existed and any whose earlier run failed.
+    static func pendingOCRItems(in items: [ClipboardItem], inProgress: Set<UUID>) -> [ClipboardItem] {
+        items
+            .filter { $0.ocrText == nil && $0.hasImages && !inProgress.contains($0.id) }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    /// OCR everything that has no result yet, in the background, one item at a time. Runs once per
+    /// launch (see init). It stops at the first failure rather than grinding through hundreds of
+    /// images that would all fail the same way, and the remainder is retried on the next launch.
+    func processOCRBacklog() {
+        runOnMain { [weak self] in
+            guard let self = self,
+                  SettingsManager.shared.autoOCR,
+                  !self.isOCRBacklogRunning else { return }
+
+            let pending = ClipboardStore.pendingOCRItems(in: self.items, inProgress: self.ocrInProgress)
+            guard !pending.isEmpty else { return }
+
+            self.isOCRBacklogRunning = true
+            print("[Buffer] OCR backlog: \(pending.count) image items to process")
+
+            Task { [weak self] in
+                guard let self = self else { return }
+                var batch: [UUID: String] = [:]
+
+                for item in pending {
+                    // nil means there was nothing readable to OCR (image file gone), so skip it.
+                    guard let summary = await self.ocrSummary(forImages: item.allImageFilenames) else { continue }
+                    // A failed run stores nothing and ends the pass.
+                    guard let text = summary.storedText else { break }
+                    batch[item.id] = text
+
+                    // Saving rewrites the whole history file, so write in batches, not per item.
+                    if batch.count >= ClipboardStore.ocrBacklogBatchSize {
+                        self.applyOCRResults(batch)
+                        batch.removeAll()
+                    }
                 }
-                self.runOnMain {
-                    if let text = text { self.setOCRText(text, for: item) }
-                    self.ocrInProgress.remove(item.id)
-                }
+
+                self.applyOCRResults(batch)
+                self.runOnMain { self.isOCRBacklogRunning = false }
             }
+        }
+    }
+
+    private static let ocrBacklogBatchSize = 50
+
+    /// OCR an item's images. Returns nil when none of the image files could be read at all.
+    private func ocrSummary(forImages filenames: [String]) async -> OCRService.Summary? {
+        let images = filenames.compactMap { attachedImage(filename: $0) }
+        guard !images.isEmpty else { return nil }
+        return await OCRService.shared.recognize(images)
+    }
+
+    /// Store several OCR results with a single save. Only fills items that still have no result, so
+    /// a result the user produced meanwhile (Extract Text button) is never overwritten.
+    private func applyOCRResults(_ results: [UUID: String]) {
+        guard !results.isEmpty else { return }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            var changed = false
+            for (id, text) in results {
+                guard let index = self.items.firstIndex(where: { $0.id == id }),
+                      self.items[index].ocrText == nil else { continue }
+                self.items[index].ocrText = text
+                changed = true
+            }
+            guard changed else { return }
+
+            let itemsToSave = self.items
+            self.saveQueue.async { [weak self] in self?.saveHistoryToDisk(itemsToSave) }
         }
     }
     

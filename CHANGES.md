@@ -46,6 +46,13 @@ upstream v3.0.0+. This document describes everything in the
 - OCR failures are written to the unified log with the real reason, which a GUI
   app's `print` never surfaced. View them with
   `log show --predicate 'category == "OCR"' --last 1d`.
+- **Images still waiting for OCR are retried on launch.** A few seconds after
+  start, Buffer OCRs every image that has no result yet, newest first, one at a
+  time in the background. That covers images captured before auto-OCR existed
+  and any whose earlier attempt failed. The pass stops at the first failure
+  instead of grinding through hundreds of images that would fail the same way,
+  and results are saved in batches so the history file is not rewritten for
+  every image.
 
 ## 3. Rich text and combined text + image items
 

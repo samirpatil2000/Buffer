@@ -25,6 +25,19 @@ class OCRService {
         case found([String])
         case noText
         case failed
+
+        /// What auto-OCR persists for this verdict, or nil to leave the item unprocessed so it is
+        /// retried. The empty string is the no-text sentinel, deliberately distinct from the manual
+        /// button's human-facing "No text found" message, because that message is itself text that
+        /// could spuriously match a search. Pieces are joined with blank lines so several pictures
+        /// stay individually searchable.
+        var storedText: String? {
+            switch self {
+            case .found(let pieces): return pieces.joined(separator: "\n\n")
+            case .noText: return ""
+            case .failed: return nil
+            }
+        }
     }
 
     /// Fold the per-image outcomes into one verdict. Any recognized text wins (partial results are

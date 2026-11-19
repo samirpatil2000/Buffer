@@ -1239,6 +1239,28 @@ class ClipboardItemTests: XCTestCase {
         // A failure says nothing about whether the image has text, so it must not read as no text.
         XCTAssertEqual(OCRService.summarize([.failure(StubOCRError()), .success(nil)]), .failed)
     }
+
+    func testOCRSummaryStoredTextKeepsFailureUnprocessed() {
+        XCTAssertEqual(OCRService.Summary.found(["a", "b"]).storedText, "a\n\nb")
+        XCTAssertEqual(OCRService.Summary.noText.storedText, "", "no text is the empty sentinel")
+        XCTAssertNil(OCRService.Summary.failed.storedText, "a failure must store nothing so it is retried")
+    }
+
+    func testPendingOCRItemsSelectsOnlyUnprocessedImagesNewestFirst() {
+        let newest = ClipboardItem(type: .image, timestamp: Date(timeIntervalSince1970: 300), imageFilename: "new.png")
+        let oldest = ClipboardItem(type: .image, timestamp: Date(timeIntervalSince1970: 100), imageFilename: "old.png")
+        let combined = ClipboardItem(type: .text, timestamp: Date(timeIntervalSince1970: 200),
+                                     textContent: "caption", imageFilenames: ["c.png"])
+        let done = ClipboardItem(type: .image, imageFilename: "done.png", ocrText: "receipt")
+        let noText = ClipboardItem(type: .image, imageFilename: "blank.png", ocrText: "")
+        let plainText = ClipboardItem.text("just words")
+        let busy = ClipboardItem(type: .image, timestamp: Date(timeIntervalSince1970: 400), imageFilename: "busy.png")
+
+        let pending = ClipboardStore.pendingOCRItems(
+            in: [oldest, done, plainText, newest, noText, combined, busy],
+            inProgress: [busy.id])
+
+        XCTAssertEqual(pending.map { $0.id }, [newest.id, combined.id, oldest.id],
+                       "unprocessed images only, including combined items, newest first, skipping in-progress")
+    }
 }
-
-
