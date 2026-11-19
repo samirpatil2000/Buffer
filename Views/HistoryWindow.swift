@@ -375,6 +375,9 @@ struct HistoryContentView: View {
     // Tag filter state
     @State private var activeTagFilter: String? = nil
     @State private var activeKind: ClipboardKind = .all
+    /// Show only bookmarked items. Separate from the type chips because it is not a kind of content
+    /// and has to combine with them (for example bookmarked images only).
+    @State private var bookmarkedOnly = false
     @State private var showTagAutocomplete: Bool = false
     @State private var showTagInput: Bool = false
     @State private var tagInputText: String = ""
@@ -394,18 +397,27 @@ struct HistoryContentView: View {
     private var previewFontSize: CGFloat { CGFloat(13 * settings.contentZoomScale) }
 
     private func computeFilteredItems() -> [ClipboardItem] {
-        var base = store.items
-        if let tag = activeTagFilter {
-            base = base.filter { $0.tags.contains(tag) }
-        }
-
         // Resolve the effective type filter: a `type:` search token (if present) wins over the
         // chip, otherwise the chip's selection applies. The token's text is stripped from the
         // free-text query so it is not also matched as literal content.
         let (tokenKind, textQuery) = Self.parseTypeToken(from: debouncedSearchText)
-        let effectiveKind = tokenKind ?? activeKind
-        if effectiveKind != .all {
-            base = base.filter { $0.matchesKind(effectiveKind) }
+        return Self.filterItems(store.items, tag: activeTagFilter, kind: tokenKind ?? activeKind,
+                                bookmarkedOnly: bookmarkedOnly, textQuery: textQuery)
+    }
+
+    /// Apply every history filter together: tag, content kind, bookmarked-only, and the free-text
+    /// query. Pinned items sort first. Pure so the combinations can be tested.
+    static func filterItems(_ items: [ClipboardItem], tag: String?, kind: ClipboardKind,
+                            bookmarkedOnly: Bool, textQuery: String) -> [ClipboardItem] {
+        var base = items
+        if let tag = tag {
+            base = base.filter { $0.tags.contains(tag) }
+        }
+        if kind != .all {
+            base = base.filter { $0.matchesKind(kind) }
+        }
+        if bookmarkedOnly {
+            base = base.filter { $0.isBookmarked }
         }
 
         let query = textQuery.trimmingCharacters(in: .whitespaces)
@@ -439,6 +451,26 @@ struct HistoryContentView: View {
     
     private func updateFilteredItems() {
         self.filteredItems = computeFilteredItems()
+    }
+
+    /// Recompute the list after a filter chip changed and select its first unpinned item.
+    private func refilterAndSelectDefault() {
+        let currentFiltered = computeFilteredItems()
+        self.filteredItems = currentFiltered
+        let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
+        selectedID = defaultItem?.id
+        if let id = defaultItem?.id {
+            selectedIDs = [id]
+            selectionAnchor = id
+        } else {
+            selectedIDs = []
+            selectionAnchor = nil
+        }
+        if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
+            selectedIndex = index
+        } else {
+            selectedIndex = 0
+        }
     }
 
     private var tagSuggestions: [String] {
@@ -786,24 +818,8 @@ struct HistoryContentView: View {
                 selectedIndex = 0
             }
         }
-        .onChange(of: activeKind) { _ in
-            let currentFiltered = computeFilteredItems()
-            self.filteredItems = currentFiltered
-            let defaultItem = currentFiltered.first(where: { !$0.isPinned }) ?? currentFiltered.first
-            selectedID = defaultItem?.id
-            if let id = defaultItem?.id {
-                selectedIDs = [id]
-                selectionAnchor = id
-            } else {
-                selectedIDs = []
-                selectionAnchor = nil
-            }
-            if let index = currentFiltered.firstIndex(where: { $0.id == defaultItem?.id }) {
-                selectedIndex = index
-            } else {
-                selectedIndex = 0
-            }
-        }
+        .onChange(of: activeKind) { _ in refilterAndSelectDefault() }
+        .onChange(of: bookmarkedOnly) { _ in refilterAndSelectDefault() }
         .onChange(of: showTagInput) { newValue in
             if newValue {
                 isSearchFocused = false
@@ -898,6 +914,7 @@ struct HistoryContentView: View {
             
             // Transient UI state always resets
             activeKind = .all
+            bookmarkedOnly = false
             showTagAutocomplete = false
             showTagInput = false
             tagInputText = ""
@@ -1214,41 +1231,75 @@ struct HistoryContentView: View {
         return formattedByteCount(bytes)
     }
     
-    /// Horizontal row of type-filter chips (All / Text / Image / Link / Code). The selected chip
-    /// reflects either a `type:` search token (if present) or the manual chip selection.
+    /// Horizontal row of type-filter chips (All / Text / Image / Link / Code) followed by an
+    /// independent Bookmarked toggle. The selected type chip reflects either a `type:` search token
+    /// (if present) or the manual chip selection. The Bookmarked toggle combines with whichever
+    /// type is selected.
     private var filterChips: some View {
         // A type: token in the search text takes visual precedence over the manual chip.
         let tokenKind = Self.parseTypeToken(from: debouncedSearchText).kind
         let selected = tokenKind ?? activeKind
         let tokenActive = tokenKind != nil
         return HStack(spacing: 6) {
-            ForEach(ClipboardKind.allCases, id: \.self) { kind in
-                let isOn = kind == selected
-                Button(action: {
-                    guard !tokenActive else { return }   // token drives selection; chip is read-only then
-                    activeKind = kind
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: kind.systemImage)
-                            .font(.system(size: 9))
-                        Text(kind.label)
-                            .font(.system(size: 11, weight: .medium))
+            Group {
+                ForEach(ClipboardKind.allCases, id: \.self) { kind in
+                    let isOn = kind == selected
+                    Button(action: {
+                        guard !tokenActive else { return }   // token drives selection; chip is read-only then
+                        activeKind = kind
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: kind.systemImage)
+                                .font(.system(size: 9))
+                            Text(kind.label)
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(isOn ? Color.accentColor.opacity(0.9) : Color.primary.opacity(0.06))
+                        .foregroundColor(isOn ? .white : .secondary)
+                        .cornerRadius(6)
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(isOn ? Color.accentColor.opacity(0.9) : Color.primary.opacity(0.06))
-                    .foregroundColor(isOn ? .white : .secondary)
-                    .cornerRadius(6)
+                    .buttonStyle(.plain)
+                    .help(tokenActive ? "Filtered by search token type:\(selected.rawValue)" : "Show \(kind.label) items")
                 }
-                .buttonStyle(.plain)
-                .help(tokenActive ? "Filtered by search token type:\(selected.rawValue)" : "Show \(kind.label) items")
             }
+            // The type chips are read-only while a type: token drives them, so only they dim.
+            .opacity(tokenActive ? 0.7 : 1.0)
+
+            Color.primary.opacity(0.12)
+                .frame(width: 1, height: 14)
+                .padding(.horizontal, 2)
+
+            Button(action: { bookmarkedOnly.toggle() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: bookmarkedOnly ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 9))
+                    Text("Bookmarked")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(bookmarkedOnly ? Color.yellow.opacity(0.85) : Color.primary.opacity(0.06))
+                .foregroundColor(bookmarkedOnly ? .black.opacity(0.8) : .secondary)
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help(bookmarkedOnly ? "Showing bookmarked items only. Click to show all." : "Show bookmarked items only")
+
             Spacer()
         }
-        .opacity(tokenActive ? 0.7 : 1.0)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+
+    private var emptyListMessage: String {
+        let noOtherFilters = searchText.isEmpty && activeTagFilter == nil && activeKind == .all
+        if bookmarkedOnly && noOtherFilters {
+            return "No bookmarked items yet. Press \u{2318}B on an item to bookmark it."
+        }
+        return noOtherFilters && !bookmarkedOnly ? "No clipboard history" : "No matches"
     }
 
     private var searchBar: some View {
@@ -1351,7 +1402,7 @@ struct HistoryContentView: View {
             if filteredItems.isEmpty {
                 VStack {
                     Spacer()
-                    Text(searchText.isEmpty && activeTagFilter == nil && activeKind == .all ? "No clipboard history" : "No matches")
+                    Text(emptyListMessage)
                         .foregroundColor(.secondary)
                     Spacer()
                 }

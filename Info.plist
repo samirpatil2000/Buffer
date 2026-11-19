@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.0.36 - Custom</string>
+	<string>3.0.37 - Custom</string>
 	<key>CFBundleVersion</key>
-	<string>336</string>
+	<string>337</string>
 	<key>LSApplicationCategoryType</key>
 	<string></string>
 	<key>LSMinimumSystemVersion</key>

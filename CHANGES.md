@@ -259,6 +259,18 @@ tag filters.
   enlarged to the pane width as before. Double-click to zoom and drag to pan
   still work on the fitted image.
 
+## 16. Bookmarked filter
+
+- A **Bookmarked** chip sits at the end of the filter row, after the type chips,
+  so bookmarked items can be listed instead of hunted for. Click it to show only
+  bookmarked items, click again to show everything.
+- It is independent of the type chips and combines with them and with search,
+  for example Bookmarked + Image shows only bookmarked images, and typing a word
+  narrows within your bookmarks. It stays usable while a `type:` search token is
+  active.
+- Like the type filter it resets to off each time the window opens. When there
+  are no bookmarks yet, the list says how to create one (⌘B).
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of

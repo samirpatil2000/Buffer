@@ -1121,6 +1121,42 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(plain.matchesKind(.link))
     }
 
+    // MARK: - Bookmarked filter
+
+    private func bookmarkFilterFixture() -> (items: [ClipboardItem], ids: [String: UUID]) {
+        let markedText = ClipboardItem(type: .text, textContent: "alpha note", isBookmarked: true)
+        let markedImage = ClipboardItem(type: .image, imageFilename: "m.png", isBookmarked: true)
+        let markedPinned = ClipboardItem(type: .text, textContent: "gamma", isPinned: true, isBookmarked: true)
+        let plainText = ClipboardItem(type: .text, textContent: "alpha beta")
+        let plainImage = ClipboardItem(type: .image, imageFilename: "p.png")
+        return ([plainText, markedText, plainImage, markedImage, markedPinned],
+                ["markedText": markedText.id, "markedImage": markedImage.id, "markedPinned": markedPinned.id,
+                 "plainText": plainText.id, "plainImage": plainImage.id])
+    }
+
+    func testBookmarkedFilterKeepsOnlyBookmarkedItemsPinnedFirst() {
+        let (items, ids) = bookmarkFilterFixture()
+        let result = HistoryContentView.filterItems(items, tag: nil, kind: .all, bookmarkedOnly: true, textQuery: "")
+        XCTAssertEqual(result.map { $0.id }, [ids["markedPinned"]!, ids["markedText"]!, ids["markedImage"]!])
+    }
+
+    func testBookmarkedFilterCombinesWithTypeAndSearch() {
+        let (items, ids) = bookmarkFilterFixture()
+
+        let imagesOnly = HistoryContentView.filterItems(items, tag: nil, kind: .image, bookmarkedOnly: true, textQuery: "")
+        XCTAssertEqual(imagesOnly.map { $0.id }, [ids["markedImage"]!], "bookmarked AND image")
+
+        // "alpha" also matches the unbookmarked "alpha beta", which the bookmark filter must exclude.
+        let searched = HistoryContentView.filterItems(items, tag: nil, kind: .all, bookmarkedOnly: true, textQuery: "alpha")
+        XCTAssertEqual(searched.map { $0.id }, [ids["markedText"]!])
+    }
+
+    func testBookmarkedFilterOffLeavesTheListUnchanged() {
+        let (items, _) = bookmarkFilterFixture()
+        let result = HistoryContentView.filterItems(items, tag: nil, kind: .all, bookmarkedOnly: false, textQuery: "")
+        XCTAssertEqual(result.count, items.count)
+    }
+
     func testCombinedItemMatchesBothTextAndImage() {
         var combined = ClipboardItem.text("caption text")
         combined.imageFilenames = ["a.png"]
