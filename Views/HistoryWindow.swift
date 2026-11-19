@@ -1607,33 +1607,38 @@ struct HistoryContentView: View {
             Divider()
             
             // Content preview
-            ScrollView {
-                ScrollViewReader { proxy in
-                    if selectionCount > 1 {
-                        // Multi-selection summary
-                        multiSelectionSummary
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    } else if let item = selectedItem {
-                        itemContent(item)
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .id("editArea")
-                            .onChange(of: isEditing) { newValue in
-                                if newValue {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        withAnimation {
-                                            proxy.scrollTo("editArea", anchor: .top)
+            GeometryReader { pane in
+                ScrollView {
+                    ScrollViewReader { proxy in
+                        if selectionCount > 1 {
+                            // Multi-selection summary
+                            multiSelectionSummary
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        } else if let item = selectedItem {
+                            itemContent(item)
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .id("editArea")
+                                .onChange(of: isEditing) { newValue in
+                                    if newValue {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation {
+                                                proxy.scrollTo("editArea", anchor: .top)
+                                            }
                                         }
                                     }
                                 }
-                            }
-                    } else {
-                        Text("Select an item")
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            Text("Select an item")
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
                 }
+                // Images fit the visible pane height (less the 16pt padding above and below), so a
+                // portrait image is not several screens tall in a scrolling pane.
+                .environment(\.previewImageMaxHeight, max(pane.size.height - 32, 120))
             }
 
             // Tag section (single selection only)

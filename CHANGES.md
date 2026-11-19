@@ -248,6 +248,17 @@ tag filters.
   negative cache for apps that do not resolve, so scrolling does not re-hit
   NSWorkspace for every row.
 
+## 15. Image previews fit the pane height
+
+- A tall (portrait) image used to be stretched to the full pane width with no
+  limit on height, so a phone-style screenshot could be two or more screens tall
+  and need a lot of scrolling. Images are now fitted to the visible pane height
+  as well as its width: a portrait image is scaled down until it is fully
+  visible and centered, keeping its shape.
+- Wide images are unchanged, because they already fit. Small images are still
+  enlarged to the pane width as before. Double-click to zoom and drag to pan
+  still work on the fitted image.
+
 ## Developer-facing
 
 - **Debug builds use a separate data directory** (`Buffer-dev/` instead of

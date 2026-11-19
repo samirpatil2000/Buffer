@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import SwiftUI
 @testable import Buffer
 
 class ClipboardItemTests: XCTestCase {
@@ -1238,6 +1239,44 @@ class ClipboardItemTests: XCTestCase {
     func testOCRSummaryFailedWhenNothingFoundAndSomethingFailed() {
         // A failure says nothing about whether the image has text, so it must not read as no text.
         XCTAssertEqual(OCRService.summarize([.failure(StubOCRError()), .success(nil)]), .failed)
+    }
+
+    // MARK: - Image preview fits the pane
+
+    /// Lays out the real preview view and returns the size of the image it draws. The tall host
+    /// frame stands in for the scroll view, which offers unlimited height.
+    private func renderedPreviewSize(of image: NSImage, maxHeight: CGFloat?) -> CGSize {
+        let view = ZoomableImageView(image: image).environment(\.previewImageMaxHeight, maxHeight)
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 700, height: 6000)
+        host.layoutSubtreeIfNeeded()
+
+        func imageView(in root: NSView) -> ZoomableImageNSView? {
+            if let found = root as? ZoomableImageNSView { return found }
+            for child in root.subviews {
+                if let found = imageView(in: child) { return found }
+            }
+            return nil
+        }
+        return imageView(in: host)?.frame.size ?? .zero
+    }
+
+    func testTallImagePreviewIsCappedAtPaneHeightKeepingItsShape() {
+        let tall = blankImage(width: 400, height: 1000)
+
+        let uncapped = renderedPreviewSize(of: tall, maxHeight: nil)
+        XCTAssertGreaterThan(uncapped.height, 1500, "without a cap a tall image grows to several screens")
+
+        let capped = renderedPreviewSize(of: tall, maxHeight: 600)
+        XCTAssertEqual(capped.height, 600, accuracy: 1)
+        XCTAssertEqual(capped.width / capped.height, 0.4, accuracy: 0.01, "scaled down, not squashed")
+    }
+
+    func testWideImagePreviewIsNotAffectedByTheHeightCap() {
+        let wide = blankImage(width: 1000, height: 200)
+        let capped = renderedPreviewSize(of: wide, maxHeight: 600)
+        XCTAssertEqual(capped.width, 700, accuracy: 1, "still fills the pane width")
+        XCTAssertEqual(capped.height, 140, accuracy: 1)
     }
 
     func testOCRSummaryStoredTextKeepsFailureUnprocessed() {

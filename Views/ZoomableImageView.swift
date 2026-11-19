@@ -217,11 +217,26 @@ struct ZoomableImageRepresentable: NSViewRepresentable {
     }
 }
 
+private struct PreviewImageMaxHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    /// The tallest an image preview may be, normally the visible height of the preview pane. The
+    /// pane scrolls and so offers unlimited height, which let a tall image grow to several screens.
+    /// nil means no limit.
+    var previewImageMaxHeight: CGFloat? {
+        get { self[PreviewImageMaxHeightKey.self] }
+        set { self[PreviewImageMaxHeightKey.self] = newValue }
+    }
+}
+
 /// Interactive, zoomable image preview component.
 /// Supports trackpad pinch-to-zoom, drag-to-pan when magnified,
 /// and double-click toggle between 100% actual size and fit.
 struct ZoomableImageView: View {
     let image: NSImage
+    @Environment(\.previewImageMaxHeight) private var maxHeight
     
     static let minScale: CGFloat = ZoomableImageNSView.minScale
     static let maxScale: CGFloat = ZoomableImageNSView.maxScale
@@ -235,7 +250,9 @@ struct ZoomableImageView: View {
     var body: some View {
         ZoomableImageRepresentable(image: image)
             .aspectRatio(aspectRatio, contentMode: .fit)
-            .frame(maxWidth: .infinity)
+            // Fit within the pane's width AND height. A portrait image is scaled down until it is
+            // fully visible (centered), while a wide image is unaffected because it already fits.
+            .frame(maxWidth: .infinity, maxHeight: maxHeight)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .help("Double-click to toggle 100% actual size • Pinch to zoom • Drag to pan")
     }
