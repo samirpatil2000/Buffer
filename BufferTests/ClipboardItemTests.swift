@@ -75,6 +75,65 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertTrue(ClipboardWatcher.shouldCaptureText("👨‍👩‍👧‍👦", minimumLength: 1))
     }
 
+    func testConcealedPasteboardTypesAreIgnored() {
+        for type in ClipboardWatcher.ignoredPasteboardTypes {
+            XCTAssertTrue(ClipboardWatcher.shouldIgnore(types: [.string, type], enabled: true), "\(type.rawValue) should be ignored")
+        }
+        XCTAssertTrue(ClipboardWatcher.shouldIgnore(
+            types: [.string, NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")],
+            enabled: true
+        ))
+
+        // Ordinary copies are captured
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(types: [.string], enabled: true))
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(types: [.png, .tiff], enabled: true))
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(types: nil, enabled: true))
+
+        // Disabled setting never ignores
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(
+            types: [.string, NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")],
+            enabled: false
+        ))
+    }
+
+    func testPasswordManagerAppsAndExtensionsAreIgnored() {
+        let chromiumTypes: [NSPasteboard.PasteboardType] = [.string, ClipboardWatcher.chromiumSourceURLType]
+
+        // Apple Passwords copies carry no marker, so the source app decides
+        XCTAssertTrue(ClipboardWatcher.shouldIgnore(types: [.string], sourceBundleID: "com.apple.Passwords", enabled: true))
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(types: [.string], sourceBundleID: "com.apple.TextEdit", enabled: true))
+
+        // Bitwarden extension in a Chromium browser
+        XCTAssertTrue(ClipboardWatcher.shouldIgnore(
+            types: chromiumTypes,
+            sourceURL: "chrome-extension://nngceckbapebfimnlniiiahkandclblb/popup/index.html#/tabs/vault",
+            sourceBundleID: "com.brave.Browser",
+            enabled: true
+        ))
+
+        // Normal web page copies and other extensions are captured
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(
+            types: chromiumTypes,
+            sourceURL: "https://www.google.com/search?q=nngceckbapebfimnlniiiahkandclblb",
+            sourceBundleID: "com.brave.Browser",
+            enabled: true
+        ))
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(
+            types: chromiumTypes,
+            sourceURL: "chrome-extension://abcdefghijklmnopabcdefghijklmnop/index.html",
+            sourceBundleID: "com.brave.Browser",
+            enabled: true
+        ))
+
+        // Disabled setting never ignores
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(types: [.string], sourceBundleID: "com.apple.Passwords", enabled: false))
+        XCTAssertFalse(ClipboardWatcher.shouldIgnore(
+            types: chromiumTypes,
+            sourceURL: "chrome-extension://nngceckbapebfimnlniiiahkandclblb/popup/index.html",
+            enabled: false
+        ))
+    }
+
     func testDuplicateInlineTextLookup() {
         let first = ClipboardItem.text("first")
         let duplicate = ClipboardItem.text("duplicate")
