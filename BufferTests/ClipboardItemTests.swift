@@ -1081,120 +1081,104 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(rest4, "type:banana")
     }
 
-    // MARK: - Hotkey & Secure Event Input Regression Tests
+    // MARK: - Hotkey Tests
+    //
+    // What these cover: registration, the Control companion for Option/Shift-only
+    // shortcuts, and that both registrations reach the callback.
+    //
+    // What they cannot cover: whether macOS delivers a real key press. Under Secure
+    // Input macOS withholds Option-only shortcuts in the window server, before any
+    // app code runs, and a test can only post a fake event straight to the handler.
+    // That behaviour was measured by hand with real key presses (see HotkeyManager).
+    // Do not call EnableSecureEventInput() here: it changes the whole Mac's input
+    // state and proves nothing about delivery.
 
-    func testHotkeyRegistrationWithOptionModifier() {
-        var callbackFired = false
-        let manager = HotkeyManager {
-            callbackFired = true
-        }
+    private func restoreAppHotkey() {
+        (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+    }
+
+    private func sendHotkeyEvent(id: UInt32) -> OSStatus {
+        var eventRef: EventRef?
+        CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0,
+                    EventAttributes(kEventAttributeNone), &eventRef)
+        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: id)
+        SetEventParameter(eventRef, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                          MemoryLayout<EventHotKeyID>.size, &hotKeyID)
+        return SendEventToEventTarget(eventRef, GetApplicationEventTarget())
+    }
+
+    func testOptionOnlyShortcutAlsoRegistersControlCompanion() {
+        let manager = HotkeyManager { }
         defer {
             manager.unregister()
-            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+            restoreAppHotkey()
         }
 
-        // Register Option + C (C = keyCode 8, option modifier)
-        let optionModifier = UInt32(optionKey)
-        manager.register(keyCode: 8, modifiers: optionModifier)
-        XCTAssertTrue(manager.isRegistered, "HotkeyManager should register Option + C successfully")
+        // Option + C (C = keyCode 8)
+        manager.register(keyCode: 8, modifiers: UInt32(optionKey))
+        XCTAssertTrue(manager.isRegistered, "Option + C should register")
+        XCTAssertTrue(manager.isCompanionRegistered, "Control + Option + C should be registered for password fields")
 
         manager.unregister()
-        XCTAssertFalse(manager.isRegistered, "HotkeyManager should unregister cleanly")
-        _ = callbackFired
+        XCTAssertFalse(manager.isRegistered, "Primary shortcut should unregister cleanly")
+        XCTAssertFalse(manager.isCompanionRegistered, "Companion shortcut should unregister cleanly")
     }
 
-    func testHotkeyCallbackFiresDuringSecureEventInput() {
-        let expectation = XCTestExpectation(description: "Hotkey callback fires during Secure Event Input")
-        
-        let manager = HotkeyManager {
-            expectation.fulfill()
-        }
-
-        EnableSecureEventInput()
+    func testShortcutWithCommandOrControlRegistersNoCompanion() {
+        let manager = HotkeyManager { }
         defer {
-            DisableSecureEventInput()
             manager.unregister()
-            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+            restoreAppHotkey()
         }
 
-        XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input should be active")
-
-        // Register Option + C
-        let optionModifier = UInt32(optionKey)
-        manager.register(keyCode: 8, modifiers: optionModifier)
-        XCTAssertTrue(manager.isRegistered, "Hotkey should be registered during Secure Event Input")
-
-        // Dispatch simulated hotkey event to GetEventDispatcherTarget()
-        var eventRef: EventRef?
-        let createStatus = CreateEvent(
-            nil,
-            OSType(kEventClassKeyboard),
-            UInt32(kEventHotKeyPressed),
-            0,
-            EventAttributes(kEventAttributeNone),
-            &eventRef
-        )
-        XCTAssertEqual(createStatus, noErr, "CreateEvent should succeed")
-
-        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1)
-        SetEventParameter(
-            eventRef,
-            EventParamName(kEventParamDirectObject),
-            EventParamType(typeEventHotKeyID),
-            MemoryLayout<EventHotKeyID>.size,
-            &hotKeyID
-        )
-
-        let sendStatus = SendEventToEventTarget(eventRef, GetApplicationEventTarget())
-        XCTAssertEqual(sendStatus, noErr, "SendEventToEventTarget to application target should succeed")
-
-        wait(for: [expectation], timeout: 2.0)
+        // Shift + Command + V (the default) already works under Secure Input
+        manager.register(keyCode: 9, modifiers: UInt32(shiftKey | cmdKey))
+        XCTAssertTrue(manager.isRegistered)
+        XCTAssertFalse(manager.isCompanionRegistered, "A shortcut with Command needs no companion")
     }
 
-    func testSecureElementDetectionInAppDelegate() {
-        guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-        
-        // Test with custom system element check or mock attributes
-        // An element without AXSecureTextField must not be detected as secure
-        let systemWide = AXUIElementCreateSystemWide()
-        XCTAssertFalse(appDelegate.isSecureElement(systemWide), "System-wide element is not a secure password field")
+    func testSecureInputCompanionModifiers() {
+        let option = UInt32(optionKey), shift = UInt32(shiftKey)
+        let control = UInt32(controlKey), command = UInt32(cmdKey)
+
+        XCTAssertEqual(HotkeyManager.secureInputCompanionModifiers(for: option), option | control)
+        XCTAssertEqual(HotkeyManager.secureInputCompanionModifiers(for: option | shift), option | shift | control)
+        XCTAssertNil(HotkeyManager.secureInputCompanionModifiers(for: option | command))
+        XCTAssertNil(HotkeyManager.secureInputCompanionModifiers(for: option | control))
+        XCTAssertNil(HotkeyManager.secureInputCompanionModifiers(for: shift | command))
+
+        let optionOnly = HotkeyModifiers(option: true)
+        XCTAssertTrue(optionOnly.isBlockedBySecureInput)
+        XCTAssertEqual(optionOnly.secureInputCompanion, HotkeyModifiers(option: true, control: true))
+        XCTAssertEqual(optionOnly.secureInputCompanion?.displayString, "⌃⌥")
+
+        let withCommand = HotkeyModifiers(shift: true, command: true)
+        XCTAssertFalse(withCommand.isBlockedBySecureInput)
+        XCTAssertNil(withCommand.secureInputCompanion)
     }
 
-    func testHotkeyRecoversWhenLeavingPasswordFieldUnderLingeringSecureInput() {
-        let expectation = XCTestExpectation(description: "Hotkey recovers immediately when leaving password field under lingering Secure Event Input")
-        
-        var callbackFired = false
+    func testPrimaryAndCompanionShortcutsBothOpenBuffer() {
+        let primaryFired = XCTestExpectation(description: "Primary shortcut reaches the callback")
+        let companionFired = XCTestExpectation(description: "Companion shortcut reaches the callback")
+        var fireCount = 0
+
         let manager = HotkeyManager {
-            callbackFired = true
-            expectation.fulfill()
+            fireCount += 1
+            if fireCount == 1 { primaryFired.fulfill() } else { companionFired.fulfill() }
         }
-
-        // Simulate lingering Secure Event Input (as left by Chromium after clicking outside a password field)
-        EnableSecureEventInput()
         defer {
-            DisableSecureEventInput()
             manager.unregister()
-            (NSApp.delegate as? AppDelegate)?.hotkeyManager?.register()
+            restoreAppHotkey()
         }
 
-        XCTAssertTrue(IsSecureEventInputEnabled(), "Secure Event Input is lingering in the system")
+        manager.register(keyCode: 8, modifiers: UInt32(optionKey))
 
-        // Register Option + C
-        let optionModifier = UInt32(optionKey)
-        manager.register(keyCode: 8, modifiers: optionModifier)
-        XCTAssertTrue(manager.isRegistered, "Hotkey must register on dispatcher target")
+        XCTAssertEqual(sendHotkeyEvent(id: 1), noErr)
+        wait(for: [primaryFired], timeout: 2.0)
 
-        // Dispatch simulated Option + C event
-        var eventRef: EventRef?
-        CreateEvent(nil, OSType(kEventClassKeyboard), UInt32(kEventHotKeyPressed), 0, EventAttributes(kEventAttributeNone), &eventRef)
-        var hotKeyID = EventHotKeyID(signature: OSType(0x4255_4646), id: 1)
-        SetEventParameter(eventRef, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), MemoryLayout<EventHotKeyID>.size, &hotKeyID)
-        
-        let status = SendEventToEventTarget(eventRef, GetApplicationEventTarget())
-        XCTAssertEqual(status, noErr)
-
-        wait(for: [expectation], timeout: 2.0)
-        XCTAssertTrue(callbackFired, "Hotkey must fire without requiring tab switch or window restart")
+        XCTAssertEqual(sendHotkeyEvent(id: 2), noErr)
+        wait(for: [companionFired], timeout: 2.0)
+        XCTAssertEqual(fireCount, 2)
     }
 
     func testHistoryPanelCanBecomeKeyAndMain() {

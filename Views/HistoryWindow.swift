@@ -197,9 +197,11 @@ class HistoryWindowController: NSWindowController {
         shouldResetOnOpen = shouldResetSearch
         ensureWindowIsVisibleOnScreen()
         super.showWindow(sender)
+        // The panel is non-activating: it takes key focus without switching the active
+        // app. Do not add NSApp.activate here. It costs a 200-350 ms app switch, and macOS
+        // refuses the activation when the front app has Secure Input on (password fields).
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
         UpdateService.shared.checkOnWindowOpenIfNeeded()
     }
 

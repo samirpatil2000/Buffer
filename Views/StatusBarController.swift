@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import Carbon.HIToolbox
 
 /// Manages the menu bar status item - click to toggle window
 class StatusBarController {
@@ -73,6 +74,16 @@ class StatusBarController {
         let shortcutItem = NSMenuItem(title: "Shortcut: \(shortcutDisplay)", action: nil, keyEquivalent: "")
         shortcutItem.isEnabled = false
         menu.addItem(shortcutItem)
+
+        if let companion = settings.hotkeyModifiers.secureInputCompanion {
+            let companionDisplay = "\(companion.displayString)\(keyCodeNames[settings.hotkeyKeyCode] ?? "?")"
+            let title = IsSecureEventInputEnabled()
+                ? "Secure Input is on: use \(companionDisplay)"
+                : "In password fields: \(companionDisplay)"
+            let companionItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            companionItem.isEnabled = false
+            menu.addItem(companionItem)
+        }
         
         menu.addItem(NSMenuItem.separator())
         
