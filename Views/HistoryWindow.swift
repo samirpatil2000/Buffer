@@ -1162,7 +1162,7 @@ struct HistoryContentView: View {
         return formattedByteCount(bytes)
     }
     
-    /// Horizontal row of type-filter chips (All / Text / Image / Link / Code). The selected chip
+    /// Horizontal row of filter chips (All / Text / Image) plus a native Tags menu. The selected type chip
     /// reflects either a `type:` search token (if present) or the manual chip selection.
     private var filterChips: some View {
         // A type: token in the search text takes visual precedence over the manual chip.
@@ -1170,7 +1170,7 @@ struct HistoryContentView: View {
         let selected = tokenKind ?? activeKind
         let tokenActive = tokenKind != nil
         return HStack(spacing: 6) {
-            ForEach(ClipboardKind.allCases, id: \.self) { kind in
+            ForEach(ClipboardKind.primaryCases, id: \.self) { kind in
                 let isOn = kind == selected
                 Button(action: {
                     guard !tokenActive else { return }   // token drives selection; chip is read-only then
@@ -1189,14 +1189,95 @@ struct HistoryContentView: View {
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
+                .opacity(tokenActive ? 0.7 : 1.0)
                 .help(tokenActive ? "Filtered by search token type:\(selected.rawValue)" : "Show \(kind.label) items")
             }
+
+            tagFilterMenu
+
             Spacer()
         }
-        .opacity(tokenActive ? 0.7 : 1.0)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+
+    private var tagFilterMenu: some View {
+        let isTagActive = activeTagFilter != nil
+        let activeTagColor = activeTagFilter.map { TagChip.color(for: $0) } ?? Color.accentColor
+
+        return Menu {
+            if let active = activeTagFilter {
+                Button(action: {
+                    activeTagFilter = nil
+                }) {
+                    Label("Clear Tag Filter (#\(active))", systemImage: "xmark.circle")
+                }
+                Divider()
+            }
+
+            if store.allTags.isEmpty {
+                Text("No tags yet")
+            } else {
+                let top = store.topTags(limit: 5)
+                Section("Top Tags") {
+                    ForEach(top, id: \.self) { tag in
+                        Button(action: {
+                            if activeTagFilter == tag {
+                                activeTagFilter = nil
+                            } else {
+                                activeTagFilter = tag
+                            }
+                        }) {
+                            if activeTagFilter == tag {
+                                Label("#\(tag)", systemImage: "checkmark")
+                            } else {
+                                Text("#\(tag)")
+                            }
+                        }
+                    }
+                }
+
+                let remaining = store.allTags.filter { !top.contains($0) }
+                if !remaining.isEmpty {
+                    Section("All Tags") {
+                        ForEach(remaining, id: \.self) { tag in
+                            Button(action: {
+                                if activeTagFilter == tag {
+                                    activeTagFilter = nil
+                                } else {
+                                    activeTagFilter = tag
+                                }
+                            }) {
+                                if activeTagFilter == tag {
+                                    Label("#\(tag)", systemImage: "checkmark")
+                                } else {
+                                    Text("#\(tag)")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "tag")
+                    .font(.system(size: 9))
+                Text(activeTagFilter != nil ? "#\(activeTagFilter!)" : "Tags")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(isTagActive ? activeTagColor.opacity(0.18) : Color.primary.opacity(0.06))
+            .foregroundColor(isTagActive ? activeTagColor : .secondary)
+            .cornerRadius(6)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(isTagActive ? "Filtered by #\(activeTagFilter!) — click to change or clear" : "Filter by tag")
     }
 
     private var searchBar: some View {

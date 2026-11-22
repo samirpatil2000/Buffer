@@ -246,6 +246,18 @@ class ClipboardStore: ObservableObject {
         Array(Set(items.flatMap { $0.tags })).sorted()
     }
 
+    func topTags(limit: Int = 5) -> [String] {
+        let tagCounts = Dictionary(grouping: items.flatMap { $0.tags }, by: { $0 }).mapValues { $0.count }
+        return tagCounts.sorted {
+            if $0.value != $1.value {
+                return $0.value > $1.value
+            }
+            return $0.key < $1.key
+        }
+        .prefix(limit)
+        .map(\.key)
+    }
+
     func addTag(_ tag: String, to item: ClipboardItem) {
         runOnMain { [weak self] in
             guard let self = self else { return }

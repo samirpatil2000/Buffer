@@ -397,6 +397,9 @@ enum ClipboardKind: String, CaseIterable {
         }
     }
 
+    /// Primary cases shown in the compact filter chip bar.
+    static let primaryCases: [ClipboardKind] = [.all, .text, .image]
+
     /// Parse a `type:` search token value (e.g. "image") into a kind, or nil if unrecognized.
     static func fromToken(_ value: String) -> ClipboardKind? {
         ClipboardKind(rawValue: value.lowercased())
