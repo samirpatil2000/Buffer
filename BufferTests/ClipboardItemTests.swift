@@ -1317,6 +1317,26 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(normalized.count, 32)
         XCTAssertEqual(normalized, String(repeating: "a", count: 32))
     }
+
+    func testClipboardKindPrimaryCases() {
+        XCTAssertEqual(ClipboardKind.primaryCases, [.all, .text, .image])
+        XCTAssertTrue(ClipboardKind.allCases.contains(.link))
+        XCTAssertTrue(ClipboardKind.allCases.contains(.code))
+    }
+
+    func testClipboardStoreTopTagsFrequencySorting() {
+        let store = ClipboardStore()
+        let item1 = ClipboardItem(type: .text, textContent: "1", tags: ["swift", "work", "apple"])
+        let item2 = ClipboardItem(type: .text, textContent: "2", tags: ["swift", "work"])
+        let item3 = ClipboardItem(type: .text, textContent: "3", tags: ["swift"])
+        store.items = [item1, item2, item3]
+
+        let top2 = store.topTags(limit: 2)
+        XCTAssertEqual(top2, ["swift", "work"])
+
+        let topAll = store.topTags(limit: 10)
+        XCTAssertEqual(topAll, ["swift", "work", "apple"])
+    }
 }
 
 
