@@ -153,6 +153,21 @@ struct SettingsView: View {
                         .fixedSize()
                     }
                 }
+
+                if let companion = settings.hotkeyModifiers.secureInputCompanion {
+                    let key = keyCodeNames[settings.hotkeyKeyCode] ?? "?"
+                    rowDivider
+                    settingsRow {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("In password fields, press \(companion.displayString)\(key). macOS does not pass \(settings.hotkeyModifiers.displayString)\(key) to any app while a password field is active, or while a browser keeps Secure Input on after one.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                }
             }
             
             // 3. System Card

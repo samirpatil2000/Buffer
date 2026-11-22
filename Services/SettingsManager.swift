@@ -327,6 +327,22 @@ struct HotkeyModifiers: Equatable {
         if command { parts.append("⌘") }
         return parts.joined()
     }
+
+    /// macOS does not deliver a global shortcut that has neither ⌘ nor ⌃ while
+    /// Secure Input is on (a focused password field, or a browser that left it on).
+    /// See HotkeyManager for the measurements behind this.
+    var isBlockedBySecureInput: Bool {
+        !command && !control
+    }
+
+    /// The same shortcut with ⌃ added, which Buffer also registers so it can be
+    /// opened from password fields. Nil when the shortcut already works there.
+    var secureInputCompanion: HotkeyModifiers? {
+        guard isBlockedBySecureInput else { return nil }
+        var companion = self
+        companion.control = true
+        return companion
+    }
 }
 
 /// Map key codes to display names
