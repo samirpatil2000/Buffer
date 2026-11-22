@@ -171,6 +171,26 @@ final class DatabaseManager {
             self.insertItemInternal(item)
         }
     }
+
+    /// Insert multiple items in a single atomic transaction.
+    func insertBatch(_ items: [ClipboardItem], completion: (() -> Void)? = nil) {
+        queue.async {
+            guard self.db != nil, !items.isEmpty else {
+                if let completion = completion {
+                    DispatchQueue.main.async(execute: completion)
+                }
+                return
+            }
+            self.executeRawSQL("BEGIN IMMEDIATE TRANSACTION;")
+            for item in items {
+                self.insertItemInternal(item)
+            }
+            self.executeRawSQL("COMMIT;")
+            if let completion = completion {
+                DispatchQueue.main.async(execute: completion)
+            }
+        }
+    }
     
     private func insertItemInternal(_ item: ClipboardItem) {
         guard let db = db else { return }

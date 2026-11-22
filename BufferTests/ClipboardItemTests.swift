@@ -1317,6 +1317,117 @@ class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(normalized.count, 32)
         XCTAssertEqual(normalized, String(repeating: "a", count: 32))
     }
+
+    // MARK: - History Backup & Export/Import Tests
+
+    func testIsExportableTextIdentifiesInlineTextOnly() {
+        let inlineText = ClipboardItem(type: .text, textContent: "Hello world")
+        XCTAssertTrue(inlineText.isExportableText)
+
+        let imageItem = ClipboardItem(type: .image, imageFilename: "screenshot.png")
+        XCTAssertFalse(imageItem.isExportableText)
+
+        let fileBackedText = ClipboardItem(type: .text, textFilename: "large_text.txt")
+        XCTAssertFalse(fileBackedText.isExportableText)
+
+        let combinedItem = ClipboardItem(type: .text, textContent: "Text with pic", imageFilenames: ["inline.png"])
+        XCTAssertFalse(combinedItem.isExportableText)
+    }
+
+    func testFilterExportableItemsFiltersOutNonInlineItems() {
+        let inline1 = ClipboardItem(type: .text, textContent: "First")
+        let inline2 = ClipboardItem(type: .text, textContent: "Second")
+        let image = ClipboardItem(type: .image, imageFilename: "img.png")
+        let fileBacked = ClipboardItem(type: .text, textFilename: "large.txt")
+        let combined = ClipboardItem(type: .text, textContent: "Both", imageFilenames: ["img2.png"])
+
+        let allItems = [inline1, image, inline2, fileBacked, combined]
+        let exportable = HistoryBackupService.shared.filterExportableItems(from: allItems)
+
+        XCTAssertEqual(exportable.count, 2)
+        XCTAssertEqual(exportable.map(\.textContent), ["First", "Second"])
+    }
+
+    func testPayloadEncodeAndDecodeRoundtrip() throws {
+        let items = [
+            ClipboardItem(type: .text, textContent: "Code snippet: let x = 42", tags: ["dev"]),
+            ClipboardItem(type: .text, textContent: "Meeting notes", isPinned: true)
+        ]
+
+        let data = try HistoryBackupService.shared.encodePayload(for: items)
+        let parsed = try HistoryBackupService.shared.parseAndSanitizeItems(from: data)
+
+        XCTAssertEqual(parsed.count, 2)
+        XCTAssertEqual(parsed[0].textContent, "Code snippet: let x = 42")
+        XCTAssertEqual(parsed[0].tags, ["dev"])
+        XCTAssertEqual(parsed[1].textContent, "Meeting notes")
+        XCTAssertTrue(parsed[1].isPinned)
+    }
+
+    func testParseAndSanitizeRawArrayFallback() throws {
+        let rawItems = [
+            ClipboardItem(type: .text, textContent: "Direct array item"),
+            ClipboardItem(type: .image, imageFilename: "ignored.png")
+        ]
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(rawItems)
+
+        let parsed = try HistoryBackupService.shared.parseAndSanitizeItems(from: data)
+        XCTAssertEqual(parsed.count, 1)
+        XCTAssertEqual(parsed.first?.textContent, "Direct array item")
+    }
+
+    func testParseAndSanitizeRejectsCorruptedJSON() {
+        let corruptedData = "Not valid JSON".data(using: .utf8)!
+        XCTAssertThrowsError(try HistoryBackupService.shared.parseAndSanitizeItems(from: corruptedData)) { error in
+            guard let backupError = error as? HistoryBackupError else {
+                XCTFail("Expected HistoryBackupError, got: \(error)")
+                return
+            }
+            XCTAssertEqual(backupError, .invalidFileFormat)
+        }
+    }
+
+    func testSmartMergeDeduplicationAndSanitization() {
+        let existingTexts: Set<String> = ["existing item 1", "existing item 2"]
+        let candidateId = UUID()
+        let candidates = [
+            ClipboardItem(id: candidateId, type: .text, textContent: "existing item 1"),
+            ClipboardItem(type: .text, textContent: "Brand new item", tags: ["important"]),
+            ClipboardItem(type: .text, textContent: "Another new item")
+        ]
+
+        let (toInsert, skippedCount) = HistoryBackupService.shared.smartMerge(
+            candidates: candidates,
+            existingTexts: existingTexts
+        )
+
+        XCTAssertEqual(skippedCount, 1)
+        XCTAssertEqual(toInsert.count, 2)
+        XCTAssertEqual(toInsert[0].textContent, "Brand new item")
+        XCTAssertEqual(toInsert[0].tags, ["important"])
+        // Fresh UUID generated to prevent ID collision
+        XCTAssertNotEqual(toInsert[0].id, candidateId)
+        XCTAssertEqual(toInsert[1].textContent, "Another new item")
+        XCTAssertNil(toInsert[0].textFilename)
+        XCTAssertNil(toInsert[0].imageFilename)
+        XCTAssertTrue(toInsert[0].imageFilenames.isEmpty)
+    }
+
+    func testHistoryImportResultSummaryFormatting() {
+        let emptyResult = HistoryImportResult(importedCount: 0, skippedDuplicateCount: 0)
+        XCTAssertEqual(emptyResult.summaryMessage, "No valid text items found in the selected file.")
+
+        let withDuplicates = HistoryImportResult(importedCount: 3, skippedDuplicateCount: 1)
+        XCTAssertEqual(withDuplicates.summaryMessage, "Imported 3 new items (1 duplicate item skipped).")
+
+        let cleanSingle = HistoryImportResult(importedCount: 1, skippedDuplicateCount: 0)
+        XCTAssertEqual(cleanSingle.summaryMessage, "Successfully imported 1 text item.")
+
+        let cleanMultiple = HistoryImportResult(importedCount: 5, skippedDuplicateCount: 0)
+        XCTAssertEqual(cleanMultiple.summaryMessage, "Successfully imported 5 text items.")
+    }
 }
 
 

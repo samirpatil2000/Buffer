@@ -4,6 +4,7 @@ import Combine
 
 /// Manages persistent storage of clipboard history
 class ClipboardStore: ObservableObject {
+    static weak var shared: ClipboardStore?
     @Published var items: [ClipboardItem] = []
     
     private func runOnMain(_ action: @escaping () -> Void) {
@@ -48,6 +49,7 @@ class ClipboardStore: ObservableObject {
     }
     
     init() {
+        Self.shared = self
         ensureDirectoriesExist()
         DatabaseManager.shared.initialize(databaseURL: databaseFileURL)
         DatabaseManager.shared.migrateFromJSONIfNeeded(jsonURL: historyFileURL)
@@ -551,5 +553,21 @@ class ClipboardStore: ObservableObject {
     private func deleteAssociatedFiles(for item: ClipboardItem) {
         deleteImageFiles(for: item)
         deleteTextFile(for: item)
+    }
+
+    /// Appends and synchronizes imported items with storage and UI
+    func mergeImportedItems(_ newItems: [ClipboardItem]) {
+        guard !newItems.isEmpty else { return }
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            self.items.append(contentsOf: newItems)
+            self.items.sort { a, b in
+                if a.isPinned != b.isPinned {
+                    return a.isPinned && !b.isPinned
+                }
+                return a.timestamp > b.timestamp
+            }
+            self.handleLimitChanged()
+        }
     }
 }
