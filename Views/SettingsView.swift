@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var recordedModifiers = HotkeyModifiers()
     @State private var showingTrimAlert = false
     @State private var pendingTier: HistoryLimit?
+    @State private var showingBackupAlert = false
+    @State private var backupAlertTitle = ""
+    @State private var backupAlertMessage = ""
     
     var body: some View {
         VStack(spacing: 12) {
@@ -51,6 +54,11 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will permanently delete your oldest unbookmarked items to fit the new size. This action cannot be undone.")
+        }
+        .alert(backupAlertTitle, isPresented: $showingBackupAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(backupAlertMessage)
         }
         .background(KeyRecorder(isRecording: $isRecording) { keyCode, modifiers in
             settings.hotkeyKeyCode = keyCode
@@ -383,7 +391,36 @@ struct SettingsView: View {
                 }
             }
             
-            // 5. About Section
+            // 5. Data & Backup Card
+            settingsCard(title: "DATA & BACKUP") {
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Text History Backup")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Export or import text clippings (excludes images and large files)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 8) {
+                        Button("Export…") {
+                            exportHistory()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button("Import…") {
+                            importHistory()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+            
+            // 6. About Section
             aboutSection
         }
     }
@@ -439,7 +476,62 @@ struct SettingsView: View {
         settings.hotkeyKeyCode = keyCode
         settings.save()
     }
-    
+
+    // MARK: - Backup & Restore
+
+    private func currentStore() -> ClipboardStore? {
+        ClipboardStore.shared ?? (NSApp.delegate as? AppDelegate)?.clipboardStore
+    }
+
+    private func presentingWindow() -> NSWindow? {
+        NSApp.windows.first(where: { $0.title == "Settings" }) ?? NSApp.keyWindow
+    }
+
+    private func exportHistory() {
+        guard let store = currentStore() else {
+            presentBackupAlert(title: "Export Failed", message: HistoryBackupError.storeUnavailable.localizedDescription)
+            return
+        }
+
+        HistoryBackupService.shared.exportTextHistory(
+            items: store.items,
+            presentingWindow: presentingWindow()
+        ) { result in
+            switch result {
+            case .success(let count):
+                let itemWord = count == 1 ? "item" : "items"
+                presentBackupAlert(title: "Export Successful", message: "Exported \(count) text \(itemWord) to JSON.")
+            case .failure(let error):
+                presentBackupAlert(title: "Export Failed", message: error.localizedDescription)
+            }
+        }
+    }
+
+    private func importHistory() {
+        guard let store = currentStore() else {
+            presentBackupAlert(title: "Import Failed", message: HistoryBackupError.storeUnavailable.localizedDescription)
+            return
+        }
+
+        HistoryBackupService.shared.importTextHistory(
+            into: store,
+            presentingWindow: presentingWindow()
+        ) { result in
+            switch result {
+            case .success(let info):
+                presentBackupAlert(title: "Import Complete", message: info.summaryMessage)
+            case .failure(let error):
+                presentBackupAlert(title: "Import Failed", message: error.localizedDescription)
+            }
+        }
+    }
+
+    private func presentBackupAlert(title: String, message: String) {
+        backupAlertTitle = title
+        backupAlertMessage = message
+        showingBackupAlert = true
+    }
+
     // MARK: - About
     
     private var aboutSection: some View {

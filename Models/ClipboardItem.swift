@@ -218,6 +218,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// True when the item carries both a text body and at least one image
     var isCombined: Bool { type == .text && !imageFilenames.isEmpty }
 
+    /// Whether this item represents pure inline text that can be exported without external disk files.
+    var isExportableText: Bool {
+        type == .text && !isFileBacked && !hasImages && textContent != nil
+    }
+
     /// Whether this item carries embedded image attachments (combined item), used by the
     /// row's second badge. Kept distinct from hasRichText (resolution 4) so the two can show
     /// simultaneously with visually distinct glyphs.
@@ -523,5 +528,20 @@ enum TableDetector {
         let head = Array(row.prefix(columns - 1))
         let tail = row.suffix(from: columns - 1).joined(separator: "\t")
         return head + [tail]
+    }
+}
+
+/// Container structure for exporting and importing clipboard text history.
+struct HistoryExportPayload: Codable {
+    let version: Int
+    let exportedAt: Date
+    let itemCount: Int
+    let items: [ClipboardItem]
+
+    init(version: Int = 1, exportedAt: Date = Date(), items: [ClipboardItem]) {
+        self.version = version
+        self.exportedAt = exportedAt
+        self.itemCount = items.count
+        self.items = items
     }
 }
