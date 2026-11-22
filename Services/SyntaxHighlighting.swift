@@ -82,6 +82,63 @@ final class HighlighterSwiftEngine: SyntaxHighlighting, @unchecked Sendable {
     }
 }
 
+/// The languages offered in the manual language picker, with human-readable names.
+///
+/// Deliberately a short curated list rather than all ~190 highlight.js grammars: Auto-detect
+/// still covers everything, and the picker only needs the languages people actually override to.
+enum SyntaxLanguageCatalog {
+    typealias Language = (id: String, name: String)
+
+    /// Shown directly in the picker - one click away.
+    static let common: [Language] = [
+        ("swift", "Swift"),
+        ("python", "Python"),
+        ("javascript", "JavaScript"),
+        ("typescript", "TypeScript"),
+        ("json", "JSON"),
+        ("xml", "HTML / XML"),
+        ("css", "CSS"),
+        ("sql", "SQL"),
+        ("bash", "Shell"),
+        ("markdown", "Markdown"),
+        ("yaml", "YAML")
+    ]
+
+    /// Shown in the single "More" submenu, alphabetical.
+    static let more: [Language] = [
+        ("c", "C"),
+        ("cpp", "C++"),
+        ("csharp", "C#"),
+        ("dart", "Dart"),
+        ("diff", "Diff"),
+        ("dockerfile", "Dockerfile"),
+        ("go", "Go"),
+        ("graphql", "GraphQL"),
+        ("java", "Java"),
+        ("kotlin", "Kotlin"),
+        ("lua", "Lua"),
+        ("objectivec", "Objective-C"),
+        ("php", "PHP"),
+        ("ruby", "Ruby"),
+        ("rust", "Rust"),
+        ("scala", "Scala"),
+        ("ini", "TOML / INI")
+    ]
+
+    /// Human-readable title for a language id. Ids outside the catalog (an override saved by
+    /// an older build) fall back to the id with its first letter capitalized.
+    static func displayName(for id: String) -> String {
+        if let known = (common + more).first(where: { $0.id == id }) {
+            return known.name
+        }
+        return id.prefix(1).uppercased() + id.dropFirst()
+    }
+
+    static func contains(_ id: String) -> Bool {
+        (common + more).contains { $0.id == id }
+    }
+}
+
 import SwiftUI
 
 /// Builds an attributed string from a clipboard item's stored rich payload (RTFD, then RTF, then

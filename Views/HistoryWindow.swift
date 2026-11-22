@@ -2107,21 +2107,29 @@ struct HistoryContentView: View {
     }
 
     /// A compact menu to override the detected language for the selected item.
-    /// Auto (nil), Plain Text (""), or any supported language. The choice persists per item.
+    /// Auto (nil), Plain Text (""), or a language from the curated catalog. The choice persists per item.
     @ViewBuilder
     private func languagePicker(for item: ClipboardItem) -> some View {
         let current = item.language
         Menu {
-            Button(action: { store.setLanguage(nil, for: item) }) {
-                languageMenuLabel("Auto", selected: current == nil)
-            }
-            Button(action: { store.setLanguage("", for: item) }) {
-                languageMenuLabel("Plain Text", selected: current == "")
-            }
+            languageOption("Auto", nil, for: item)
+            languageOption("Plain Text", "", for: item)
+
             Divider()
-            ForEach(HighlighterSwiftEngine.shared.supportedLanguages(), id: \.self) { lang in
-                Button(action: { store.setLanguage(lang, for: item) }) {
-                    languageMenuLabel(lang, selected: current == lang)
+
+            // An override saved before the list was curated stays visible so it isn't lost.
+            if let current = current, !current.isEmpty, !SyntaxLanguageCatalog.contains(current) {
+                languageOption(SyntaxLanguageCatalog.displayName(for: current), current, for: item)
+            }
+            ForEach(SyntaxLanguageCatalog.common, id: \.id) { language in
+                languageOption(language.name, language.id, for: item)
+            }
+
+            Divider()
+
+            Menu("More") {
+                ForEach(SyntaxLanguageCatalog.more, id: \.id) { language in
+                    languageOption(language.name, language.id, for: item)
                 }
             }
         } label: {
@@ -2146,17 +2154,17 @@ struct HistoryContentView: View {
         switch current {
         case .none: return "Auto"
         case .some(""): return "Plain"
-        case .some(let lang): return lang
+        case .some(let lang): return SyntaxLanguageCatalog.displayName(for: lang)
         }
     }
 
-    @ViewBuilder
-    private func languageMenuLabel(_ title: String, selected: Bool) -> some View {
-        if selected {
-            Label(title, systemImage: "checkmark")
-        } else {
-            Text(title)
-        }
+    /// One checkable row in the language menu. A Toggle gives the native menu checkmark, so
+    /// every row lines up whether or not it is the selected one.
+    private func languageOption(_ title: String, _ id: String?, for item: ClipboardItem) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { item.language == id },
+            set: { _ in store.setLanguage(id, for: item) }
+        ))
     }
 
     @ViewBuilder

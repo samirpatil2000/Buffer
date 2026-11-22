@@ -1337,6 +1337,37 @@ class ClipboardItemTests: XCTestCase {
         let topAll = store.topTags(limit: 10)
         XCTAssertEqual(topAll, ["swift", "work", "apple"])
     }
+
+    // MARK: - Syntax Language Catalog Tests
+
+    func testLanguageCatalogDisplayNames() {
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "json"), "JSON")
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "bash"), "Shell")
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "xml"), "HTML / XML")
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "cpp"), "C++")
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "objectivec"), "Objective-C")
+    }
+
+    func testLanguageCatalogFallbackNameForUnknownId() {
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: "brainfuck"), "Brainfuck")
+        XCTAssertEqual(SyntaxLanguageCatalog.displayName(for: ""), "")
+        XCTAssertFalse(SyntaxLanguageCatalog.contains("brainfuck"))
+        XCTAssertTrue(SyntaxLanguageCatalog.contains("rust"))
+    }
+
+    func testLanguageCatalogHasNoDuplicates() {
+        let ids = (SyntaxLanguageCatalog.common + SyntaxLanguageCatalog.more).map { $0.id }
+        XCTAssertEqual(ids.count, Set(ids).count)
+    }
+
+    /// Every language the picker offers must be one the highlighting engine really supports.
+    func testLanguageCatalogOnlyOffersSupportedLanguages() {
+        let supported = Set(HighlighterSwiftEngine.shared.supportedLanguages())
+        XCTAssertFalse(supported.isEmpty)
+        for language in SyntaxLanguageCatalog.common + SyntaxLanguageCatalog.more {
+            XCTAssertTrue(supported.contains(language.id), "\(language.id) is not a supported grammar")
+        }
+    }
 }
 
 
